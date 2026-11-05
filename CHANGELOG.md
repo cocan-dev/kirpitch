@@ -21,5 +21,7 @@ follows [Semantic Versioning](https://semver.org/).
   `schema/partspec.schema.json` (a test fails when it is stale).
 - `kirpitch-kicad` crate with a `kicad-cli` wrapper (version, SVG export,
   upgrade) and test helpers; tests use `KIRPITCH_KICAD_CLI` and skip without it.
+- S-expression writer and parser in `kirpitch-kicad` that reproduces KiCad 10's
+  own layout, and the `KicadTarget` type (KiCad 10 so far).
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.

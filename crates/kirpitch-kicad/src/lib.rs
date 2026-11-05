@@ -7,6 +7,10 @@
 //! and the wrapper around KiCad's command-line tool.
 
 pub mod cli;
+pub mod sexpr;
+pub mod target;
 pub mod testing;
 
 pub use cli::{CliError, KicadCli, KicadVersion, UpgradeOutcome};
+pub use sexpr::{List, Node, list};
+pub use target::KicadTarget;
