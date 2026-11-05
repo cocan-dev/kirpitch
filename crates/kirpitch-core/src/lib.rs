@@ -5,6 +5,16 @@
 //! The PartSpec is the single JSON document from which every KiCad output is
 //! generated. All lengths are in millimetres.
 
+pub mod electrical;
+pub mod error;
+pub mod source;
+pub mod units;
+
+pub use electrical::ElectricalType;
+pub use error::NumberError;
+pub use source::{BoundingBox, Confidence, Source, Sourced};
+pub use units::{LengthUnit, Mm, Tolerance};
+
 /// Returns the version of this crate, as set in the workspace manifest.
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
