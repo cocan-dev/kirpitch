@@ -73,7 +73,7 @@ flowchart LR
 
 Gates (hexagons) are where the user checks and approves before Kirpitch continues. At each gate: approve, edit any value, re-extract just that stage, or skip it. Editing an approved stage re-opens every stage after it.
 
-The PartSpec is a versioned JSON (JavaScript Object Notation) document holding pins, package dimensions, land pattern, 3D body, electrical parameters and metadata. Each value carries `{page, bbox, confidence}`, where bbox (bounding box) is the region on the page it was read from. Low-confidence values are highlighted at their gate.
+The PartSpec is a versioned JSON (JavaScript Object Notation) document holding pins, package dimensions, land pattern, 3D body, electrical parameters and metadata. Each value carries `{page, bbox, confidence}`, where bbox (bounding box) is the region on the page it was read from. Low-confidence values are highlighted at their gate. Source tracing is required for extracted values from milestone 2 on; in hand-written PartSpecs it is optional and values without it are shown as "no source" ([ADR 0004](decisions/0004-source-tracing-optional-in-hand-written-specs.md)).
 
 **Review gates**
 
@@ -105,12 +105,23 @@ Kirpitch runs automatic checks at every gate, whether values came from an LLM or
 | Pitch fit | 2. Footprint | (pins per side − 1) × pitch fits inside the body length | Error |
 | Pin ↔ pad match | 2. Footprint | Every pin number has a pad and every pad has a pin, unless marked mechanical or not connected | Error |
 | Two sources agree | 2. Footprint | When the datasheet gives both package dimensions and a recommended land pattern, the IPC-7351 result and the recommended pattern agree within tolerance | Warning |
-| Pad clearance | 2. Footprint | Pad-to-pad gap ≥ the user's PCB (printed circuit board) maker minimum, set in a fab profile | Error |
+| Pad clearance | 2. Footprint | Pad-to-pad gap ≥ the user's PCB (printed circuit board) maker minimum, set in a fab profile (see [Fab profile](#fab-profile)) | Error |
 | Pin 1 | 2 and 3 | Pin 1 is in the same place on the pinout drawing, footprint and 3D model | Error |
 | 3D fit | 3. 3D model | Leads land on their pads; body sits inside the courtyard; height ≤ the datasheet maximum | Error |
 | SPICE nodes | 4. SPICE | Model node count and order match the symbol pins | Error |
 | Units | All | All values stored in mm; values given in inches or mils (thousandths of an inch) are converted and flagged | Warning |
 | Second read | All (optional) | A second extraction pass, or a second model, re-reads critical values (pitch, pad size, pin count); any disagreement is flagged | Warning |
+
+### Fab profile
+
+A fab profile holds the limits of a PCB maker. Kirpitch ships one built-in **generic** profile with conservative values, safe for typical low-cost services ([ADR 0003](decisions/0003-default-fab-profile.md)). Presets for specific makers are in the Backlog.
+
+| Limit | Generic default |
+| --- | --- |
+| Minimum copper-to-copper gap | 0.20 mm |
+| Minimum solder mask web (mask between two openings) | 0.10 mm |
+| Minimum silkscreen line width | 0.15 mm |
+| Minimum silkscreen text height | 0.80 mm |
 
 ## Tech stack
 
@@ -118,7 +129,7 @@ Kirpitch is written in **Rust**, chosen over Go because it gives a single static
 
 **License:** GPL-3.0-or-later (GNU General Public License, version 3 or later), the same family as KiCad. Parts that users generate with Kirpitch belong to them; the license covers Kirpitch's code, not its output. Code: [github.com/cocan-dev/kirpitch](https://github.com/cocan-dev/kirpitch). Planned crate name `kirpitch` on crates.io and website kirpitch.dev. Contacts: hello@cocan.dev, and security@cocan.dev for security issues.
 
-- **Structure:** a Cargo workspace (Cargo = Rust's build tool). Crates: `kirpitch-core` (PartSpec schema and validation), `kirpitch-extract`, `kirpitch-gen-symbol`, `kirpitch-gen-footprint`, `kirpitch-gen-3d`, `kirpitch-gen-spice`, `kirpitch-cli`, `kirpitch-app`.
+- **Structure:** a Cargo workspace (Cargo = Rust's build tool). Crates: `kirpitch-core` (PartSpec schema and validation), `kirpitch-kicad` (S-expression writer and KiCad version targets, shared by the generators), `kirpitch-extract`, `kirpitch-gen-symbol`, `kirpitch-gen-footprint`, `kirpitch-gen-3d`, `kirpitch-gen-spice`, `kirpitch-cli`, `kirpitch-app`.
 - **PDF and OCR:** candidates are `pdfium-render` for page rendering and text with positions, and `ocrs` or Tesseract for scans. Check that each library is still actively maintained before adopting it.
 - **LLM backends:** any provider the user has, or none, behind one Rust trait (see Model configuration). Every response is structured JSON checked against the PartSpec schema.
 - **KiCad files:** write the S-expression formats (KiCad's bracketed text format) with our own serializer, with one writer per supported KiCad version (see KiCad versions).
@@ -220,12 +231,13 @@ The PartSpec does not depend on any KiCad version; only the file writers do. So 
 The constraint: KiCad major releases almost always change file formats. Newer versions open older files, but once a file is saved in a new major version, older versions can no longer open it ([KiCad 10 docs](https://docs.kicad.org/10.0/en/introduction/introduction.html)). As of November 2026, KiCad 10 is the current major release; it came out in March 2026, and 10.0.6 shipped in August ([KiCad 10.0.6 release](https://www.kicad.org/blog/2026/08/KiCad-10.0.6-Release/)).
 
 - **Supported targets:** always the latest three major versions, which as of November 2026 means KiCad 8, 9 and 10. When a new major version ships, the oldest one is dropped. Each supported version gets its own writer and its own KLC (KiCad Library Conventions) rule set.
-- **Default target:** the version of the installed KiCad, read from `kicad-cli version`. If none is found, the latest stable version.
-- **Choosing the target:** set it per library in `kirpitch.toml` (`kicad_target = "9"`), or regenerate the whole library for another version with `kirpitch rebuild --all --target 9`.
-- **Oldest wins for compatibility:** writing the older format is the safe choice when files will be opened in several versions, because newer KiCad reads it and upgrades it when saving.
+- **Default target:** the version of the installed KiCad, read from `kicad-cli version`. If none is found, the latest stable version ([ADR 0002](decisions/0002-default-kicad-target.md)).
+- **Choosing the target:** set it per library in `kirpitch.toml` (`kicad_target = "9"`), with `--target` on a single command, or regenerate the whole library for another version with `kirpitch rebuild --all --target 9`.
+- **Advice for sharing files:** if files will be opened in several KiCad versions, choose the oldest of them as the target, because newer KiCad reads the older format and upgrades it when saving. This is advice, not a rule; the default above does not change.
 - **Feature gating:** features that only newer versions have, such as embedded files, are used only when the target supports them. Anything dropped for an older target appears as a warning in the report.
 - **Never downgrade by conversion:** KiCad has `fp upgrade` and `sym upgrade` commands but no downgrade. Older formats are always written fresh from the PartSpec.
-- **Testing:** CI (continuous integration) runs a container with each supported KiCad version and load-tests every golden part in that version's `kicad-cli`. A nightly job also runs against KiCad development builds, to catch format changes before the next major release.
+- **Testing:** CI (continuous integration) runs a Linux container with each supported KiCad version and load-tests every golden part in that version's `kicad-cli`. Linux, macOS and Windows all run the format, lint and snapshot tests; only the `kicad-cli` tests are Linux-only ([ADR 0007](decisions/0007-kicad-cli-tests-on-linux-ci-only.md)). A nightly job also runs against KiCad development builds, to catch format changes before the next major release.
+- **Staging:** the writers are built in the order KiCad 10, 9, 8.
 
 ## KiCad library integration
 
@@ -238,20 +250,21 @@ Kirpitch works alongside KiCad's own libraries instead of duplicating them.
 
 ## Quality requirements
 
-- **Deterministic:** the same PartSpec always produces byte-identical files. Generation from a PartSpec takes under 1 second.
+- **Deterministic:** the same PartSpec always produces byte-identical files, on every operating system. Generation from a PartSpec takes under 1 second. The rules for line endings, number formatting, UUIDs (universally unique identifiers) and ordering are in [ADR 0010](decisions/0010-deterministic-output.md).
 - **Consistency checks:** every rule in Cross-checks runs at its gate, and all of them run again before export.
-- **KLC compliance:** port the checks from KiCad's `kicad-library-utils`, or call them directly. Every generated part must also load in `kicad-cli` without errors.
+- **KLC compliance:** port the checks from KiCad's `kicad-library-utils`, or call them directly (from milestone 2, [ADR 0008](decisions/0008-klc-checks-in-milestone-2.md)). Every generated part must also load in `kicad-cli` without errors. Because `kicad-cli` has no validate command, "loads" means a successful `kicad-cli` export combined with Kirpitch's own parse and round-trip check.
 - **Caching:** extraction results are cached per PDF hash, so re-running never calls the LLM twice for the same file.
 - **Privacy:** nothing leaves the machine unless the user picks a cloud LLM. No telemetry.
 - **Platforms:** Linux, macOS, Windows.
-- **Tests:** a golden set of about 30 datasheets (SOIC, QFN, TSSOP, SOT-23, DIP, through-hole parts, USB-C, JST (a Japanese connector brand), pin headers), each with a hand-checked expected PartSpec, plus snapshot tests for every generator.
+- **Tests:** a golden set of about 30 datasheets (SOIC, QFN, TSSOP, SOT-23, DIP, through-hole parts, USB-C, JST (a Japanese connector brand), pin headers), each with a hand-checked expected PartSpec, plus snapshot tests for every generator. The repository stores only each datasheet's URL, SHA-256 hash and the expected PartSpec, never the PDF. A changed hash is reported as drift (manufacturers re-issue PDFs under the same URL) for a person to re-check; it does not fail the tests.
 
 ## Scope and milestones
 
 The MVP (minimum viable product) covers text-based PDFs and standard IC packages (SOIC, SOT, QFN, TSSOP, DIP). It outputs a symbol, footprint and parametric 3D model, with review done through the CLI.
 
-1. **PartSpec + generators:** schema and all generators, driven by hand-written PartSpecs. No LLM yet.
-2. **Extraction:** no-LLM mode (region pick, package templates), then LLM extraction of pinouts and package dimensions for ICs through any configured provider. Includes source tracing, cross-checks and `kirpitch bench`.
+1. **PartSpec + symbol and footprint generators:** the schema, a built-in generic fab profile and the structural checks, plus the symbol and footprint generators, driven by hand-written PartSpecs. No LLM yet. Footprints use the land pattern given in the PartSpec. See [ADR 0001](decisions/0001-milestone-1-scope.md).
+   - **1b. 3D generator:** after evaluating the STEP engine (see Tech stack). SPICE generation stays in milestone 5.
+2. **Extraction:** no-LLM mode (region pick, package templates), then LLM extraction of pinouts and package dimensions for ICs through any configured provider. Includes mandatory source tracing for extracted values, the IPC-7351 land pattern calculator, the full cross-checks, KLC checks and `kirpitch bench`.
 3. **Desktop review app:** the Tauri app with side-by-side review and live previews, plus the library browser with history and diffs.
 4. **Connectors:** extraction from dimensioned drawings, and connector 3D models.
 5. **Extras:** SPICE models, fetching by MPN, PCM packaging, and the KiCad plugin.
@@ -276,7 +289,7 @@ The MVP (minimum viable product) covers text-based PDFs and standard IC packages
 
 **Backlog**
 
-- **Fab profiles:** presets for JLCPCB, PCBWay and Aisler (minimum clearances, paste settings), used by the cross-checks.
+- **Fab profiles:** presets for JLCPCB, PCBWay and Aisler (minimum clearances, paste settings), used by the cross-checks. A generic default profile is built in from milestone 1 (see Fab profile).
 - **Exposed-pad helpers:** paste split into smaller windows and thermal vias under exposed pads.
 - **IPC-7351 density levels:** most, nominal and least land patterns, plus hand-solder variants.
 - **Assembly fields:** LCSC/JLC part numbers and pick-and-place rotation offsets.
