@@ -1,0 +1,212 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "mpn": "EXAMPLE-DUAL-OPAMP",
+    "manufacturer": "Example Manufacturer",
+    "description": "Synthetic dual operational amplifier used as a test fixture, SOIC-8",
+    "keywords": [
+      "opamp",
+      "example"
+    ]
+  },
+  "package": {
+    "family": "SOIC",
+    "name": "SOIC-8_3.9x4.9mm_P1.27mm",
+    "pin_count": 8,
+    "pitch": 1.27,
+    "body": {
+      "length": 4.9,
+      "width": 3.9,
+      "height_max": 1.75
+    },
+    "dimensions": {
+      "A": {
+        "value": {
+          "nom": 1.75,
+          "max": 1.75
+        }
+      },
+      "A1": {
+        "value": {
+          "min": 0.1,
+          "nom": 0.175,
+          "max": 0.25
+        },
+        "source": {
+          "page": 1
+        }
+      },
+      "D": {
+        "value": {
+          "min": 4.8,
+          "nom": 4.9,
+          "max": 5
+        },
+        "source": {
+          "page": 1
+        }
+      },
+      "E1": {
+        "value": {
+          "min": 3.8,
+          "nom": 3.9,
+          "max": 4
+        },
+        "source": {
+          "page": 1
+        }
+      },
+      "L": {
+        "value": {
+          "min": 0.4,
+          "nom": 0.835,
+          "max": 1.27
+        },
+        "source": {
+          "page": 1
+        }
+      },
+      "b": {
+        "value": {
+          "min": 0.31,
+          "nom": 0.41,
+          "max": 0.51
+        },
+        "source": {
+          "page": 1
+        }
+      },
+      "e": {
+        "value": {
+          "nom": 1.27
+        }
+      }
+    }
+  },
+  "pins": [
+    {
+      "number": "1",
+      "name": "OUT1",
+      "electrical_type": "output",
+      "group": "Amplifier 1"
+    },
+    {
+      "number": "2",
+      "name": "-IN1",
+      "electrical_type": "input",
+      "group": "Amplifier 1"
+    },
+    {
+      "number": "3",
+      "name": "+IN1",
+      "electrical_type": "input",
+      "group": "Amplifier 1"
+    },
+    {
+      "number": "4",
+      "name": "GND",
+      "electrical_type": "power_in",
+      "group": "Power"
+    },
+    {
+      "number": "5",
+      "name": "+IN2",
+      "electrical_type": "input",
+      "group": "Amplifier 2"
+    },
+    {
+      "number": "6",
+      "name": "-IN2",
+      "electrical_type": "input",
+      "group": "Amplifier 2"
+    },
+    {
+      "number": "7",
+      "name": "OUT2",
+      "electrical_type": "output",
+      "group": "Amplifier 2"
+    },
+    {
+      "number": "8",
+      "name": "VCC",
+      "electrical_type": "power_in",
+      "group": "Power"
+    }
+  ],
+  "land_pattern": {
+    "pads": [
+      {
+        "number": "1",
+        "shape": "round_rect",
+        "x": -2.475,
+        "y": -1.905,
+        "size_x": 1.95,
+        "size_y": 0.6,
+        "corner_ratio": 0.25
+      },
+      {
+        "number": "2",
+        "shape": "round_rect",
+        "x": -2.475,
+        "y": -0.635,
+        "size_x": 1.95,
+        "size_y": 0.6,
+        "corner_ratio": 0.25
+      },
+      {
+        "number": "3",
+        "shape": "round_rect",
+        "x": -2.475,
+        "y": 0.635,
+        "size_x": 1.95,
+        "size_y": 0.6,
+        "corner_ratio": 0.25
+      },
+      {
+        "number": "4",
+        "shape": "round_rect",
+        "x": -2.475,
+        "y": 1.905,
+        "size_x": 1.95,
+        "size_y": 0.6,
+        "corner_ratio": 0.25
+      },
+      {
+        "number": "5",
+        "shape": "round_rect",
+        "x": 2.475,
+        "y": 1.905,
+        "size_x": 1.95,
+        "size_y": 0.6,
+        "corner_ratio": 0.25
+      },
+      {
+        "number": "6",
+        "shape": "round_rect",
+        "x": 2.475,
+        "y": 0.635,
+        "size_x": 1.95,
+        "size_y": 0.6,
+        "corner_ratio": 0.25
+      },
+      {
+        "number": "7",
+        "shape": "round_rect",
+        "x": 2.475,
+        "y": -0.635,
+        "size_x": 1.95,
+        "size_y": 0.6,
+        "corner_ratio": 0.25
+      },
+      {
+        "number": "8",
+        "shape": "round_rect",
+        "x": 2.475,
+        "y": -1.905,
+        "size_x": 1.95,
+        "size_y": 0.6,
+        "corner_ratio": 0.25
+      }
+    ]
+  }
+}

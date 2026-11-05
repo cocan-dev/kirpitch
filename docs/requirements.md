@@ -99,7 +99,7 @@ Kirpitch runs automatic checks at every gate, whether values came from an LLM or
 | Check | Gate | Rule | Level |
 | --- | --- | --- | --- |
 | Pin count | 1. Pinout | Symbol pins = package pin count, exposed pad included | Error |
-| Unique pin numbers | 1. Pinout | No duplicate pin numbers; repeated names only for power and ground, stacked | Error |
+| Unique pin numbers | 1. Pinout | No duplicate pin numbers; repeated names only for power, ground and not-connected (NC) pins, stacked | Error |
 | Power pins | 1. Pinout | Every supply pin has a power type; at least one ground pin | Warning |
 | Tolerance order | 2. Footprint | min ≤ nom ≤ max for every dimension | Error |
 | Pitch fit | 2. Footprint | (pins per side − 1) × pitch fits inside the body length | Error |
