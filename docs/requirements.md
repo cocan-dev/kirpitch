@@ -252,7 +252,7 @@ Kirpitch works alongside KiCad's own libraries instead of duplicating them.
 
 - **Deterministic:** the same PartSpec always produces byte-identical files, on every operating system. Generation from a PartSpec takes under 1 second. The rules for line endings, number formatting, UUIDs (universally unique identifiers) and ordering are in [ADR 0010](decisions/0010-deterministic-output.md).
 - **Consistency checks:** every rule in Cross-checks runs at its gate, and all of them run again before export.
-- **KLC compliance:** port the checks from KiCad's `kicad-library-utils`, or call them directly (from milestone 2, [ADR 0008](decisions/0008-klc-checks-in-milestone-2.md)). Every generated part must also load in `kicad-cli` without errors. Because `kicad-cli` has no validate command, "loads" means a successful `kicad-cli` export combined with Kirpitch's own parse and round-trip check.
+- **KLC compliance:** port the checks from KiCad's `kicad-library-utils`, or call them directly (from milestone 2, [ADR 0008](decisions/0008-klc-checks-in-milestone-2.md)). Every generated part must also load in `kicad-cli` without errors. Because `kicad-cli` has no validate command, "loads" means a successful `kicad-cli` export combined with Kirpitch's own parse and round-trip check, as defined in [ADR 0012](decisions/0012-what-loads-in-kicad-cli-means.md).
 - **Caching:** extraction results are cached per PDF hash, so re-running never calls the LLM twice for the same file.
 - **Privacy:** nothing leaves the machine unless the user picks a cloud LLM. No telemetry.
 - **Platforms:** Linux, macOS, Windows.

@@ -19,5 +19,7 @@ follows [Semantic Versioning](https://semver.org/).
   positive sizes, source sanity).
 - JSON schema of the PartSpec, generated from the Rust types and committed as
   `schema/partspec.schema.json` (a test fails when it is stale).
+- `kirpitch-kicad` crate with a `kicad-cli` wrapper (version, SVG export,
+  upgrade) and test helpers; tests use `KIRPITCH_KICAD_CLI` and skip without it.
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.
