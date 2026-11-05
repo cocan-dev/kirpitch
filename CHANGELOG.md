@@ -17,5 +17,7 @@ follows [Semantic Versioning](https://semver.org/).
   built-in generic fab profile and structural validation (pin count, pin
   numbers and names, pin-to-pad match, tolerance order, units, pad clearance,
   positive sizes, source sanity).
+- JSON schema of the PartSpec, generated from the Rust types and committed as
+  `schema/partspec.schema.json` (a test fails when it is stale).
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.
