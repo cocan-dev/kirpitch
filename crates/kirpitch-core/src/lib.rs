@@ -7,13 +7,19 @@
 
 pub mod electrical;
 pub mod error;
+pub mod fab;
+pub mod partspec;
 pub mod source;
 pub mod units;
+pub mod validate;
 
 pub use electrical::ElectricalType;
-pub use error::NumberError;
+pub use error::{LoadError, NumberError};
+pub use fab::FabProfile;
+pub use partspec::{PartSpec, SCHEMA_VERSION};
 pub use source::{BoundingBox, Confidence, Source, Sourced};
 pub use units::{LengthUnit, Mm, Tolerance};
+pub use validate::{Check, Finding, Level, has_errors, validate};
 
 /// Returns the version of this crate, as set in the workspace manifest.
 pub fn version() -> &'static str {
