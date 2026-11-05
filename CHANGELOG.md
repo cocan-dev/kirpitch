@@ -9,5 +9,7 @@ follows [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Cargo workspace with the `kirpitch-core` crate (stub).
+- GitHub Actions CI (format, clippy and tests on Linux, macOS and Windows) and
+  `cargo deny` licence and security checks.
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.
