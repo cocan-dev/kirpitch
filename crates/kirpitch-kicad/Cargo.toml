@@ -12,3 +12,4 @@ workspace = true
 
 [dependencies]
 thiserror = "2.0.21"
+kirpitch-core = { path = "../kirpitch-core" }

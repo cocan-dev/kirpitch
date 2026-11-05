@@ -29,6 +29,7 @@ dependencies = [
 name = "kirpitch-kicad"
 version = "0.0.1"
 dependencies = [
+ "kirpitch-core",
  "thiserror",
 ]
 
