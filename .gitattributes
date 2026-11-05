@@ -1,0 +1,9 @@
+# Always use LF line endings, on every operating system. Generated files are
+# compared byte for byte in tests (see docs/decisions/0010-deterministic-output.md).
+* text=auto eol=lf
+
+# Binary files.
+*.pdf binary
+*.png binary
+*.step binary
+*.wrl text eol=lf
