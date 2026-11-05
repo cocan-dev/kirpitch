@@ -260,6 +260,17 @@ pub struct Override {
     pub note: String,
 }
 
+/// The JSON schema of the PartSpec as pretty JSON text with a final newline.
+///
+/// It is generated from the Rust types, so it can never disagree with the
+/// code. The committed copy is `schema/partspec.schema.json`.
+pub fn json_schema_string() -> String {
+    let schema = schemars::schema_for!(PartSpec);
+    let mut text = serde_json::to_string_pretty(&schema).expect("schema serialisation cannot fail");
+    text.push('\n');
+    text
+}
+
 impl PartSpec {
     /// Reads a PartSpec from JSON text. Errors name the JSON path of the
     /// offending field.

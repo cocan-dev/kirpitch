@@ -1,0 +1,731 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PartSpec",
+  "description": "A complete description of one part.",
+  "type": "object",
+  "properties": {
+    "approvals": {
+      "description": "Which stages the user has approved.",
+      "$ref": "#/$defs/Approvals",
+      "default": {}
+    },
+    "land_pattern": {
+      "description": "The pads of the footprint.",
+      "$ref": "#/$defs/LandPattern"
+    },
+    "metadata": {
+      "description": "Identity of the part.",
+      "$ref": "#/$defs/Metadata"
+    },
+    "overrides": {
+      "description": "Notes that override warnings.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Override"
+      }
+    },
+    "package": {
+      "description": "The package (body and pitch).",
+      "$ref": "#/$defs/Package"
+    },
+    "pins": {
+      "description": "The pins of the part, in the order they should appear in a group.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Pin"
+      }
+    },
+    "schema_version": {
+      "description": "Version of the PartSpec schema; currently 1.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "metadata",
+    "package",
+    "pins",
+    "land_pattern"
+  ],
+  "$defs": {
+    "Approval": {
+      "description": "One recorded approval. Stored in milestone 1, enforced from milestone 2.",
+      "type": "object",
+      "properties": {
+        "approved": {
+          "description": "Whether the stage is approved.",
+          "type": "boolean"
+        },
+        "at": {
+          "description": "When, as text such as `2026-11-06T12:00:00Z`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "note": {
+          "description": "Free-form note.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "approved"
+      ]
+    },
+    "Approvals": {
+      "description": "Approval state of the review stages (gates).",
+      "type": "object",
+      "properties": {
+        "footprint": {
+          "description": "Gate 2: footprint.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Approval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model_3d": {
+          "description": "Gate 3: 3D model.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Approval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pinout": {
+          "description": "Gate 1: pinout.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Approval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "spice": {
+          "description": "Gate 4: SPICE model.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Approval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Body": {
+      "description": "Size of the package body.",
+      "type": "object",
+      "properties": {
+        "height_max": {
+          "description": "Maximum height above the board.",
+          "$ref": "#/$defs/Mm"
+        },
+        "length": {
+          "description": "Size along the pin rows (D in JEDEC drawings; y direction in the\nfootprint, where the rows are on the left and right).",
+          "$ref": "#/$defs/Mm"
+        },
+        "width": {
+          "description": "Size across the pin rows without leads (E1 in JEDEC drawings; x\ndirection in the footprint).",
+          "$ref": "#/$defs/Mm"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "length",
+        "width",
+        "height_max"
+      ]
+    },
+    "BoundingBox": {
+      "description": "A rectangle on a datasheet page, as fractions of the page size.\n\n`[left, top, right, bottom]`, each from 0 to 1, measured from the top-left\ncorner of the page. Fractions make the box independent of the render\nresolution.",
+      "type": "array",
+      "items": {
+        "type": "number",
+        "format": "double"
+      },
+      "maxItems": 4,
+      "minItems": 4
+    },
+    "Confidence": {
+      "description": "Confidence from 0 (none) to 1 (certain).",
+      "type": "number",
+      "maximum": 1,
+      "minimum": 0
+    },
+    "ElectricalType": {
+      "description": "The electrical type of a pin. These map one to one onto KiCad pin types.",
+      "oneOf": [
+        {
+          "description": "Signal input.",
+          "type": "string",
+          "const": "input"
+        },
+        {
+          "description": "Signal output.",
+          "type": "string",
+          "const": "output"
+        },
+        {
+          "description": "Input and output.",
+          "type": "string",
+          "const": "bidirectional"
+        },
+        {
+          "description": "Output that can be switched to high impedance.",
+          "type": "string",
+          "const": "tri_state"
+        },
+        {
+          "description": "Passive pin such as one side of a resistor.",
+          "type": "string",
+          "const": "passive"
+        },
+        {
+          "description": "Pin that is not connected to anything inside the part and may be free.",
+          "type": "string",
+          "const": "free"
+        },
+        {
+          "description": "Type not known.",
+          "type": "string",
+          "const": "unspecified"
+        },
+        {
+          "description": "Power supply input.",
+          "type": "string",
+          "const": "power_in"
+        },
+        {
+          "description": "Power supply output, such as a regulator output.",
+          "type": "string",
+          "const": "power_out"
+        },
+        {
+          "description": "Open collector or open drain output.",
+          "type": "string",
+          "const": "open_collector"
+        },
+        {
+          "description": "Open emitter or open source output.",
+          "type": "string",
+          "const": "open_emitter"
+        },
+        {
+          "description": "Pin that must not be connected.",
+          "type": "string",
+          "const": "no_connect"
+        }
+      ]
+    },
+    "LandPattern": {
+      "description": "The pads of the footprint and its courtyard.",
+      "type": "object",
+      "properties": {
+        "courtyard": {
+          "description": "Courtyard rectangle. When absent the generator derives one from the pads.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Rect"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pads": {
+          "description": "The pads.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Pad"
+          }
+        },
+        "source": {
+          "description": "Where the land pattern is in the datasheet.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Source"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "pads"
+      ]
+    },
+    "LengthUnit": {
+      "description": "A unit a datasheet may give lengths in.",
+      "oneOf": [
+        {
+          "description": "Millimetres (no conversion).",
+          "type": "string",
+          "const": "mm"
+        },
+        {
+          "description": "Inches (25.4 mm).",
+          "type": "string",
+          "const": "inch"
+        },
+        {
+          "description": "Mils, thousandths of an inch (0.0254 mm).",
+          "type": "string",
+          "const": "mil"
+        }
+      ]
+    },
+    "Metadata": {
+      "description": "Identity and descriptive fields of the part.",
+      "type": "object",
+      "properties": {
+        "datasheet_sha256": {
+          "description": "SHA-256 hash (lowercase hex) of the datasheet PDF that was read.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "datasheet_url": {
+          "description": "URL of the datasheet.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "description": "One-line description.",
+          "type": "string"
+        },
+        "keywords": {
+          "description": "Search keywords.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "manufacturer": {
+          "description": "Manufacturer name.",
+          "type": "string"
+        },
+        "mpn": {
+          "description": "Manufacturer part number, for example `LM358DR`.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "mpn",
+        "manufacturer",
+        "description"
+      ]
+    },
+    "Mm": {
+      "description": "A length in millimetres.",
+      "type": "number"
+    },
+    "Override": {
+      "description": "A user note that overrides a warning.",
+      "type": "object",
+      "properties": {
+        "check": {
+          "description": "Identifier of the check, for example `units`.",
+          "type": "string"
+        },
+        "note": {
+          "description": "Why the warning is acceptable.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Path of the field the override applies to; empty means every finding of\nthat check.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "check",
+        "note"
+      ]
+    },
+    "Package": {
+      "description": "Package family, name and main dimensions.",
+      "type": "object",
+      "properties": {
+        "body": {
+          "description": "Outline of the plastic body.",
+          "$ref": "#/$defs/Body"
+        },
+        "dimensions": {
+          "description": "Named dimensions from the datasheet drawing, keyed by their letter\n(for example `A`, `A1`, `b`, `D`, `E`, `e`, `L`).",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Sourced"
+          }
+        },
+        "family": {
+          "description": "Package family, for example `SOIC`.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Footprint name following KiCad naming, for example\n`SOIC-8_3.9x4.9mm_P1.27mm`.",
+          "type": "string"
+        },
+        "pin_count": {
+          "description": "Number of pins, exposed pad included.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "pitch": {
+          "description": "Distance between neighbouring pin centres.",
+          "$ref": "#/$defs/Mm"
+        },
+        "source": {
+          "description": "Where the package drawing is in the datasheet.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Source"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "family",
+        "name",
+        "pin_count",
+        "pitch",
+        "body"
+      ]
+    },
+    "Pad": {
+      "description": "One surface-mount pad.",
+      "type": "object",
+      "properties": {
+        "corner_ratio": {
+          "description": "Corner radius as a fraction of the shorter side, for rounded rectangles.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "number": {
+          "description": "Pad number; matches a pin number. Several pads may share a number.",
+          "type": "string"
+        },
+        "paste": {
+          "description": "Whether the pad gets solder paste.",
+          "type": "boolean",
+          "default": true
+        },
+        "role": {
+          "description": "What the pad is for.",
+          "$ref": "#/$defs/PadRole",
+          "default": "signal"
+        },
+        "rotation_deg": {
+          "description": "Rotation in degrees, counter-clockwise.",
+          "type": "number",
+          "format": "double",
+          "default": 0.0
+        },
+        "shape": {
+          "description": "Shape of the pad.",
+          "$ref": "#/$defs/PadShape"
+        },
+        "size_x": {
+          "description": "Size along x before rotation.",
+          "$ref": "#/$defs/Mm"
+        },
+        "size_y": {
+          "description": "Size along y before rotation.",
+          "$ref": "#/$defs/Mm"
+        },
+        "source": {
+          "description": "Where the pad is shown in the datasheet.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Source"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "x": {
+          "description": "Centre x, in footprint coordinates (x right).",
+          "$ref": "#/$defs/Mm"
+        },
+        "y": {
+          "description": "Centre y, in footprint coordinates (y down).",
+          "$ref": "#/$defs/Mm"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "shape",
+        "x",
+        "y",
+        "size_x",
+        "size_y"
+      ]
+    },
+    "PadRole": {
+      "description": "What a pad is used for.",
+      "oneOf": [
+        {
+          "description": "A normal pad connected to a pin.",
+          "type": "string",
+          "const": "signal"
+        },
+        {
+          "description": "A mechanical pad (for example a mounting tab) without a pin.",
+          "type": "string",
+          "const": "mechanical"
+        },
+        {
+          "description": "A pad that is intentionally not connected.",
+          "type": "string",
+          "const": "not_connected"
+        }
+      ]
+    },
+    "PadShape": {
+      "description": "Shape of a pad.",
+      "oneOf": [
+        {
+          "description": "Rectangle.",
+          "type": "string",
+          "const": "rect"
+        },
+        {
+          "description": "Rectangle with rounded corners.",
+          "type": "string",
+          "const": "round_rect"
+        },
+        {
+          "description": "Oval (stadium).",
+          "type": "string",
+          "const": "oval"
+        },
+        {
+          "description": "Circle.",
+          "type": "string",
+          "const": "circle"
+        }
+      ]
+    },
+    "Pin": {
+      "description": "One pin of the part.",
+      "type": "object",
+      "properties": {
+        "alt_functions": {
+          "description": "Alternate functions of the pin.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "electrical_type": {
+          "description": "Electrical type.",
+          "$ref": "#/$defs/ElectricalType"
+        },
+        "group": {
+          "description": "Functional group, used to place the pin on the symbol.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "Pin name, for example `VCC`. KiCad overbar notation `~{NAME}` is allowed.",
+          "type": "string"
+        },
+        "number": {
+          "description": "Pin number as printed on the datasheet, for example `1`, `A1` or `EP`.",
+          "type": "string"
+        },
+        "source": {
+          "description": "Where the pin is listed in the datasheet.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Source"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "name",
+        "electrical_type"
+      ]
+    },
+    "Rect": {
+      "description": "An axis-aligned rectangle in footprint coordinates (x right, y down).",
+      "type": "object",
+      "properties": {
+        "x_max": {
+          "description": "Largest x.",
+          "$ref": "#/$defs/Mm"
+        },
+        "x_min": {
+          "description": "Smallest x.",
+          "$ref": "#/$defs/Mm"
+        },
+        "y_max": {
+          "description": "Largest y.",
+          "$ref": "#/$defs/Mm"
+        },
+        "y_min": {
+          "description": "Smallest y.",
+          "$ref": "#/$defs/Mm"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "x_min",
+        "y_min",
+        "x_max",
+        "y_max"
+      ]
+    },
+    "Source": {
+      "description": "Where a value was read from in the datasheet.",
+      "type": "object",
+      "properties": {
+        "bbox": {
+          "description": "Region on the page the value was read from.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BoundingBox"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confidence": {
+          "description": "How confident the extraction was.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Confidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "page": {
+          "description": "Page number in the datasheet PDF, counting from 1.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "page"
+      ]
+    },
+    "Sourced": {
+      "description": "A value together with its optional source.",
+      "type": "object",
+      "properties": {
+        "converted_from": {
+          "description": "The unit the datasheet used, when it was not millimetres and the value\nwas converted. Such values are flagged with a warning.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LengthUnit"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "description": "Where the value was read; `None` for values typed in without a source.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Source"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "description": "The value itself.",
+          "$ref": "#/$defs/Tolerance"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "value"
+      ]
+    },
+    "Tolerance": {
+      "description": "A dimension with optional minimum and maximum, as printed in datasheets.",
+      "type": "object",
+      "properties": {
+        "max": {
+          "description": "Largest allowed value.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Mm"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "min": {
+          "description": "Smallest allowed value.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Mm"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nom": {
+          "description": "Nominal (typical) value.",
+          "$ref": "#/$defs/Mm"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "nom"
+      ]
+    }
+  }
+}
