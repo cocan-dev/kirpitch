@@ -8,6 +8,7 @@
 pub mod electrical;
 pub mod error;
 pub mod fab;
+pub mod ipc;
 pub mod names;
 pub mod partspec;
 pub mod source;

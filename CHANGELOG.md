@@ -50,5 +50,7 @@ follows [Semantic Versioning](https://semver.org/).
   source with page and region, and a confidence when a model read them
   (`source_required` check, ADR 0004).
 - More checks: `power_pins`, `pitch_fit`, `exposed_pad` (ADR 0019) and `override_unknown`.
+- IPC-7351B land pattern calculator for gull-wing leads (`kirpitch_core::ipc`),
+  checked against KiCad's official SOIC and TSSOP footprints (ADR 0021).
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.
