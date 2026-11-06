@@ -37,3 +37,7 @@ macOS), so there is no bundled browser.
   is part of the workspace.
 - Later screens (side-by-side datasheet pages, region pick, 3D view, library)
   build on the same commands.
+
+## Update (November 2026)
+
+The window logic moved from `kirpitch-app` to the new crate `kirpitch-review`, which has no window code. `kirpitch-app` is now only the Tauri shell (commands, `tauri.conf.json`, `ui/`). Only the shell needs the web view libraries of the system (WebKitGTK on Linux), so every CI job except the `Window` job builds with `--exclude kirpitch-app` and needs no package installation.
