@@ -77,6 +77,7 @@ pub fn probe(name: &str, client: &Client) -> ProbeResult {
         images: vec![],
         schema: Some(schema),
         max_tokens: 100,
+        ..Default::default()
     };
     match small(client, ask) {
         Ok((v, usage, seconds)) => {
@@ -105,6 +106,7 @@ pub fn probe(name: &str, client: &Client) -> ProbeResult {
             images: vec![solid_png(32, [255, 0, 0])],
             schema: Some(colour),
             max_tokens: 100,
+            ..Default::default()
         };
         match small(client, ask) {
             Ok((v, usage, _)) => {
@@ -133,6 +135,7 @@ pub fn probe(name: &str, client: &Client) -> ProbeResult {
             "required": ["code"]
         })),
         max_tokens: 100,
+        ..Default::default()
     };
     match small(client, ask) {
         Ok((v, usage, _)) => {

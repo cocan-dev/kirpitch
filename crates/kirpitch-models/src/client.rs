@@ -30,8 +30,16 @@ pub struct ChatRequest {
     pub user: String,
     /// PNG images to look at.
     pub images: Vec<Vec<u8>>,
-    /// JSON schema the answer must follow, when the answer is JSON.
+    /// JSON schema the answer must follow, when the answer is JSON. Servers
+    /// that enforce schemas get it as a constraint.
     pub schema: Option<Value>,
+    /// A made-up answer that shows the shape. Models follow an example far
+    /// better than a schema, so the prompt carries this and not the schema.
+    pub example: Option<Value>,
+    /// Ask the model not to think before it answers (when the server knows
+    /// how). Used after an empty answer: models that think can spend the
+    /// whole answer budget on it.
+    pub no_think: bool,
     /// Longest answer in tokens.
     pub max_tokens: u32,
 }
@@ -322,6 +330,9 @@ fn ollama_body(model: &str, chat: &ChatRequest, think: Option<bool>) -> Value {
     if let Some(think) = think {
         body["think"] = json!(think);
     }
+    if chat.no_think {
+        body["think"] = json!(false);
+    }
     body
 }
 
@@ -430,6 +441,7 @@ mod tests {
             images: vec![vec![1, 2, 3]],
             schema: Some(json!({"type": "object"})),
             max_tokens: 100,
+            ..Default::default()
         }
     }
 

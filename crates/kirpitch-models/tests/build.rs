@@ -250,7 +250,7 @@ fn a_server_without_json_schema_support_gets_the_schema_in_the_prompt() {
     let requests = m.requests();
     assert!(requests[0].body.contains("response_format"));
     assert!(!requests[1].body.contains("response_format"));
-    assert!(requests[1].body.contains("JSON schema"));
+    assert!(requests[1].body.contains("shaped like this example"));
 }
 
 #[test]
@@ -306,4 +306,63 @@ fn a_text_model_is_reported_as_having_no_vision() {
     let r = probe("m", &client);
     assert_eq!(r.vision, Some(false));
     assert_eq!(r.context_8k, Some(false));
+}
+
+#[test]
+fn the_prompt_shows_an_example_not_the_schema() {
+    let m = mock(&[metadata_answer(), pins_answer(), package_answer()]);
+    let report = run(&m, &BuildOptions::default());
+    assert!(report.failures.is_empty(), "{:?}", report.failures);
+    for r in m.requests() {
+        let body: Value = serde_json::from_str(&r.body).unwrap();
+        let user = body["messages"][1]["content"][0]["text"].as_str().unwrap();
+        assert!(user.contains("shaped like this example"), "{user}");
+        assert!(!user.contains("JSON schema"), "{user}");
+        assert!(!user.contains("\"required\""), "{user}");
+    }
+}
+
+#[test]
+fn an_answer_inside_a_wrapper_is_still_read() {
+    // What a model does when it has seen a schema: the answer goes under
+    // `properties`, or under `answer`.
+    let m = mock(&[
+        json!({"properties": metadata_answer()}),
+        json!({"answer": pins_answer()}),
+        package_answer(),
+    ]);
+    let report = run(&m, &BuildOptions::default());
+    assert!(report.failures.is_empty(), "{:?}", report.failures);
+    assert!(report.spec.is_some());
+    // No repair was needed: one call for each stage.
+    assert_eq!(m.requests().len(), 3);
+}
+
+#[test]
+fn an_empty_answer_is_asked_again_without_thinking() {
+    let config = Config::from_toml_str(
+        "[models.m]\nprovider = \"ollama\"\nbase_url = \"http://localhost:11434\"\nmodel = \"test\"\n",
+    )
+    .unwrap();
+    let m = Arc::new(MockTransport::new());
+    // A thinking model that used its whole budget: nothing comes back.
+    m.push_ok(&json!({"message": {"content": ""}, "done_reason": "length"}).to_string());
+    m.push_ok(&json!({"message": {"content": metadata_answer().to_string()}}).to_string());
+    let options = BuildOptions {
+        mpn: None,
+        ..Default::default()
+    };
+    let report = build(&config, m.clone(), &Cache::none(), &pages(), &options);
+    let requests = m.requests();
+    assert!(requests.len() >= 2);
+    let first: Value = serde_json::from_str(&requests[0].body).unwrap();
+    let second: Value = serde_json::from_str(&requests[1].body).unwrap();
+    assert!(first.get("think").is_none());
+    assert_eq!(second["think"], json!(false));
+    assert!(second["options"]["num_predict"].as_u64() > first["options"]["num_predict"].as_u64());
+    assert!(
+        !report.failures.iter().any(|f| f.starts_with("metadata")),
+        "{:?}",
+        report.failures
+    );
 }

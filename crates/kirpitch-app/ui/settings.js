@@ -500,7 +500,8 @@ function modelCard(m, index) {
         discovered.delete(m);
         triedAuto.delete(m);
         renderSettings();
-      })
+      }),
+      m.provider === "openai-compatible" && /ollama.com|:11434/.test(m.base_url || "") ? "This is an Ollama server. Choose the Ollama kind: it lets Kirpitch turn thinking off and fix the shape of the answer, which models on Ollama need." : ""
     ),
     modelPicker(m),
     field(

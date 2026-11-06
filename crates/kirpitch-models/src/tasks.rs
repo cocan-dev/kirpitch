@@ -275,8 +275,33 @@ pub fn json_from_text(text: &str) -> Result<Value, String> {
     Err(problem)
 }
 
-/// Asks, checks the answer with `check`, and asks again once with the problem
-/// named when the check fails.
+/// Models sometimes put the answer inside a wrapper (`properties`, `answer`,
+/// `result`, ...), most often after seeing a schema. The answer itself is
+/// checked first, then what is inside such a wrapper.
+fn check_wrapped<T>(v: &Value, check: &impl Fn(&Value) -> Result<T, String>) -> Result<T, String> {
+    let first = match check(v) {
+        Ok(x) => return Ok(x),
+        Err(e) => e,
+    };
+    for key in [
+        "properties",
+        "answer",
+        "result",
+        "data",
+        "output",
+        "response",
+    ] {
+        if let Some(inner) = v.get(key).filter(|x| x.is_object())
+            && let Ok(x) = check(inner)
+        {
+            return Ok(x);
+        }
+    }
+    Err(first)
+}
+
+/// Asks, checks the answer with `check`, and asks again (up to twice) with the
+/// problem named when the check fails.
 fn ask_json<T>(
     client: &Client,
     cache: &Cache,
@@ -286,7 +311,14 @@ fn ask_json<T>(
 ) -> Result<T, TaskError> {
     // Not every server enforces the schema (Ollama models that run in the
     // cloud do not), so the prompt always carries it as well.
-    if let Some(schema) = &request.schema {
+    if let Some(example) = &request.example {
+        request.user.push_str(&format!(
+            "
+
+Answer with only a JSON object shaped like this example. The values in it only show the shape: take the real values from the datasheet text and never copy the example's values. Do not write the schema or any field descriptions into the answer.
+{example}"
+        ));
+    } else if let Some(schema) = &request.schema {
         request.user.push_str(&format!(
             "
 
@@ -297,7 +329,7 @@ Answer with only a JSON object that follows this JSON schema, with these exact f
     let mut truncated = false;
     let mut last = String::new();
     let mut began = String::new();
-    for attempt in 0..2 {
+    for attempt in 0..3 {
         let key = Cache::key(client, &request);
         let (text, from_cache) = match cache.get(&key) {
             Some(t) => (t, true),
@@ -322,7 +354,7 @@ Answer with only a JSON object that follows this JSON schema, with these exact f
                 (r.text, false)
             }
         };
-        match json_from_text(&text).and_then(|v| check(&v)) {
+        match json_from_text(&text).and_then(|v| check_wrapped(&v, &check)) {
             Ok(value) => {
                 if from_cache {
                     stats.cached += 1;
@@ -338,13 +370,20 @@ Answer with only a JSON object that follows this JSON schema, with these exact f
                     .take(160)
                     .map(|c| if c.is_control() { ' ' } else { c })
                     .collect();
-                if attempt == 0 {
+                if attempt < 2 {
                     if truncated {
                         // The answer was cut off at the limit: allow much more.
                         request.max_tokens = (request.max_tokens * 4).min(32_000);
                     }
+                    if text.trim().is_empty() {
+                        // Nothing came back: a model that thinks used its whole
+                        // budget on it. Turn thinking off where that can be
+                        // done, and allow more room.
+                        request.no_think = true;
+                        request.max_tokens = (request.max_tokens * 2).min(32_000);
+                    }
                     request.user.push_str(&format!(
-                        "\n\nYour previous answer was not usable: {problem}. Answer again with only the JSON object, following the schema, and do not write your reasoning."
+                        "\n\nYour previous answer was not usable: {problem}. Answer again with only the JSON object, shaped like the example, and do not write your reasoning."
                     ));
                 }
             }
@@ -405,7 +444,11 @@ pub fn extract_metadata(
         ),
         images: vec![],
         schema: Some(schema),
+        example: Some(
+            json!({"mpn": "LM358DR", "manufacturer": "Texas Instruments", "description": "Dual operational amplifier"}),
+        ),
         max_tokens: 2000,
+        ..Default::default()
     };
     ask_json(client, cache, stats, request, |v| {
         let get = |k: &str| text_field(v, k).ok_or_else(|| format!("`{k}` is missing"));
@@ -641,7 +684,12 @@ pub fn extract_pins(
         },
         images: vec![],
         schema: Some(schema.clone()),
+        example: Some(json!({"pins": [
+            {"number": "1", "name": "OUT1", "type": "output", "page": 3, "confidence": 0.9},
+            {"number": "4", "name": "GND", "type": "power_in", "page": 3, "confidence": 0.9}
+        ]})),
         max_tokens: 8000,
+        ..Default::default()
     };
     let first = ask_json(client, cache, stats, ask(0), pins_from_json)?;
     let mut notes = Vec::new();
@@ -988,7 +1036,14 @@ Leave out what the text does not give. Choose the family that fits the package n
         ),
         images: vec![],
         schema: Some(schema),
+        example: Some(json!({
+            "family": "soic", "pin_count": 8, "e": 1.27, "A": 1.75,
+            "D": {"min": 4.8, "max": 5.0}, "E1": {"min": 3.8, "max": 4.0}, "E": {"min": 5.8, "max": 6.2},
+            "L": {"min": 0.4, "max": 1.27}, "b": {"min": 0.31, "max": 0.51},
+            "page": 12, "confidence": 0.8
+        })),
         max_tokens: 4000,
+        ..Default::default()
     };
     ask_json(client, cache, stats, request, package_from_json)
 }
