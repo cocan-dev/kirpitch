@@ -426,3 +426,31 @@ fn a_region_with_no_text_or_no_size_is_refused_with_the_page_named() {
     assert!(flat.unwrap_err().contains("empty"));
     assert!(text_of_regions(&bytes, &[]).unwrap().is_none());
 }
+
+#[test]
+fn what_the_guided_window_reads_is_what_the_backend_sends() {
+    // The window reads these keys by name. A missing one breaks a step in a way
+    // that is easy to miss, so the names are pinned here.
+    use kirpitch_review::{Preview, StepSize, Suggestions};
+    let s = serde_json::to_value(Suggestions {
+        page_count: 3,
+        metadata: vec![],
+        pins: vec![],
+        package: vec![],
+        footprint: vec![],
+    })
+    .unwrap();
+    for key in ["page_count", "metadata", "pins", "package", "footprint"] {
+        assert!(s.get(key).is_some(), "Suggestions has no `{key}`");
+    }
+    let p = serde_json::to_value(Preview::default()).unwrap();
+    for key in ["metadata", "pins", "package", "footprint"] {
+        let step = p
+            .get(key)
+            .unwrap_or_else(|| panic!("Preview has no `{key}`"));
+        for field in ["chosen", "automatic"] {
+            assert!(step.get(field).is_some(), "`{key}` has no `{field}`");
+        }
+    }
+    let _ = StepSize::default();
+}

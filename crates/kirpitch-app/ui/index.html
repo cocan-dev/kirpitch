@@ -293,9 +293,11 @@
           <label>Page <input id="gd-page" type="number" min="1" value="1"></label>
           <span id="gd-count" class="muted"></span>
           <button type="button" id="gd-nextpage" aria-label="Next page">&gt;</button>
+          <button type="button" id="gd-extend" class="ghost" disabled>Continue the table to…</button>
           <button type="button" id="gd-whole" class="ghost">Use the whole page</button>
         </div>
-        <div id="gd-wrap" class="gd-wrap"><div id="gd-inner" class="page-inner"><canvas id="gd-canvas"></canvas><div id="gd-overlay" class="gd-overlay"></div></div></div>
+        <p id="gd-hint" class="gd-hint" hidden></p>
+        <div id="gd-wrap" class="gd-wrap"><div id="gd-pages" class="gd-pages"></div></div>
         <div id="gd-regions" class="gd-regions"></div>
         <p id="gd-size" class="muted small"></p>
         <details id="gd-text" hidden><summary>What the model will read from the last box</summary><pre id="gd-text-pre" class="gd-text"></pre></details>

@@ -137,6 +137,8 @@ pub struct Suggestions {
     pub pins: Vec<Suggested>,
     /// For the package.
     pub package: Vec<Suggested>,
+    /// For the recommended footprint.
+    pub footprint: Vec<Suggested>,
 }
 
 type PageCache = Option<(
@@ -187,6 +189,7 @@ pub fn suggest_pages_for(pdf: &str, hint: &str) -> Result<Suggestions, String> {
         metadata: list("metadata"),
         pins: list("pins"),
         package: list("package"),
+        footprint: list("footprint"),
     })
 }
 
