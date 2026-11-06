@@ -54,5 +54,8 @@ follows [Semantic Versioning](https://semver.org/).
   checked against KiCad's official SOIC and TSSOP footprints (ADR 0021).
 - `two_sources` check: the datasheet land pattern is compared with the IPC-7351
   result when the package dimensions E, L and b are given.
+- Package template for dual-row gull-wing packages (SOIC, SOP, SSOP, TSSOP, MSOP)
+  in `kirpitch_core::templates`: JEDEC letters in, package and IPC-7351 land
+  pattern out, matching KiCad's official SOIC-8, SOIC-16 and TSSOP-14 pads.
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.

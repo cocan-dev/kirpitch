@@ -481,50 +481,63 @@ impl Validator {
 
     /// `(pins in a row - 1) x pitch` must fit inside the body length (rows on
     /// the left and right) or width (rows at the top and bottom).
+    ///
+    /// A row is a group of at least three signal pads with the same x (a
+    /// vertical row) or the same y (a horizontal row). A lone exposed pad or
+    /// the pairs of pads facing each other across a dual-row package are not
+    /// rows.
     fn pitch_fit(&mut self, spec: &PartSpec) {
         let pitch = spec.package.pitch.get();
         if pitch <= 0.0 {
             return; // reported by the positive value check
         }
         let eps = 1e-6;
-        // Positions along each row, by side.
-        let mut rows: [Vec<f64>; 4] = Default::default();
-        for pad in &spec.land_pattern.pads {
-            if pad.role != PadRole::Signal {
-                continue;
+        let signal: Vec<&Pad> = spec
+            .land_pattern
+            .pads
+            .iter()
+            .filter(|p| p.role == PadRole::Signal)
+            .collect();
+        // (coordinate shared by the row, positions along the row)
+        let rows = |across: fn(&Pad) -> f64, along: fn(&Pad) -> f64| {
+            let mut groups: Vec<(f64, Vec<f64>)> = Vec::new();
+            for pad in &signal {
+                let key = across(pad);
+                let pos = along(pad);
+                match groups.iter_mut().find(|(k, _)| (k - key).abs() < eps) {
+                    Some((_, v)) => {
+                        if !v.iter().any(|p| (p - pos).abs() < eps) {
+                            v.push(pos);
+                        }
+                    }
+                    None => groups.push((key, vec![pos])),
+                }
             }
-            let (x, y) = (pad.x.get(), pad.y.get());
-            // Pads near the centre (an exposed pad) belong to no row.
-            let (row, along) =
-                if x.abs() >= y.abs() && x.abs() > spec.package.body.width.get() / 4.0 {
-                    (usize::from(x > 0.0), y)
-                } else if y.abs() > spec.package.body.length.get() / 4.0 {
-                    (2 + usize::from(y > 0.0), x)
-                } else {
-                    continue;
-                };
-            if !rows[row].iter().any(|v| (v - along).abs() < eps) {
-                rows[row].push(along);
-            }
-        }
-        for (row, positions) in rows.iter().enumerate() {
-            if positions.len() < 2 {
-                continue;
-            }
-            let limit = if row < 2 {
-                spec.package.body.length.get()
-            } else {
-                spec.package.body.width.get()
-            };
-            let span = (positions.len() - 1) as f64 * pitch;
+            groups
+                .into_iter()
+                .filter(|(_, v)| v.len() >= 3)
+                .map(|(_, v)| v.len())
+                .collect::<Vec<usize>>()
+        };
+        let vertical = rows(|p| p.x.get(), |p| p.y.get());
+        let horizontal = rows(|p| p.y.get(), |p| p.x.get());
+        let found = vertical
+            .iter()
+            .map(|n| (*n, spec.package.body.length.get()))
+            .chain(
+                horizontal
+                    .iter()
+                    .map(|n| (*n, spec.package.body.width.get())),
+            );
+        for (count, limit) in found {
+            let span = (count - 1) as f64 * pitch;
             if span > limit + eps {
                 self.add(
                     Check::PitchFit,
                     Level::Error,
                     "package.pitch",
                     format!(
-                        "{} pins in a row at a pitch of {pitch} mm need {span:.3} mm, but the body is {limit} mm",
-                        positions.len()
+                        "{count} pins in a row at a pitch of {pitch} mm need {span:.3} mm, but the body is {limit} mm"
                     ),
                 );
                 return; // one finding is enough

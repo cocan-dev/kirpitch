@@ -12,6 +12,7 @@ pub mod ipc;
 pub mod names;
 pub mod partspec;
 pub mod source;
+pub mod templates;
 pub mod units;
 pub mod validate;
 
