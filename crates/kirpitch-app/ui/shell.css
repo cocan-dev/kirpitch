@@ -143,3 +143,7 @@ button.ghost:hover { color: var(--text); border-color: var(--line); }
   .top .actions .primary, .top .actions #btn-datasheet { display: none; }
   .bar-right input { width: 140px; }
 }
+
+/* A finished export step: like an approved one. */
+.step-item.complete .mark { background: var(--ok); color: var(--bg); }
+.step-item.complete .note { color: var(--ok); }
