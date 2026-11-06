@@ -13,7 +13,7 @@ use std::path::Path;
 use kirpitch_core::gates::{ApprovalError, Gate, GateStatus, approve, stage_findings};
 use kirpitch_core::partspec::{Pad, PadKind, PadShape, PartSpec};
 use kirpitch_core::{FabProfile, Finding, Level, validate};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// One review gate.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -111,6 +111,8 @@ pub struct SpecView {
     pub package_name: String,
     /// Datasheet URL.
     pub datasheet_url: Option<String>,
+    /// The names of the electrical types a pin can have, for the type menu.
+    pub electrical_types: Vec<String>,
     /// The review gates in order.
     pub gates: Vec<GateView>,
     /// The pins.
@@ -184,6 +186,10 @@ pub fn view(path: &str, spec: &PartSpec) -> SpecView {
         description: spec.metadata.description.clone(),
         package_name: spec.package.name.clone(),
         datasheet_url: spec.metadata.datasheet_url.clone(),
+        electrical_types: ELECTRICAL_TYPES
+            .iter()
+            .map(|t| t.as_str().to_string())
+            .collect(),
         gates,
         pins: spec
             .pins
@@ -752,4 +758,88 @@ pub fn import_pins(
         view: view(path, &spec),
         warnings: result.warnings,
     })
+}
+
+/// The electrical types of pins, in the order of the type menu.
+const ELECTRICAL_TYPES: [kirpitch_core::ElectricalType; 12] = {
+    use kirpitch_core::ElectricalType::*;
+    [
+        Input,
+        Output,
+        Bidirectional,
+        TriState,
+        Passive,
+        PowerIn,
+        PowerOut,
+        OpenCollector,
+        OpenEmitter,
+        NoConnect,
+        Free,
+        Unspecified,
+    ]
+};
+
+/// A pin as edited in the window.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct PinInput {
+    /// Pin number.
+    pub number: String,
+    /// Pin name.
+    pub name: String,
+    /// Electrical type name, for example `power_in`.
+    pub electrical_type: String,
+    /// Group, if any.
+    pub group: Option<String>,
+    /// Datasheet page of the source, if the pin has one.
+    pub page: Option<u32>,
+    /// Region of the source, if the pin has one.
+    pub region: Option<[f64; 4]>,
+}
+
+/// Replaces the pins of a PartSpec by the edited list and saves the file.
+///
+/// The list may be invalid (for example a duplicate number); that is shown as
+/// findings so the user can fix it, and the pinout cannot be approved until
+/// they have. Approvals of the pinout and later stages become stale because the
+/// content changed. Nothing is saved when a type name is wrong.
+pub fn set_pins(path: &str, pins: Vec<PinInput>) -> Result<SpecView, String> {
+    let mut spec = load_spec(Path::new(path))?;
+    let mut out = Vec::with_capacity(pins.len());
+    for (i, p) in pins.into_iter().enumerate() {
+        let electrical_type = ELECTRICAL_TYPES
+            .iter()
+            .copied()
+            .find(|t| t.as_str() == p.electrical_type)
+            .ok_or_else(|| {
+                format!(
+                    "pin {}: there is no electrical type `{}`",
+                    i + 1,
+                    p.electrical_type
+                )
+            })?;
+        let bbox = p.region.map(check_region).transpose()?;
+        out.push(kirpitch_core::partspec::Pin {
+            number: p.number.trim().to_string(),
+            name: p.name.trim().to_string(),
+            electrical_type,
+            group: p
+                .group
+                .map(|g| g.trim().to_string())
+                .filter(|g| !g.is_empty()),
+            alt_functions: spec
+                .pins
+                .iter()
+                .find(|old| old.number == p.number.trim())
+                .map(|old| old.alt_functions.clone())
+                .unwrap_or_default(),
+            source: p.page.map(|page| kirpitch_core::Source {
+                page,
+                bbox,
+                confidence: None,
+            }),
+        });
+    }
+    spec.pins = out;
+    fs::write(path, spec.to_json_string().as_bytes()).map_err(|e| format!("{path}: {e}"))?;
+    Ok(view(path, &spec))
 }

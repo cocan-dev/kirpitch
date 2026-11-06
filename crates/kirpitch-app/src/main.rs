@@ -6,8 +6,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use kirpitch_app::{
-    ImportOutcome, PageImage, RegionTable, SpecView, approve_stage, export_files, import_pins,
-    now_rfc3339, open_spec, read_region, render_datasheet_page,
+    ImportOutcome, PageImage, PinInput, RegionTable, SpecView, approve_stage, export_files,
+    import_pins, now_rfc3339, open_spec, read_region, render_datasheet_page, set_pins,
 };
 
 #[tauri::command]
@@ -45,6 +45,11 @@ fn pins_from_table(
     import_pins(path.trim(), &tsv, page, region)
 }
 
+#[tauri::command]
+fn save_pins(path: String, pins: Vec<PinInput>) -> Result<SpecView, String> {
+    set_pins(path.trim(), pins)
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -53,7 +58,8 @@ fn main() {
             export,
             page_image,
             region_table,
-            pins_from_table
+            pins_from_table,
+            save_pins
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Kirpitch app");

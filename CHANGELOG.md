@@ -85,5 +85,7 @@ follows [Semantic Versioning](https://semver.org/).
 - App: drag on the datasheet page to select a table; the text is split into columns and
   shown for correction, then "Use as pin table" imports the pins with page and region
   as their source (guessed types are listed).
+- App: edit the pins in the table (number, name, type, group), move, add and delete pins;
+  changes are saved at once, keep each pin's datasheet source, and reopen an approved pinout.
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.

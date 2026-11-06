@@ -115,13 +115,97 @@ function renderGates(view) {
 }
 
 function renderPinout(view) {
-  $("view-pinout").replaceChildren(
-    table(
-      ["Pin", "Name", "Type", "Group", "Source"],
-      view.pins.map((p) => [p.number, p.name, p.electrical_type, p.group || "–", sourceCell(p.source, p.low_confidence)]),
-      view.pins.map((p) => p.number)
-    )
+  const box = $("view-pinout");
+  const head = el("tr");
+  ["Pin", "Name", "Type", "Group", "Source", ""].forEach((h) => head.append(el("th", { scope: "col", text: h })));
+  const rows = view.pins.map((p, i) => pinRow(view, p, i));
+  const add = el("button", { type: "button", class: "add-pin", text: "Add pin" });
+  add.addEventListener("click", () => {
+    const draft = draftPins(view);
+    const numbers = draft.map((d) => Number(d.number)).filter((n) => Number.isFinite(n));
+    draft.push({ number: String((numbers.length ? Math.max(...numbers) : 0) + 1), name: "", electrical_type: "unspecified", group: null, page: null, region: null });
+    savePins(view, draft);
+  });
+  box.replaceChildren(
+    el("table", {}, el("thead", {}, head), el("tbody", {}, ...rows)),
+    add,
+    el("p", { class: "muted small edit-hint", text: "Edit a cell and press Enter or click away to save. Changing the pinout opens the approval again." })
   );
+}
+
+// The pins as the window has them, ready to be changed and sent back.
+function draftPins(view) {
+  return view.pins.map((p) => ({
+    number: p.number,
+    name: p.name,
+    electrical_type: p.electrical_type,
+    group: p.group,
+    page: p.page,
+    region: p.region,
+  }));
+}
+
+async function savePins(view, draft, keepNumber) {
+  try {
+    const next = await invoke("save_pins", { path: view.path, pins: draft });
+    const keep = keepNumber === undefined ? selected : keepNumber;
+    render(next, true);
+    if (keep) selectPin(keep, false);
+  } catch (e) {
+    show(String(e), "error");
+    render(view, true);
+  }
+}
+
+function pinRow(view, p, i) {
+  const tr = el("tr", { class: "clickable" });
+  tr.dataset.pin = p.number;
+  const field = (key, cls) => {
+    const input = el("input", { type: "text", value: p[key] || "", spellcheck: "false", "aria-label": key + " of pin " + p.number });
+    input.addEventListener("change", () => {
+      const draft = draftPins(view);
+      draft[i][key] = key === "group" && !input.value.trim() ? null : input.value;
+      savePins(view, draft, key === "number" ? input.value.trim() : p.number);
+    });
+    return el("td", { class: "edit " + (cls || "") }, input);
+  };
+  const type = el("select", { "aria-label": "type of pin " + p.number });
+  view.electrical_types.forEach((t) => {
+    const o = el("option", { value: t, text: t });
+    if (t === p.electrical_type) o.selected = true;
+    type.append(o);
+  });
+  type.addEventListener("change", () => {
+    const draft = draftPins(view);
+    draft[i].electrical_type = type.value;
+    savePins(view, draft, p.number);
+  });
+  const action = (label, title, fn, disabled) => {
+    const b = el("button", { type: "button", text: label, title, "aria-label": title });
+    b.disabled = !!disabled;
+    b.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const draft = draftPins(view);
+      fn(draft);
+      savePins(view, draft, p.number);
+    });
+    return b;
+  };
+  const actions = el(
+    "td",
+    { class: "pin-actions" },
+    action("↑", "Move up", (d) => d.splice(i - 1, 0, d.splice(i, 1)[0]), i === 0),
+    action("↓", "Move down", (d) => d.splice(i + 1, 0, d.splice(i, 1)[0]), i === view.pins.length - 1),
+    action("×", "Delete pin " + p.number, (d) => d.splice(i, 1))
+  );
+  tr.append(field("number", "num-in"), field("name"), el("td", { class: "edit" }, type), field("group"), sourceCell(p.source, p.low_confidence), actions);
+  // Clicking the row (not a control) selects the pin and shows its datasheet page;
+  // focusing a control only selects it.
+  tr.addEventListener("click", (ev) => {
+    if (!ev.target.closest("input, select, button")) selectPin(p.number, true);
+  });
+  tr.addEventListener("focusin", () => selectPin(p.number, false));
+  return tr;
 }
 
 function renderFootprint(view) {
