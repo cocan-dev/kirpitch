@@ -26,6 +26,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kirpitch-gen-footprint"
+version = "0.0.1"
+dependencies = [
+ "kirpitch-core",
+ "kirpitch-kicad",
+ "thiserror",
+]
+
+[[package]]
 name = "kirpitch-kicad"
 version = "0.0.1"
 dependencies = [

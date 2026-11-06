@@ -23,5 +23,8 @@ follows [Semantic Versioning](https://semver.org/).
   upgrade) and test helpers; tests use `KIRPITCH_KICAD_CLI` and skip without it.
 - S-expression writer and parser in `kirpitch-kicad` that reproduces KiCad 10's
   own layout, and the `KicadTarget` type (KiCad 10 so far).
+- `kirpitch-gen-footprint`: KiCad 10 footprint generator (SMD pads, courtyard,
+  fab outline with pin 1 chamfer, silkscreen, pin 1 marker) with snapshot and
+  `kicad-cli` tests.
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.

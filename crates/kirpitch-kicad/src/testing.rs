@@ -64,3 +64,31 @@ impl Drop for TempDir {
         let _ = std::fs::remove_dir_all(&self.path);
     }
 }
+
+/// Name of the environment variable that rewrites snapshot files.
+pub const ENV_UPDATE_SNAPSHOTS: &str = "KIRPITCH_UPDATE_SNAPSHOTS";
+
+/// Compares `actual` with the text in the snapshot file at `path`.
+///
+/// With `KIRPITCH_UPDATE_SNAPSHOTS=1` the file is written instead. Line endings
+/// of the stored file are ignored so a checkout with CRLF does not matter.
+pub fn assert_snapshot(path: &Path, actual: &str) {
+    if std::env::var(ENV_UPDATE_SNAPSHOTS).is_ok_and(|v| v == "1") {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("create snapshot folder");
+        }
+        std::fs::write(path, actual).expect("write snapshot");
+        return;
+    }
+    let expected = std::fs::read_to_string(path).unwrap_or_else(|e| {
+        panic!(
+            "cannot read snapshot {}: {e}; run with {ENV_UPDATE_SNAPSHOTS}=1 to create it",
+            path.display()
+        )
+    });
+    assert!(
+        expected.replace("\r\n", "\n") == actual,
+        "snapshot {} differs; review the change and run with {ENV_UPDATE_SNAPSHOTS}=1 to accept it",
+        path.display()
+    );
+}
