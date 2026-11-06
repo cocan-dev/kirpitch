@@ -154,7 +154,7 @@ tr.sel td { animation: pulse-row 0.7s ease-out 1; }
 .build-progress > * { text-align: left; }
 
 /* While a part is read, only the progress is shown. */
-#ds-dialog.running #ds-form > :not(h2):not(#ds-progress):not(.dialog-actions):not(#ds-error):not(#ds-result) { display: none; }
+#ds-dialog.running #ds-form > :not(h2):not(#ds-progress):not(.dialog-actions):not(#ds-error):not(#ds-result):not(#pg-verbose) { display: none; }
 
 .dialog input[type="checkbox"] {
   appearance: none; -webkit-appearance: none; flex: none; position: relative;
@@ -244,3 +244,46 @@ tr.sel td { animation: pulse-row 0.7s ease-out 1; }
 .gd-hint { margin: 4px 0; padding: 6px 10px; border-radius: 8px; background: color-mix(in srgb, var(--brick) 16%, transparent); font-size: 13px; }
 .gd-pager #gd-extend { margin-left: auto; }
 .gd-pager #gd-whole { margin-left: 0; }
+
+/* Step by step: reading, review forms, the footprint preview */
+.gd-reading { display: flex; gap: 14px; align-items: center; padding: 18px 4px; }
+.gd-reading h3 { margin: 0; }
+.gd-reading p { margin: 2px 0 0; }
+.mini-spin.big { width: 26px; height: 26px; border-width: 3px; flex: none; }
+.gd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 16px; align-items: start; }
+.gd-f { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.gd-lab { font-size: 13px; font-weight: 600; }
+.gd-f input[type="text"], .gd-f select, .gd-f textarea, .gd-pins input[type="text"], .gd-pins select, .gd-paste textarea { width: 100%; box-sizing: border-box; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
+.gd-f input:focus, .gd-f select:focus, .gd-pins input:focus, .gd-pins select:focus, .gd-f textarea:focus { border-color: var(--brick); box-shadow: 0 0 0 3px var(--glow); outline: none; }
+.gd-f input.invalid, .gd-f textarea.invalid { border-color: var(--err); box-shadow: 0 0 0 3px color-mix(in srgb, var(--err) 25%, transparent); }
+.gd-range { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.gd-package > .gd-f { margin-bottom: 12px; max-width: 28rem; }
+.gd-pins-wrap { display: flex; flex-direction: column; gap: 8px; }
+.gd-pins { width: 100%; border-collapse: collapse; display: block; max-height: 44vh; overflow: auto; }
+.gd-pins thead, .gd-pins tbody { display: table; width: 100%; table-layout: fixed; }
+.gd-pins th { text-align: left; font-size: 12px; color: var(--muted); padding: 4px 6px; position: sticky; top: 0; background: var(--panel); }
+.gd-pins td { padding: 2px 4px; }
+.gd-pins th:nth-child(1), .gd-pins td:nth-child(1) { width: 6em; }
+.gd-pins th:nth-child(3), .gd-pins td:nth-child(3) { width: 11em; }
+.gd-pins th:nth-child(4), .gd-pins td:nth-child(4) { width: 2em; text-align: center; }
+.gd-pins th:nth-child(5), .gd-pins td:nth-child(5) { width: 3em; }
+.gd-flag.bad { color: var(--warn); font-weight: 700; cursor: help; }
+.gd-pin-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.gd-pin-count { margin: 0; }
+.gd-paste { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.gd-paste[hidden] { display: none; }
+.gd-choice { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.gd-footprint .gd-grid { margin-bottom: 12px; }
+.gd-fp-preview { margin-top: 10px; }
+.gd-fp-svg { width: 100%; max-height: 300px; background: #fff; border-radius: 8px; border: 1px solid var(--line); }
+.fp-body { fill: none; stroke: #999; stroke-width: 0.1; stroke-dasharray: 0.4 0.3; }
+.fp-pad { fill: #c33; fill-opacity: 0.8; stroke: #800; stroke-width: 0.03; }
+.fp-pad.first { fill: #e8a31a; stroke: #864; }
+.fp-num { fill: #fff; font-family: sans-serif; pointer-events: none; }
+.err-list { margin: 4px 0 8px 18px; padding: 0; }
+.err-list li { color: var(--err); font-size: 13px; }
+#gd-review-notes p { margin: 4px 0; }
+#ds-dialog.running #gd-body, #ds-dialog.running #gd-stepper { display: none; }
+
+/* Whatever else a rule says, hidden means hidden. */
+[hidden] { display: none !important; }

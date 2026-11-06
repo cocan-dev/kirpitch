@@ -146,3 +146,18 @@ and distances replace the calculated ones; for a shape with no template its
 pads are drawn as they are. Without a recommended footprint the pads are
 calculated by the IPC-7351B formulas. The 3D model is built from the same
 drawing dimensions. See [ADR 0029](decisions/0029-any-package-from-the-datasheet.md).
+
+## Step by step, with confirmation
+
+The guided dialog reads one thing at a time. You point at the place (a page, a
+box, or several pages with "Continue the table to…"), a model reads it, and you
+see the result as values you can change: three fields for the part number, a
+table for the pins (add, remove, paste a table), a form for the package that
+follows the shape (the letters of the drawing), and the pad values of the
+recommended footprint with a drawing of the pads that will be made. If nothing
+could be read, the same form comes up empty and you type the values in.
+**Confirm** checks them by the same rules a model's answer goes through, and a
+pin that is not in the text you chose is marked and asked about once. After the
+last step the part is made from the confirmed values alone, with no call to a
+model, and checked first: nothing is written while the checks find errors.
+See [ADR 0030](decisions/0030-step-by-step-with-confirmation.md).

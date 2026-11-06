@@ -653,6 +653,7 @@ pub fn build_with_progress(
         prompts: &config.prompts,
         options: &config.extraction,
         obs: &obs,
+        raw: None,
         pinned: Pinned {
             metadata: options.given.metadata.is_some(),
             pins: options.given.pins.is_some(),

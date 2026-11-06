@@ -387,8 +387,35 @@ function listOf(items, cls) {
   return el("ul", {}, ...items.map((t) => el("li", { class: cls || "", text: t })));
 }
 
+// What a build gave: what it is, what failed, what to look at, and a way to open the part.
+function showBuildResult(outcome, pdf) {
+  const box = $("ds-result");
+  box.replaceChildren(el("h3", { text: outcome.view ? "Done" : "Not finished" }));
+  if (outcome.models.length) box.append(el("p", { class: "muted small", text: "Models" }), listOf(outcome.models));
+  box.append(el("p", { class: "muted small", text: outcome.usage }));
+  if (outcome.failures.length) box.append(el("p", { text: "What failed" }), listOf(outcome.failures, "bad"));
+  if (outcome.notes.length) box.append(el("p", { text: "Check these in review" }), listOf(outcome.notes));
+  if (outcome.pins_csv) {
+    box.append(el("p", { text: "The pins were read and saved to " + outcome.pins_csv + ". Make the part with New part…, then import the pins from that file by dragging a box over the pin table, or with the pins command." }));
+  }
+  box.hidden = false;
+  if (outcome.view) {
+    const open = el("button", { type: "button", class: "primary", text: "Open the part" });
+    open.addEventListener("click", () => {
+      rememberPdf(outcome.view.path, pdf);
+      $("ds-dialog").close();
+      render(outcome.view);
+      remember(outcome.view.path);
+      show("Review the pinout first, then approve each stage.", "ok");
+    });
+    box.append(open);
+  }
+}
+
 $("ds-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
+  // Step by step: the part is made from the values that were confirmed.
+  if (typeof gdConfirmedMode === "function" && gdConfirmedMode()) return gdBuildConfirmed();
   $("ds-error").hidden = true;
   $("ds-result").hidden = true;
   $("ds-run").disabled = true;
@@ -401,31 +428,11 @@ $("ds-form").addEventListener("submit", async (ev) => {
       hint: $("ds-hint").value,
       second_read: $("ds-second").checked,
       config: "",
-      guide: typeof guidedInput === "function" ? guidedInput() : null,
+      guide: null,
     };
     const outcome = await invoke("build_part", { input });
     buildEnd(!!outcome.view, outcome.failures.length);
-    const box = $("ds-result");
-    box.replaceChildren(el("h3", { text: outcome.view ? "Done" : "Not finished" }));
-    if (outcome.models.length) box.append(el("p", { class: "muted small", text: "Models" }), listOf(outcome.models));
-    box.append(el("p", { class: "muted small", text: outcome.usage }));
-    if (outcome.failures.length) box.append(el("p", { text: "What failed" }), listOf(outcome.failures, "bad"));
-    if (outcome.notes.length) box.append(el("p", { text: "Check these in review" }), listOf(outcome.notes));
-    if (outcome.pins_csv) {
-      box.append(el("p", { text: "The pins were read and saved to " + outcome.pins_csv + ". Make the part with New part…, then import the pins from that file by dragging a box over the pin table, or with the pins command." }));
-    }
-    box.hidden = false;
-    if (outcome.view) {
-      const open = el("button", { type: "button", class: "primary", text: "Open the part" });
-      open.addEventListener("click", () => {
-        rememberPdf(outcome.view.path, input.pdf);
-        $("ds-dialog").close();
-        render(outcome.view);
-        remember(outcome.view.path);
-        show("Review the pinout first: low-confidence pins are marked, then approve each stage.", "ok");
-      });
-      box.append(open);
-    }
+    showBuildResult(outcome, input.pdf);
   } catch (e) {
     const message = String(e);
     buildEnd(false, 1, message);

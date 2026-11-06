@@ -348,6 +348,58 @@ async fn preview_guide(
     .map_err(|e| e.to_string())?
 }
 
+// ---- Reading one step at a time ---------------------------------------------------------
+
+/// Reads one step from the place pointed at. The calls to the model are reported
+/// in the same log that `build_progress` serves, so the window shows them.
+#[tauri::command]
+async fn read_step(
+    input: kirpitch_review::ReadStepInput,
+) -> Result<kirpitch_models::steps::StepRun, String> {
+    if let Ok(mut log) = BUILD_LOG.lock() {
+        log.clear();
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        kirpitch_review::read_step(&input, &|progress| {
+            if let Ok(mut log) = BUILD_LOG.lock() {
+                log.push(progress.clone());
+            }
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Checks values that were typed or changed, by the rules of the models' answers.
+#[tauri::command]
+fn check_step_values(
+    pdf: String,
+    step: String,
+    value: kirpitch_review::JsonValue,
+    regions: Vec<kirpitch_review::RegionInput>,
+) -> Result<kirpitch_models::steps::StepRun, String> {
+    kirpitch_review::check_step_values(pdf.trim(), &step, &value, &regions)
+}
+
+/// The footprint that the values make, to look at.
+#[tauri::command]
+fn preview_footprint(
+    package: kirpitch_review::JsonValue,
+    footprint: Option<kirpitch_review::JsonValue>,
+) -> Result<kirpitch_models::steps::FootprintPreview, String> {
+    kirpitch_review::preview_footprint_values(&package, footprint.as_ref())
+}
+
+/// Makes the part from confirmed values (or only checks, in a dry run).
+#[tauri::command]
+async fn build_confirmed(
+    input: kirpitch_review::ConfirmedInput,
+) -> Result<DatasheetOutcome, String> {
+    tauri::async_runtime::spawn_blocking(move || kirpitch_review::build_confirmed(&input))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -374,6 +426,10 @@ fn main() {
             check_model,
             find_models,
             suggest_pages,
+            read_step,
+            check_step_values,
+            preview_footprint,
+            build_confirmed,
             preview_guide,
             eval_cases,
             eval_add_case,

@@ -11,6 +11,7 @@ mod eval;
 mod guide;
 mod parts;
 mod settings;
+mod steps;
 
 pub use settings::{
     ExtractionValues, FindInput, ModelInput, ModelTest, ModelView, PromptView, ProviderInfo,
@@ -22,6 +23,13 @@ pub use eval::{
     CaseResult, CaseView, EvalEvent, EvalInput, EvalRun, EvalStatus, EvalTools, MyCase,
     ResolvedCase, Totals, UsedModel, add_case, delete_run, eval_dir, list_cases, list_cases_in,
     list_runs, remove_case, resolve_cases, run_eval, set_case_pdf,
+};
+
+pub use serde_json::Value as JsonValue;
+
+pub use steps::{
+    ConfirmedInput, ReadStepInput, build_confirmed, check_step_values, preview_footprint_values,
+    read_step,
 };
 
 pub use guide::{

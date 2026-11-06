@@ -170,10 +170,12 @@ function paintBuild(frozenTotal) {
 // an answer was not accepted. This panel can be folded; its state is remembered.
 
 const VERBOSE_KEY = "kirpitch.verboseOutput";
-let logCalls = new Map(); // "label#attempt" -> { box, head, body, sentAt }
+let logCalls = new Map(); // "run:label#attempt" -> { box, head, body, sentAt }
+let logRunId = 0; // a new one for each reading, so a second reading of a step is listed too
 
 function resetLog() {
   logCalls = new Map();
+  $("pg-verbose").hidden = false;
   $("pg-log").replaceChildren();
   $("pg-verbose-count").textContent = "";
   try {
@@ -207,7 +209,7 @@ function nice(n) {
 }
 
 function callEntry(c) {
-  const key = c.label + "#" + c.attempt;
+  const key = logRunId + ":" + c.label + "#" + c.attempt;
   let e = logCalls.get(key);
   if (!e) {
     const box = el("div", { class: "call" });
