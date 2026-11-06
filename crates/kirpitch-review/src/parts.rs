@@ -370,7 +370,7 @@ pub fn read_pages(bytes: &[u8]) -> Result<Vec<PageLines>, String> {
 }
 
 /// The answers of the "from datasheet" form.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct DatasheetInput {
     /// The datasheet PDF.
     pub pdf: String,
@@ -389,6 +389,10 @@ pub struct DatasheetInput {
     /// folder). Tests give their own.
     #[serde(default)]
     pub cache_dir: String,
+    /// Where the person says things are in the datasheet. A step with no
+    /// place is searched for by the program.
+    #[serde(default)]
+    pub guide: Option<crate::GuideInput>,
 }
 
 /// What a build from a datasheet gave.
@@ -470,7 +474,16 @@ pub fn build_with_transport_progress(
         say("read", StageState::Failed, "no text in the PDF".into());
         return Err("the PDF has no text on any page (a scan); this version cannot read scans. Use New part instead".into());
     }
+    let given = match &input.guide {
+        Some(g) if !g.is_empty() => kirpitch_models::GivenText {
+            metadata: crate::text_of_regions(&bytes, &g.metadata)?,
+            pins: crate::text_of_regions(&bytes, &g.pins)?,
+            package: crate::text_of_regions(&bytes, &g.package)?,
+        },
+        _ => kirpitch_models::GivenText::default(),
+    };
     let options = BuildOptions {
+        given,
         hint: Some(input.hint.trim().to_string()).filter(|h| !h.is_empty()),
         second_read: input.second_read,
         pdf_sha256: Some(

@@ -231,6 +231,7 @@ fn a_datasheet_is_built_into_a_part_with_recorded_answers() {
             second_read: false,
             config: config.to_string_lossy().into_owned(),
             cache_dir: tmp.path().join("cache").to_string_lossy().into_owned(),
+            ..Default::default()
         },
         transport,
         &|p| events.lock().unwrap().push((p.stage, p.state)),
@@ -286,6 +287,7 @@ fn a_datasheet_is_built_into_a_part_with_recorded_answers() {
             second_read: false,
             config: config.to_string_lossy().into_owned(),
             cache_dir: tmp.path().join("cache").to_string_lossy().into_owned(),
+            ..Default::default()
         },
         Arc::new(MockTransport::new()),
     );
@@ -307,9 +309,119 @@ fn a_build_without_a_configured_model_explains_what_to_do() {
                 .to_string_lossy()
                 .into_owned(),
             cache_dir: String::new(),
+            ..Default::default()
         },
         Arc::new(MockTransport::new()),
     )
     .unwrap_err();
     assert!(err.contains("missing.toml"), "{err}");
+}
+
+#[test]
+fn a_guided_build_sends_only_the_text_of_the_places_pointed_at() {
+    if kirpitch_review::find_pdfium_dir().is_none() {
+        eprintln!("SKIPPED: no pdfium library (cargo xtask fetch-pdfium)");
+        return;
+    }
+    use kirpitch_review::{GuideInput, RegionInput, preview_selection, suggest_pages_for};
+    let tmp = TempDir::new("guided");
+    let pdf_path = tmp.path().join("d.pdf");
+    fs::write(&pdf_path, pdf()).unwrap();
+    let pdf_text = pdf_path.to_string_lossy().into_owned();
+    let config = tmp.path().join("kirpitch.toml");
+    fs::write(
+        &config,
+        "[models.m]\nprovider = \"openai-compatible\"\nbase_url = \"http://localhost:1/v1\"\nmodel = \"t\"\n",
+    )
+    .unwrap();
+
+    // Suggestions come from the same keywords as the search.
+    let s = suggest_pages_for(&pdf_text, "").unwrap();
+    assert_eq!(s.page_count, 3);
+    assert_eq!(s.pins.first().map(|p| p.page), Some(2), "{:?}", s.pins);
+
+    // The pin table is on page 2, but only its first rows are pointed at.
+    let guide = GuideInput {
+        pins: vec![RegionInput {
+            page: 2,
+            bbox: [0.0, 0.10, 1.0, 0.20],
+        }],
+        ..Default::default()
+    };
+    let preview = preview_selection(&pdf_text, &guide, "").unwrap();
+    assert!(preview.pins.chosen > 0 && preview.pins.chosen < preview.pins.automatic);
+    assert_eq!(
+        preview.metadata.chosen, 0,
+        "a step with no place sends nothing of its own"
+    );
+
+    let pins: Vec<Value> = [("1", "OUT1", "output"), ("2", "IN1-", "input")]
+        .iter()
+        .map(|(n, name, t)| json!({"number": n, "name": name, "type": t, "page": 2, "confidence": 0.9}))
+        .collect();
+    let transport = Arc::new(MockTransport::new());
+    transport.push_ok(&reply(
+        &json!({"mpn": "LM358DR", "manufacturer": "TI", "description": "Op amp"}),
+    ));
+    transport.push_ok(&reply(&json!({ "pins": pins })));
+    transport.push_ok(&reply(&json!({
+        "family": "soic", "pin_count": 8, "e": 1.27, "A": 1.75,
+        "D": {"min": 4.81, "max": 5.0}, "E1": {"min": 3.81, "max": 3.98},
+        "E": {"min": 5.8, "max": 6.19}, "L": {"min": 0.41, "max": 1.27},
+        "b": {"min": 0.31, "max": 0.51}, "page": 3, "confidence": 0.9
+    })));
+    build_with_transport(
+        &DatasheetInput {
+            pdf: pdf_text.clone(),
+            out: tmp.path().join("p.json").to_string_lossy().into_owned(),
+            config: config.to_string_lossy().into_owned(),
+            cache_dir: tmp.path().join("cache").to_string_lossy().into_owned(),
+            guide: Some(guide),
+            ..Default::default()
+        },
+        transport.clone(),
+    )
+    .unwrap();
+    let user = |i: usize| {
+        let b: Value = serde_json::from_str(&transport.requests()[i].body).unwrap();
+        b["messages"][1]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    // The pin step saw the rows inside the rectangle and nothing else of the page.
+    let pins_prompt = user(1);
+    assert!(pins_prompt.contains("OUT1"), "{pins_prompt}");
+    assert!(!pins_prompt.contains("OUT2"), "{pins_prompt}");
+    assert!(!pins_prompt.contains("Pin Configuration"), "{pins_prompt}");
+    assert!(pins_prompt.contains("[page 2]"));
+    // The steps with no place were searched for as before: the first pages.
+    assert!(user(0).contains("LM358DR Texas Instruments"));
+}
+
+#[test]
+fn a_region_with_no_text_or_no_size_is_refused_with_the_page_named() {
+    if kirpitch_review::find_pdfium_dir().is_none() {
+        eprintln!("SKIPPED: no pdfium library (cargo xtask fetch-pdfium)");
+        return;
+    }
+    use kirpitch_review::{RegionInput, text_of_regions};
+    let bytes = pdf();
+    let empty = text_of_regions(
+        &bytes,
+        &[RegionInput {
+            page: 2,
+            bbox: [0.0, 0.95, 1.0, 1.0],
+        }],
+    );
+    assert!(empty.unwrap_err().contains("page 2"));
+    let flat = text_of_regions(
+        &bytes,
+        &[RegionInput {
+            page: 1,
+            bbox: [0.5, 0.5, 0.5, 0.5],
+        }],
+    );
+    assert!(flat.unwrap_err().contains("empty"));
+    assert!(text_of_regions(&bytes, &[]).unwrap().is_none());
 }

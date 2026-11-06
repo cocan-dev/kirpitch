@@ -265,7 +265,10 @@
   <dialog id="ds-dialog" class="dialog" aria-labelledby="ds-title">
     <form id="ds-form" method="dialog">
       <h2 id="ds-title">New part from a datasheet</h2>
-      <p class="muted small">A language model reads the text of the datasheet and fills in the pins and the package. Every pin is checked against the page text, and you review each stage. This sends text of the datasheet to the models in your <code>kirpitch.toml</code>; the result says which of them leave this machine. Scanned PDFs (no text) do not work.</p>
+      <ol id="gd-stepper" class="gd-stepper" aria-label="Steps"></ol>
+      <div id="gd-body">
+      <section id="gd-p1" class="gd-pane">
+      <p class="muted small">A language model reads the datasheet and fills in the pins and the package. The best way: <strong>you point at where things are</strong> (a page, or a box drawn on it) and the model reads only that. It costs less and does not have to guess. Every pin is checked against the page text, and you review each stage afterwards. This sends text of the datasheet to the models in your Settings; the result says which of them leave this machine. Scanned PDFs (no text) do not work.</p>
       <label class="wide">Datasheet PDF
         <span class="pick-row"><input id="ds-pdf" type="text" required spellcheck="false"><button type="button" id="ds-pdf-browse">Browse…</button></span>
       </label>
@@ -276,7 +279,33 @@
         <span class="pick-row"><input id="ds-out" type="text" required spellcheck="false"><button type="button" id="ds-out-browse">Browse…</button></span>
       </label>
       <p class="muted small" id="ds-settings-note">The models, prompts and limits come from Settings. <button type="button" id="ds-open-settings" class="link">Open settings</button></p>
-      <label class="check"><input id="ds-second" type="checkbox"> Read the pin table twice and flag differences</label>
+      <p class="muted small"><button type="button" id="gd-auto" class="link">Skip the guide and let the program search the whole datasheet</button> (slower, uses more of the model, and can pick the wrong pages in a long datasheet).</p>
+      </section>
+
+      <section id="gd-pick" class="gd-pane" hidden>
+        <h3 id="gd-pick-title"></h3>
+        <p id="gd-pick-help" class="muted small"></p>
+        <div id="gd-suggest" class="gd-suggest"></div>
+        <div class="gd-pager">
+          <button type="button" id="gd-prev" aria-label="Previous page">&lt;</button>
+          <label>Page <input id="gd-page" type="number" min="1" value="1"></label>
+          <span id="gd-count" class="muted"></span>
+          <button type="button" id="gd-nextpage" aria-label="Next page">&gt;</button>
+          <button type="button" id="gd-whole" class="ghost">Use the whole page</button>
+        </div>
+        <div id="gd-wrap" class="gd-wrap"><canvas id="gd-canvas"></canvas><div id="gd-overlay" class="gd-overlay"></div></div>
+        <div id="gd-regions" class="gd-regions"></div>
+        <p id="gd-size" class="muted small"></p>
+        <details id="gd-text" hidden><summary>What the model will read from the last box</summary><pre id="gd-text-pre" class="gd-text"></pre></details>
+      </section>
+
+      <section id="gd-p5" class="gd-pane" hidden>
+        <h3>Ready to read</h3>
+        <ul id="gd-summary" class="gd-summary"></ul>
+        <p id="gd-total" class="muted small"></p>
+        <label class="check"><input id="ds-second" type="checkbox"> Read the pin table twice and flag differences</label>
+      </section>
+      </div>
       <p id="ds-error" class="message error" hidden></p>
       <section id="ds-progress" class="build-progress" hidden aria-live="polite">
         <header class="pg-head">
@@ -296,7 +325,10 @@
       <div id="ds-result" class="result" hidden></div>
       <div class="dialog-actions">
         <button type="button" id="ds-cancel">Close</button>
-        <button type="submit" id="ds-run" class="primary">Build part</button>
+        <button type="button" id="gd-back" hidden>Back</button>
+        <button type="button" id="gd-skip" class="ghost" hidden>Let the program search for this</button>
+        <button type="button" id="gd-next" class="primary">Next</button>
+        <button type="submit" id="ds-run" class="primary" hidden>Build part</button>
       </div>
     </form>
   </dialog>
@@ -306,6 +338,7 @@
   <script src="start.js"></script>
   <script src="fun.js"></script>
   <script src="progress.js"></script>
+  <script src="guided.js"></script>
   <script src="settings.js"></script>
   <script src="evaluate.js"></script>
 </body>

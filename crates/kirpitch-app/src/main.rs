@@ -320,6 +320,30 @@ fn eval_status(since: usize) -> EvalStatus {
     }
 }
 
+/// Pages the program would look at for each step, to suggest them.
+#[tauri::command]
+async fn suggest_pages(pdf: String, hint: String) -> Result<kirpitch_review::Suggestions, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        kirpitch_review::suggest_pages_for(pdf.trim(), &hint)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// How much text the chosen places hold, against what the search would send.
+#[tauri::command]
+async fn preview_guide(
+    pdf: String,
+    guide: kirpitch_review::GuideInput,
+    hint: String,
+) -> Result<kirpitch_review::Preview, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        kirpitch_review::preview_selection(pdf.trim(), &guide, &hint)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -345,6 +369,8 @@ fn main() {
             remove_api_key,
             check_model,
             find_models,
+            suggest_pages,
+            preview_guide,
             eval_cases,
             eval_add_case,
             eval_set_pdf,

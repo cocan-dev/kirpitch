@@ -19,8 +19,8 @@ use crate::client::Client;
 use crate::config::{Config, Task};
 use crate::keys::{KeyStore, OsKeyStore};
 use crate::tasks::{
-    Cache, CallRecord, Ctx, MetadataAnswer, PackageAnswer, PageLines, PinsResult, Span, Stats,
-    TaskError, extract_metadata, extract_package, extract_pins,
+    Cache, CallRecord, Ctx, MetadataAnswer, PackageAnswer, PageLines, Pinned, PinsResult, Span,
+    Stats, TaskError, extract_metadata, extract_package, extract_pins,
 };
 use crate::transport::Transport;
 
@@ -41,6 +41,20 @@ pub struct BuildOptions {
     pub pdf_sha256: Option<String>,
     /// Where the datasheet came from.
     pub datasheet_url: Option<String>,
+    /// Text the person pointed at, for each step: the step reads exactly this
+    /// instead of searching the datasheet.
+    pub given: GivenText,
+}
+
+/// The text of the places the person pointed at.
+#[derive(Debug, Clone, Default)]
+pub struct GivenText {
+    /// For the part number, maker and description.
+    pub metadata: Option<Vec<PageLines>>,
+    /// For the pin table.
+    pub pins: Option<Vec<PageLines>>,
+    /// For the package drawing.
+    pub package: Option<Vec<PageLines>>,
 }
 
 /// What a build produced.
@@ -362,7 +376,15 @@ pub fn build_with_progress(
         prompts: &config.prompts,
         options: &config.extraction,
         obs: &obs,
+        pinned: Pinned {
+            metadata: options.given.metadata.is_some(),
+            pins: options.given.pins.is_some(),
+            package: options.given.package.is_some(),
+        },
     };
+    let metadata_pages = options.given.metadata.as_deref().unwrap_or(pages);
+    let pin_pages = options.given.pins.as_deref().unwrap_or(pages);
+    let package_pages = options.given.package.as_deref().unwrap_or(pages);
 
     let metadata = if options.mpn.is_some()
         && options.manufacturer.is_some()
@@ -382,7 +404,7 @@ pub fn build_with_progress(
             asking(config, Task::Metadata),
         );
         match model_client(config, Task::Metadata, &transport, keys, &mut report).and_then(|c| {
-            extract_metadata(&c, cache, &mut stats, pages, &ctx)
+            extract_metadata(&c, cache, &mut stats, metadata_pages, &ctx)
                 .map_err(|e: TaskError| e.to_string())
         }) {
             Ok(m) => {
@@ -417,7 +439,7 @@ pub fn build_with_progress(
             &c,
             cache,
             &mut stats,
-            pages,
+            pin_pages,
             hint,
             options.second_read,
             &ctx,
@@ -449,7 +471,8 @@ pub fn build_with_progress(
 
     let package = match model_client(config, Task::Drawings, &transport, keys, &mut report)
         .and_then(|c| {
-            extract_package(&c, cache, &mut stats, pages, hint, &ctx).map_err(|e| e.to_string())
+            extract_package(&c, cache, &mut stats, package_pages, hint, &ctx)
+                .map_err(|e| e.to_string())
         }) {
         Ok(p) => {
             note(on, "package", StageState::Done, "dimensions read");
