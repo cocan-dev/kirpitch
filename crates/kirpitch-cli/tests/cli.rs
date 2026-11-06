@@ -67,7 +67,7 @@ fn check_reports_errors_by_field_with_exit_code_3() {
 
 #[test]
 fn gen_writes_exactly_the_expected_golden_files() {
-    for (target, folder) in [("10", "kicad10"), ("9", "kicad9")] {
+    for (target, folder) in [("10", "kicad10"), ("9", "kicad9"), ("8", "kicad8")] {
         for part in ["lm358-soic8", "ne555-soic8", "24lc256-soic8"] {
             let tmp = TempDir::new("cli-gen");
             let out_dir = tmp.path().join("out");

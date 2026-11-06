@@ -77,6 +77,10 @@ fn footprint_in_current_format_is_not_upgraded() {
     let Some(cli) = kicad_cli_or_skip() else {
         return;
     };
+    // The fixture is written in the KiCad 10 format.
+    if !installed_is(&cli, KicadTarget::V10) {
+        return;
+    }
     let tmp = TempDir::new("fp-upgrade");
     let lib = pretty(tmp.path(), TINY_MOD);
     let outcome = cli.upgrade_footprints(&lib).expect("upgrade");

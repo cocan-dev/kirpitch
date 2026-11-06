@@ -7,7 +7,7 @@
 //! versions"). Every difference between the file formats is a method of
 //! [`KicadTarget`], so the generators never compare version numbers
 //! themselves. The values were read from the official KiCad 10.0, 9.0 and 8.0
-//! libraries and checked with `kicad-cli` of each version.
+//! libraries and checked with `kicad-cli` of each version (ADR 0014).
 
 use crate::cli::{KicadCli, KicadVersion};
 
@@ -15,6 +15,8 @@ use crate::cli::{KicadCli, KicadVersion};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
 pub enum KicadTarget {
+    /// KiCad 8 (released 2024).
+    V8,
     /// KiCad 9 (released 2025).
     V9,
     /// KiCad 10 (released March 2026).
@@ -33,17 +35,18 @@ pub struct UnsupportedTarget {
 
 impl KicadTarget {
     /// All supported targets, oldest first.
-    pub const ALL: &'static [KicadTarget] = &[KicadTarget::V9, KicadTarget::V10];
+    pub const ALL: &'static [KicadTarget] = &[KicadTarget::V8, KicadTarget::V9, KicadTarget::V10];
 
     /// The newest supported target.
     pub const LATEST: KicadTarget = KicadTarget::V10;
 
     /// The supported majors as text, for messages.
-    pub const SUPPORTED: &'static str = "9, 10";
+    pub const SUPPORTED: &'static str = "8, 9, 10";
 
     /// The KiCad major version number.
     pub fn major(self) -> u32 {
         match self {
+            KicadTarget::V8 => 8,
             KicadTarget::V9 => 9,
             KicadTarget::V10 => 10,
         }
@@ -82,6 +85,7 @@ impl KicadTarget {
     /// The format version number written in `.kicad_mod` files.
     pub fn footprint_format_version(self) -> u32 {
         match self {
+            KicadTarget::V8 => 20_240_108,
             KicadTarget::V9 => 20_241_229,
             KicadTarget::V10 => 20_260_206,
         }
@@ -90,6 +94,7 @@ impl KicadTarget {
     /// The format version number written in `.kicad_sym` files.
     pub fn symbol_format_version(self) -> u32 {
         match self {
+            KicadTarget::V8 => 20_231_120,
             KicadTarget::V9 => 20_241_209,
             KicadTarget::V10 => 20_251_024,
         }
@@ -98,6 +103,7 @@ impl KicadTarget {
     /// The `generator_version` text written in symbol libraries.
     pub fn generator_version(self) -> &'static str {
         match self {
+            KicadTarget::V8 => "8.0",
             KicadTarget::V9 => "9.0",
             KicadTarget::V10 => "10.0",
         }
@@ -126,6 +132,21 @@ impl KicadTarget {
         self >= KicadTarget::V9
     }
 
+    /// A filled polygon is written as `(fill solid)` in KiCad 8 and as
+    /// `(fill yes)` in newer versions.
+    pub fn footprint_fill_keyword(self) -> &'static str {
+        if self == KicadTarget::V8 {
+            "solid"
+        } else {
+            "yes"
+        }
+    }
+
+    /// KiCad 8 lists the paste layer of a pad before the mask layer.
+    pub fn footprint_paste_layer_before_mask(self) -> bool {
+        self == KicadTarget::V8
+    }
+
     /// KiCad 9 stores the pins of a symbol unit sorted by position (left to
     /// right, then top to bottom) instead of by pin number.
     pub fn symbol_pins_sorted_by_position(self) -> bool {
@@ -141,10 +162,11 @@ mod tests {
     fn majors() {
         assert_eq!(KicadTarget::from_major(10), Ok(KicadTarget::V10));
         assert_eq!(KicadTarget::from_major(9), Ok(KicadTarget::V9));
+        assert_eq!(KicadTarget::from_major(8), Ok(KicadTarget::V8));
         let err = KicadTarget::from_major(7).unwrap_err();
         assert_eq!(err.major, 7);
         assert!(err.to_string().contains("KiCad 7"));
-        assert!(err.to_string().contains("9, 10"));
+        assert!(err.to_string().contains("8, 9, 10"));
     }
 
     #[test]
@@ -172,6 +194,8 @@ mod tests {
         assert_eq!(KicadTarget::V10.symbol_format_version(), 20251024);
         assert_eq!(KicadTarget::V9.footprint_format_version(), 20241229);
         assert_eq!(KicadTarget::V9.symbol_format_version(), 20241209);
+        assert_eq!(KicadTarget::V8.footprint_format_version(), 20240108);
+        assert_eq!(KicadTarget::V8.symbol_format_version(), 20231120);
     }
 
     #[test]
@@ -180,6 +204,12 @@ mod tests {
         assert!(!KicadTarget::V9.footprint_has_pad_jumper_setting());
         assert!(KicadTarget::V10.symbol_property_has_show_name());
         assert!(!KicadTarget::V9.symbol_property_has_show_name());
+        assert!(!KicadTarget::V8.has_embedded_fonts_setting());
+        assert!(!KicadTarget::V8.symbol_property_has_show_name());
+        assert!(!KicadTarget::V8.symbol_pins_sorted_by_position());
+        assert_eq!(KicadTarget::V8.footprint_fill_keyword(), "solid");
+        assert_eq!(KicadTarget::V9.footprint_fill_keyword(), "yes");
+        assert!(KicadTarget::V8.footprint_paste_layer_before_mask());
         assert!(KicadTarget::V9.has_embedded_fonts_setting());
         assert!(KicadTarget::V9.symbol_pins_sorted_by_position());
         assert!(!KicadTarget::V10.symbol_pins_sorted_by_position());

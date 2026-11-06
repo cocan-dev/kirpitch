@@ -8,7 +8,7 @@
 //! outputs and bidirectional pins on the right, positive supplies on top and grounds at the bottom.
 //! Pins that share a name and are power pins (for example several GND pins) are
 //! stacked on one position, with all but the first hidden. Milestone 1 writes
-//! the KiCad 10 and 9 formats and single-unit symbols only; multi-unit symbols come
+//! the KiCad 10, 9 and 8 formats and single-unit symbols only; multi-unit symbols come
 //! later.
 
 use kirpitch_core::partspec::Pin;
