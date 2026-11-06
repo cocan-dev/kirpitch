@@ -120,7 +120,7 @@ A fab profile holds the limits of a PCB maker. Kirpitch ships one built-in **gen
 | --- | --- |
 | Minimum copper-to-copper gap | 0.20 mm |
 | Minimum solder mask web (mask between two openings) | 0.10 mm |
-| Minimum silkscreen line width | 0.15 mm |
+| Minimum silkscreen line width | 0.12 mm |
 | Minimum silkscreen text height | 0.80 mm |
 
 ## Tech stack
@@ -275,7 +275,6 @@ The MVP (minimum viable product) covers text-based PDFs and standard IC packages
 
 **Milestone 1 status:** done in November 2026 for SOIC-8 (symbol and footprint, KiCad 8, 9 and 10, three golden parts). Points found on the way that need a decision later:
 
-- The generators use a silkscreen line of 0.12 mm as KiCad's own libraries do, which is below the 0.15 mm minimum of the generic fab profile. Decide which one the silkscreen check follows.
 - Parts that share a package get the same footprint name but may have slightly different pads (for example rounded or square corners). The library (milestone 3) must decide when one footprint is reused.
 - Bidirectional pins go on the right of a symbol and a pin cannot yet be moved to another side by hand.
 - The golden PartSpecs were drafted by an AI assistant and still need a human review against the datasheets.
