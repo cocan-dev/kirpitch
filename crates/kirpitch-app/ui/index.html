@@ -6,21 +6,31 @@
   <title>Kirpitch</title>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="fun.css">
+  <link rel="stylesheet" href="shell.css">
 </head>
 <body>
   <header class="top">
-    <h1>Kirpitch</h1>
-    <form id="open-form" class="open">
-      <label for="path" class="sr">PartSpec file</label>
-      <input id="path" type="text" spellcheck="false" placeholder="Path of a PartSpec file, for example C:\parts\lm358\partspec.json" list="recent">
-      <datalist id="recent"></datalist>
-      <button type="submit">Open</button>
-    </form>
+    <button type="button" id="home" class="brand" aria-label="Kirpitch home"><h1>Kirpitch</h1></button>
+    <nav id="crumbs" class="crumbs" aria-label="You are here"></nav>
+    <div class="spacer"></div>
     <div class="actions" aria-label="Start">
-      <button type="button" id="btn-open-file">Open file…</button>
       <button type="button" id="btn-new" class="primary">New part…</button>
+      <button type="button" id="btn-open-file">Open…</button>
       <button type="button" id="btn-datasheet">From datasheet…</button>
-      <button type="button" id="btn-copy" disabled>Save copy…</button>
+      <div class="menu">
+        <button type="button" id="menu-btn" class="icon" aria-haspopup="true" aria-expanded="false" aria-label="More actions" title="More">⋯</button>
+        <div id="menu-pop" class="menu-pop" hidden>
+          <button type="button" id="btn-copy" disabled>Save a copy…</button>
+          <button type="button" id="btn-close" disabled>Close this part</button>
+          <hr>
+          <form id="open-form" class="open">
+            <label for="path">Open by path</label>
+            <input id="path" type="text" spellcheck="false" placeholder="C:\parts\lm358\partspec.json" list="recent">
+            <datalist id="recent"></datalist>
+            <button type="submit">Open</button>
+          </form>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -54,49 +64,107 @@
   </main>
 
   <main id="work" hidden>
-    <div id="ready" class="ready" hidden>
-      <span aria-hidden="true">PINNY</span>
-      <div class="grow"><strong>Part ready to ship!</strong><p>Pinout, footprint and 3D model are all approved. Time to write the KiCad files.</p></div>
-      <button type="button" id="ready-write" class="primary">Write KiCad files</button>
-    </div>
-    <div class="head">
-      <section class="part" aria-label="Part">
+    <section class="part-head" aria-label="Part">
+      <div class="part-id">
         <h2 id="mpn"></h2>
         <p id="part-line" class="muted"></p>
-      </section>
-      <section class="gates" id="gates" aria-label="Review stages"></section>
-    </div>
+      </div>
+      <span id="package-name" class="pill"></span>
+      <div id="progress" class="progress" role="img" aria-label="Review progress"></div>
+    </section>
 
-    <div class="triple">
-      <section class="panel col-pins" aria-label="Pin table">
-        <h3>Pinout <span class="muted small">click a pin to see it everywhere</span></h3>
-        <div id="view-pinout"></div>
-        <details class="more">
-          <summary>Pads <span id="pads-count" class="count"></span></summary>
-          <div id="view-footprint"></div>
-        </details>
-        <details class="more" id="findings-box" open>
-          <summary>Findings <span id="findings-count" class="count"></span></summary>
+    <div id="shell" class="shell" data-step="pinout">
+      <nav id="steps" class="steps" aria-label="Steps"></nav>
+
+      <section id="stage" class="stage" aria-live="polite">
+        <div id="findings-panel" class="findings-panel">
+          <h3>Checks for this step <span id="findings-count" class="count"></span></h3>
           <div id="view-findings"></div>
-        </details>
+        </div>
+
+        <div id="step-pinout" class="step">
+          <header class="step-head">
+            <h3>1 · Pinout</h3>
+            <p>Check every pin against the datasheet: its number, its name and its electrical type. Click a pin to see it in the drawings and on the datasheet page. Edit a cell to fix it.</p>
+          </header>
+          <div class="two">
+            <section class="panel" aria-label="Pin table">
+              <div id="view-pinout"></div>
+            </section>
+            <section class="panel sticky" aria-label="Symbol">
+              <h4>Symbol</h4>
+              <div id="symbol" class="drawing"></div>
+            </section>
+          </div>
+        </div>
+
+        <div id="step-footprint" class="step" hidden>
+          <header class="step-head">
+            <h3>2 · Footprint</h3>
+            <p>Check the package dimensions and the pads (millimetres, y points down). Pin 1 has a bold outline. Click a pad to find it on the datasheet.</p>
+          </header>
+          <div class="two">
+            <section class="panel" aria-label="Pads">
+              <h4>Pads</h4>
+              <div id="view-footprint"></div>
+            </section>
+            <section class="panel sticky" aria-label="Footprint drawing">
+              <h4>Footprint</h4>
+              <div id="svg" class="drawing"></div>
+            </section>
+          </div>
+        </div>
+
+        <div id="step-3d" class="step" hidden>
+          <header class="step-head">
+            <h3>3 · 3D model</h3>
+            <p>The model is built from the package and the pads. Check that the body, the pin 1 mark and the terminals sit where they should. <span id="model-summary" class="muted"></span></p>
+          </header>
+          <section class="panel" aria-label="3D views">
+            <div id="model-views" class="model-views big"></div>
+            <p class="muted small">Dark is the body, light grey the pin 1 mark, silver the terminals; the green line is the board.</p>
+          </section>
+        </div>
+
+        <div id="step-export" class="step" hidden>
+          <header class="step-head">
+            <h3>4 · Export</h3>
+            <p>Write the symbol, the footprint and the 3D model as KiCad files.</p>
+          </header>
+          <div id="ready" class="ready" hidden>
+            <span aria-hidden="true"></span>
+            <div class="grow"><strong>Part ready to ship!</strong><p>Pinout, footprint and 3D model are all approved.</p></div>
+          </div>
+          <section class="panel" aria-label="Approvals">
+            <h4>Review status</h4>
+            <ul id="approvals" class="approvals"></ul>
+          </section>
+          <section class="panel export" aria-label="Write KiCad files">
+            <h4>Write KiCad files</h4>
+            <form id="export-form" class="export-form">
+              <label>Folder
+                <span class="pick-row"><input id="out-dir" type="text" spellcheck="false" placeholder="C:\parts\out"><button type="button" id="out-browse">Browse…</button></span>
+              </label>
+              <label>KiCad version
+                <select id="target">
+                  <option value="">Installed version</option>
+                  <option value="10">10</option>
+                  <option value="9">9</option>
+                  <option value="8">8</option>
+                </select>
+              </label>
+              <button type="submit" class="primary">Write files</button>
+            </form>
+            <ul id="written" class="written"></ul>
+          </section>
+        </div>
       </section>
 
-      <section class="panel col-drawings" aria-label="Symbol and footprint">
-        <h3>Symbol</h3>
-        <div id="symbol" class="drawing"></div>
-        <h3>Footprint <span id="package-name" class="muted"></span></h3>
-        <div id="svg" class="drawing"></div>
-        <p class="muted small">Millimetres, y points down. Pin 1 has a bold outline.</p>
-        <h3>3D model <span id="model-summary" class="muted small"></span></h3>
-        <div id="model-views" class="model-views"></div>
-        <p class="muted small">Built from the package and the pads. Dark is the body, light grey the pin 1 mark, silver the terminals; the green line is the board.</p>
-      </section>
-
-      <section class="panel col-sheet" aria-label="Datasheet">
-        <h3>Datasheet</h3>
+      <aside id="sheet" class="sheet panel" aria-label="Datasheet">
+        <h4>Datasheet</h4>
         <form id="pdf-form" class="pdf-form">
           <label class="sr" for="pdf-path">Datasheet PDF</label>
-          <input id="pdf-path" type="text" spellcheck="false" placeholder="Path of the datasheet PDF, for example testdata\pdfs\lm358.pdf">
+          <input id="pdf-path" type="text" spellcheck="false" placeholder="Path of the datasheet PDF">
           <button type="button" id="pdf-browse">Browse…</button>
           <button type="submit">Show</button>
         </form>
@@ -112,7 +180,7 @@
         </div>
         <section id="pick" class="pick" hidden aria-label="Selected region">
           <h4>Selected region <span id="pick-where" class="muted"></span></h4>
-          <p class="muted small">This is the text found in the box, split into columns. Fix a cell here if the PDF text is wrong, then use it as the pin table.</p>
+          <p class="muted small">The text found in the box, split into columns. Fix a cell if the PDF text is wrong, then use it as the pin table.</p>
           <textarea id="pick-text" rows="9" spellcheck="false" aria-label="Table read from the region"></textarea>
           <div class="pick-actions">
             <button type="button" id="pick-use" class="primary">Use as pin table</button>
@@ -120,27 +188,11 @@
           </div>
           <ul id="pick-warnings" class="written"></ul>
         </section>
-        <p id="pdf-hint" class="muted small">Drag on the page to select a table. The page of the selected pin is shown here, with a box around the region it was read from when the source has one.</p>
-      </section>
+        <p id="pdf-hint" class="muted small">Drag on the page to select a table. Selecting a pin shows its page, with a box around the region it was read from.</p>
+      </aside>
     </div>
 
-    <section class="panel export">
-      <h3>Write KiCad files</h3>
-      <form id="export-form" class="export-form">
-        <label>Folder <input id="out-dir" type="text" spellcheck="false" placeholder="C:\parts\out"></label>
-        <button type="button" id="out-browse">Browse…</button>
-        <label>KiCad version
-          <select id="target">
-            <option value="">Installed version</option>
-            <option value="10">10</option>
-            <option value="9">9</option>
-            <option value="8">8</option>
-          </select>
-        </label>
-        <button type="submit">Write files</button>
-      </form>
-      <ul id="written" class="written"></ul>
-    </section>
+    <footer id="stepbar" class="stepbar"></footer>
   </main>
 
   <dialog id="new-dialog" class="dialog" aria-labelledby="new-title">
@@ -203,6 +255,7 @@
   </dialog>
 
   <script src="app.js"></script>
+  <script src="shell.js"></script>
   <script src="start.js"></script>
   <script src="fun.js"></script>
 </body>

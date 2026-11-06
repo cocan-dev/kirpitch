@@ -103,7 +103,9 @@ function renderRecentList() {
     ...paths.map((p) => {
       const open = el("button", { type: "button", class: "link", text: baseName(p) });
       open.addEventListener("click", () => openPath(p));
-      return el("li", {}, open, el("span", { class: "meta", text: p }));
+      const done = progressOf(p);
+      const badge = done ? el("span", { class: "badge" + (done.split("/")[0] === done.split("/")[1] ? " all" : ""), text: done.replace("/", " of ") + " approved" }) : null;
+      return el("li", {}, open, ...(badge ? [badge] : []), el("span", { class: "meta", text: p }));
     })
   );
 }

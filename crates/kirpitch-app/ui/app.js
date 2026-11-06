@@ -31,6 +31,8 @@ function show(message, kind) {
   m.textContent = message;
   m.className = "message" + (kind ? " " + kind : "");
   m.hidden = !message;
+  clearTimeout(show.timer);
+  if (message && kind === "ok") show.timer = setTimeout(() => (m.hidden = true), 6000);
 }
 
 function recentPaths() {
@@ -75,43 +77,6 @@ function table(headers, rows, pinNumbers) {
     return tr;
   });
   return el("table", {}, el("thead", {}, head), el("tbody", {}, ...body));
-}
-
-function renderGates(view) {
-  const box = $("gates");
-  box.replaceChildren();
-  view.gates.forEach((g, i) => {
-    const earlier = view.gates.slice(0, i).every((p) => p.status === "approved");
-    const chip = el("span", {
-      class: "chip " + g.status,
-      text: g.status === "stale" ? "open again" : g.status,
-    });
-    const counts = el("p", { class: "counts" });
-    counts.append(
-      el("span", { class: "e", text: g.errors + " error" + (g.errors === 1 ? "" : "s") }),
-      " · ",
-      el("span", { class: "w", text: g.warnings + " warning" + (g.warnings === 1 ? "" : "s") })
-    );
-    if (g.approved_at) counts.append(" · approved " + g.approved_at + (g.note ? " (" + g.note + ")" : ""));
-
-    const note = el("input", { type: "text", placeholder: "Note (optional)", "aria-label": "Approval note for " + g.name });
-    const button = el("button", { type: "submit", class: "primary", text: g.status === "approved" ? "Approved" : "Approve" });
-    if (g.status === "approved" || g.errors > 0 || !earlier) button.disabled = true;
-    if (!earlier && g.status !== "approved") button.title = "Approve the stage before first";
-    if (g.errors > 0) button.title = "Fix the errors first";
-    const form = el("form", {}, note, button);
-    form.addEventListener("submit", async (ev) => {
-      ev.preventDefault();
-      try {
-        const next = await invoke("approve", { path: view.path, stage: g.name, note: note.value || null });
-        render(next);
-        show("Approved " + g.name + ".", "ok");
-      } catch (e) {
-        show(String(e), "error");
-      }
-    });
-    box.append(el("div", { class: "gate" }, el("h3", {}, g.name, chip), counts, form));
-  });
 }
 
 function renderPinout(view) {
@@ -225,63 +190,6 @@ function renderFootprint(view) {
       view.pads.map((p) => p.number)
     )
   );
-}
-
-function renderFindings(view) {
-  const box = $("view-findings");
-  $("findings-count").textContent = view.findings.length ? "(" + view.findings.length + ")" : "";
-  if (!view.findings.length) {
-    box.replaceChildren(el("p", { class: "muted", text: "No findings. All checks pass." }));
-    return;
-  }
-  box.replaceChildren(
-    ...view.findings.map((f) =>
-      el(
-        "div",
-        { class: "finding" },
-        el("span", { class: "lvl " + f.level, text: f.level }),
-        el("strong", { text: f.check }),
-        " ",
-        el("span", { class: "muted", text: "(" + f.gate + ")" }),
-        el("div", { text: f.message + (f.overridden_by ? " — accepted: " + f.overridden_by : "") }),
-        el("div", { class: "path", text: f.path })
-      )
-    )
-  );
-}
-
-function render(view, keepSheet) {
-  current = view;
-  $("empty").hidden = true;
-  $("work").hidden = false;
-  $("mpn").textContent = view.mpn;
-  $("part-line").textContent = [view.manufacturer, view.description].filter(Boolean).join(" · ");
-  $("package-name").textContent = view.package_name;
-  renderGates(view);
-  renderPinout(view);
-  renderFootprint(view);
-  renderFindings(view);
-  // The drawings are made by our own Rust code from numbers and escaped text.
-  $("svg").innerHTML = view.footprint_svg;
-  $("symbol").innerHTML = view.symbol_svg || '<p class="empty-note">Fix the errors of the pinout to see the symbol.</p>';
-  $("model-summary").textContent = view.model_summary;
-  const views = $("model-views");
-  views.replaceChildren();
-  // Made by our own Rust code from numbers.
-  view.model_views.forEach((v) => {
-    const fig = el("figure", {}, el("figcaption", { text: v.name }));
-    const holder = document.createElement("div");
-    holder.innerHTML = v.svg;
-    fig.append(holder);
-    views.append(fig);
-  });
-  $("pads-count").textContent = "(" + view.pads.length + ")";
-  selected = null;
-  if (!keepSheet) {
-    const saved = savedPdf(view.path);
-    $("pdf-path").value = saved;
-    if (saved) showPage(1).catch((e) => show(String(e), "error"));
-  }
 }
 
 $("open-form").addEventListener("submit", async (ev) => {

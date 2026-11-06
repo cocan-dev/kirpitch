@@ -30,9 +30,7 @@ body {
 }
 .top h1 { display: flex; align-items: center; gap: 8px; font-size: 20px; }
 .top h1 .logo { width: 22px; height: 22px; }
-.panel, .gate, .dialog { border-radius: var(--radius); box-shadow: var(--shadow); }
-.gate { transition: transform 0.2s, box-shadow 0.2s; }
-.gate:hover { transform: translateY(-2px); box-shadow: var(--shadow-up); }
+.panel, .dialog { border-radius: var(--radius); box-shadow: var(--shadow); }
 button { border-radius: 999px; transition: transform 0.12s, box-shadow 0.15s, border-color 0.15s, background 0.15s; }
 button:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 4px 12px var(--glow); }
 button:not(:disabled):active { transform: translateY(1px) scale(0.98); box-shadow: none; }
@@ -73,14 +71,11 @@ input[type=text]:focus, select:focus { border-color: var(--brick); box-shadow: 0
 .start-lists h3 { margin: 18px 0 2px; }
 
 /* ---- Motion ------------------------------------------------------------ */
-#work.enter { animation: rise 0.45s both; }
-#work.enter .gate { animation: rise 0.5s both; }
-#work.enter .gate:nth-child(2) { animation-delay: 0.07s; }
-#work.enter .gate:nth-child(3) { animation-delay: 0.14s; }
+/* Only the opacity: a transform on #work would trap the fixed bar inside it. */
+#work.enter { animation: fade 0.4s both; }
 .message { animation: slide-in 0.3s both; border-radius: var(--radius); }
 .dialog[open] { animation: pop-in 0.25s cubic-bezier(0.2, 1.3, 0.4, 1) both; }
 tr.sel td { animation: pulse-row 0.7s ease-out 1; }
-.chip.pop { animation: pop 0.6s cubic-bezier(0.2, 1.6, 0.4, 1) 1; }
 .model-views figure { transition: transform 0.2s; }
 .model-views figure:hover { transform: translateY(-3px) scale(1.03); }
 .model-views svg { border-radius: 8px; }
@@ -112,6 +107,7 @@ tr.sel td { animation: pulse-row 0.7s ease-out 1; }
 
 /* ---- Keyframes --------------------------------------------------------- */
 @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slide-in { from { opacity: 0; transform: translateX(-18px); } to { opacity: 1; transform: none; } }
 @keyframes pop-in { from { opacity: 0; transform: scale(0.94) translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.35); background: color-mix(in srgb, var(--ok) 30%, transparent); } 100% { transform: scale(1); } }
