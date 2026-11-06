@@ -30,7 +30,8 @@ use kirpitch_core::pintable::{ImportOptions, parse_pin_table};
 use kirpitch_core::templates::{
     DualRowGullWing, DualRowThroughHole, Template, dual_row_gull_wing, dual_row_through_hole, sot23,
 };
-use kirpitch_core::{FabProfile, Source, validate};
+use kirpitch_core::{BoundingBox, FabProfile, Source, validate};
+use kirpitch_extract::{DEFAULT_COLUMN_GAP, PdfReader, table_from_lines};
 use serde::{Deserialize, Serialize};
 
 use crate::{Failure, load, print_findings};
@@ -214,11 +215,38 @@ pub struct PinsArgs {
     /// The PartSpec file
     spec: PathBuf,
     /// Pin table to read: CSV, tab separated, or pasted text
-    #[arg(long)]
-    import: PathBuf,
+    #[arg(long, conflicts_with_all = ["pdf", "region"])]
+    import: Option<PathBuf>,
+    /// Datasheet PDF to read the pin table from (needs --page and --region and
+    /// the pdfium library, see KIRPITCH_PDFIUM_LIB_DIR)
+    #[arg(long, requires_all = ["page", "region"])]
+    pdf: Option<PathBuf>,
     /// Datasheet page of the pin table, recorded as the source of every pin
     #[arg(long)]
     page: Option<u32>,
+    /// Region of the page holding the table, as fractions from the top-left
+    /// corner: `left,top,right,bottom`, for example `0.1,0.2,0.9,0.5`
+    #[arg(long, value_parser = parse_region)]
+    region: Option<RegionArg>,
+}
+
+/// A region of a page.
+#[derive(Clone, Copy)]
+pub struct RegionArg(BoundingBox);
+
+fn parse_region(text: &str) -> Result<RegionArg, String> {
+    let numbers: Result<Vec<f64>, _> = text.split(',').map(|s| s.trim().parse::<f64>()).collect();
+    let numbers =
+        numbers.map_err(|_| format!("`{text}` is not four numbers separated by commas"))?;
+    let [l, t, r, b] = numbers[..] else {
+        return Err("a region needs four numbers: left,top,right,bottom".into());
+    };
+    let bbox = BoundingBox([l, t, r, b]);
+    if bbox.is_valid() {
+        Ok(RegionArg(bbox))
+    } else {
+        Err("the numbers must be between 0 and 1, with left <= right and top <= bottom".into())
+    }
 }
 
 /// `kirpitch status`
@@ -356,14 +384,45 @@ fn apply_template(spec: &mut PartSpec, made: Template) {
 
 pub fn pins(args: PinsArgs, out: &mut dyn Write, err: &mut dyn Write) -> Result<(), Failure> {
     let mut spec = load(&args.spec)?;
-    let text = fs::read_to_string(&args.import).map_err(|e| io_error(&args.import, e))?;
-    let source = args.page.map(|page| Source {
-        page,
-        bbox: None,
-        confidence: None,
-    });
+    let (text, source, origin) = match (&args.import, &args.pdf) {
+        (Some(path), None) => (
+            fs::read_to_string(path).map_err(|e| io_error(path, e))?,
+            args.page.map(|page| Source {
+                page,
+                bbox: None,
+                confidence: None,
+            }),
+            path.display().to_string(),
+        ),
+        (None, Some(pdf)) => {
+            let (Some(page), Some(region)) = (args.page, args.region) else {
+                return Err(Failure::Message("--pdf needs --page and --region".into()));
+            };
+            let bytes = fs::read(pdf).map_err(|e| io_error(pdf, e))?;
+            let dir = std::env::var_os("KIRPITCH_PDFIUM_LIB_DIR").map(PathBuf::from);
+            let reader = PdfReader::new(dir.as_deref()).map_err(flow_err)?;
+            let lines = reader
+                .lines_in_region(&bytes, page, region.0)
+                .map_err(flow_err)?;
+            let table = table_from_lines(&lines, DEFAULT_COLUMN_GAP);
+            (
+                table.to_tsv(),
+                Some(Source {
+                    page,
+                    bbox: Some(region.0),
+                    confidence: None,
+                }),
+                format!("{} page {page}", pdf.display()),
+            )
+        }
+        _ => {
+            return Err(Failure::Message(
+                "give --import FILE, or --pdf FILE with --page and --region".into(),
+            ));
+        }
+    };
     let result = parse_pin_table(&text, &ImportOptions { source })
-        .map_err(|e| Failure::Message(format!("{}: {e}", args.import.display())))?;
+        .map_err(|e| Failure::Message(format!("{origin}: {e}")))?;
     for w in &result.warnings {
         writeln!(err, "warning: {w}").map_err(flow_err)?;
     }

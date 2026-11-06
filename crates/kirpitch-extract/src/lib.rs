@@ -8,5 +8,8 @@
 //! extraction (milestone 2b) is added to this crate later.
 
 pub mod pdf;
+pub mod table;
+pub mod testing;
 
 pub use pdf::{Line, PdfError, PdfReader, RenderedPage, TextChar, Word};
+pub use table::{DEFAULT_COLUMN_GAP, Table, table_from_lines};

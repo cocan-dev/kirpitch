@@ -276,3 +276,98 @@ fn bad_ranges_are_explained() {
         text(&out.stderr)
     );
 }
+
+/// A datasheet page with an 8-pin table, built for the test.
+fn pin_page() -> Vec<(f32, f32, f32, &'static str)> {
+    let rows = [
+        ("1", "OUT1", "Output"),
+        ("2", "IN1-", "Input"),
+        ("3", "IN1+", "Input"),
+        ("4", "V-", "Power"),
+        ("5", "IN2+", "Input"),
+        ("6", "IN2-", "Input"),
+        ("7", "OUT2", "Output"),
+        ("8", "V+", "Power"),
+    ];
+    let mut items = vec![
+        (72.0, 740.0, 14.0, "Pin Functions"),
+        (72.0, 710.0, 12.0, "PIN"),
+        (150.0, 710.0, 12.0, "NAME"),
+        (260.0, 710.0, 12.0, "TYPE"),
+    ];
+    for (i, (n, name, ty)) in rows.iter().enumerate() {
+        let y = 690.0 - 20.0 * i as f32;
+        items.push((72.0, y, 12.0, n));
+        items.push((150.0, y, 12.0, name));
+        items.push((260.0, y, 12.0, ty));
+    }
+    items
+}
+
+#[test]
+fn pins_can_be_read_from_a_region_of_a_pdf() {
+    let Some(dir) = std::env::var_os("KIRPITCH_PDFIUM_LIB_DIR") else {
+        eprintln!("SKIPPED: set KIRPITCH_PDFIUM_LIB_DIR to run this test");
+        return;
+    };
+    let _ = dir;
+    let tmp = TempDir::new("flow-pdf");
+    let spec = make_spec(tmp.path());
+    let s = path(&spec);
+    let pdf = tmp.path().join("synthetic.pdf");
+    fs::write(&pdf, kirpitch_extract::testing::make_pdf(&[pin_page()])).unwrap();
+
+    // The region starts under the heading and covers the table (y from 700 to
+    // 520 pt of 792).
+    let top = 1.0 - 725.0 / 792.0;
+    let bottom = 1.0 - 515.0 / 792.0;
+    let region = format!("0.0,{top},1.0,{bottom}");
+    let out = kirpitch(&[
+        "pins",
+        &s,
+        "--pdf",
+        &path(&pdf),
+        "--page",
+        "1",
+        "--region",
+        &region,
+    ]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(text(&out.stdout).contains("read 8 pins"));
+
+    let review = text(&kirpitch(&["review", &s, "--stage", "pinout"]).stdout);
+    assert!(review.contains("IN2+"), "{review}");
+    assert!(review.contains("p.1"), "{review}");
+    // The region is saved as the source of the pins.
+    let json = fs::read_to_string(&spec).unwrap();
+    assert!(json.contains("\"bbox\""), "{json}");
+    // The pins from the PDF pass the pinout gate.
+    let out = kirpitch(&["approve", &s, "--stage", "pinout"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+}
+
+#[test]
+fn bad_region_arguments_are_explained() {
+    let tmp = TempDir::new("flow-region");
+    let spec = make_spec(tmp.path());
+    let s = path(&spec);
+    for (region, want) in [
+        ("0.5,0.5,0.1,0.9", "left <= right"),
+        ("0.1,0.2,0.3", "four numbers"),
+        ("a,b,c,d", "four numbers"),
+    ] {
+        let out = kirpitch(&[
+            "pins", &s, "--pdf", "x.pdf", "--page", "1", "--region", region,
+        ]);
+        assert_eq!(out.status.code(), Some(2), "{region}");
+        assert!(
+            text(&out.stderr).contains(want),
+            "{region}: {}",
+            text(&out.stderr)
+        );
+    }
+    // Neither --import nor --pdf.
+    let out = kirpitch(&["pins", &s]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text(&out.stderr).contains("give --import FILE"));
+}
