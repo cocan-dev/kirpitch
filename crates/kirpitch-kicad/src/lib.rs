@@ -8,6 +8,7 @@
 
 pub mod cli;
 pub mod klc;
+pub mod klc_symbol;
 pub mod sexpr;
 pub mod target;
 pub mod testing;

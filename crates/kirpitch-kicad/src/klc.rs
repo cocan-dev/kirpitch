@@ -23,21 +23,21 @@ pub struct KlcFinding {
     pub message: String,
 }
 
-fn child<'a>(list: &'a List, name: &str) -> Option<&'a List> {
+pub(crate) fn child<'a>(list: &'a List, name: &str) -> Option<&'a List> {
     list.items.iter().find_map(|n| match n {
         Node::List(l) if l.name() == Some(name) => Some(l),
         _ => None,
     })
 }
 
-fn string_of(list: &List, index: usize) -> Option<&str> {
+pub(crate) fn string_of(list: &List, index: usize) -> Option<&str> {
     match list.items.get(index) {
         Some(Node::Str(s)) | Some(Node::Atom(s)) => Some(s),
         _ => None,
     }
 }
 
-fn number_of(list: &List, index: usize) -> Option<f64> {
+pub(crate) fn number_of(list: &List, index: usize) -> Option<f64> {
     string_of(list, index)?.parse().ok()
 }
 
