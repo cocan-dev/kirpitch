@@ -92,3 +92,82 @@ pub fn assert_snapshot(path: &Path, actual: &str) {
         path.display()
     );
 }
+
+/// Runs the load check of ADR 0012 on a generated symbol library (KiCad 10
+/// format) and panics with a readable message when it fails.
+///
+/// 1. `kicad-cli sym export svg` succeeds and writes an SVG per unit.
+/// 2. The text parses and prints back unchanged, with the target's version.
+/// 3. `sym upgrade` leaves the file alone.
+/// 4. With an old version number, `sym upgrade` rewrites the file to exactly
+///    the same text, except for the generator name `kirpitch`.
+pub fn assert_symbol_loads(cli: &KicadCli, label: &str, text: &str, file_name: &str) {
+    use crate::{KicadTarget, UpgradeOutcome};
+    let tmp = TempDir::new(label);
+    let file = tmp.path().join(file_name);
+    std::fs::write(&file, text).expect("write symbol");
+    let svgs = cli
+        .export_symbol_svg(&file, &tmp.path().join("svg"))
+        .unwrap_or_else(|e| panic!("kicad-cli cannot load the symbol: {e}"));
+    assert!(!svgs.is_empty(), "no SVG written");
+    crate::sexpr::check_round_trip(text).expect("own parse and round trip");
+    let version = KicadTarget::LATEST.symbol_format_version();
+    assert!(text.contains(&format!("(version {version})")));
+    if cli.version().expect("kicad-cli version").major >= KicadTarget::LATEST.major() {
+        assert_eq!(
+            cli.upgrade_symbols(&file).expect("upgrade"),
+            UpgradeOutcome::Unchanged
+        );
+        let old = text.replace(&format!("(version {version})"), "(version 20240101)");
+        std::fs::write(&file, old).expect("write old symbol");
+        assert_eq!(
+            cli.upgrade_symbols(&file).expect("upgrade"),
+            UpgradeOutcome::Updated
+        );
+        let rewritten = std::fs::read_to_string(&file)
+            .expect("read symbol")
+            .replace("\r\n", "\n")
+            .replace("kicad_symbol_editor", "kirpitch");
+        if rewritten != text {
+            let diff: Vec<String> = rewritten
+                .lines()
+                .zip(text.lines())
+                .enumerate()
+                .filter(|(_, (x, y))| x != y)
+                .take(5)
+                .map(|(i, (x, y))| format!("line {}: KiCad `{x}` vs ours `{y}`", i + 1))
+                .collect();
+            panic!("KiCad rewrites the file differently:\n{}", diff.join("\n"));
+        }
+    }
+}
+
+/// Runs the load check of ADR 0012 on a generated footprint and panics with a
+/// readable message when it fails.
+///
+/// 1. `kicad-cli fp export svg` succeeds on a `.pretty` folder holding it.
+/// 2. The text parses and prints back unchanged, with the target's version.
+/// 3. `fp upgrade` leaves the file alone. (An old-version rewrite is not used
+///    for footprints because KiCad adds random UUIDs, see ADR 0012.)
+pub fn assert_footprint_loads(cli: &KicadCli, label: &str, text: &str, file_name: &str) {
+    use crate::{KicadTarget, UpgradeOutcome};
+    let tmp = TempDir::new(label);
+    let lib = tmp.path().join("lib.pretty");
+    std::fs::create_dir_all(&lib).expect("create library folder");
+    std::fs::write(lib.join(file_name), text).expect("write footprint");
+    let svgs = cli
+        .export_footprint_svg(&lib, &tmp.path().join("svg"))
+        .unwrap_or_else(|e| panic!("kicad-cli cannot load the footprint: {e}"));
+    assert_eq!(svgs.len(), 1, "expected one SVG");
+    crate::sexpr::check_round_trip(text).expect("own parse and round trip");
+    let version = KicadTarget::LATEST.footprint_format_version();
+    assert!(text.contains(&format!("(version {version})")));
+    if cli.version().expect("kicad-cli version").major >= KicadTarget::LATEST.major() {
+        assert_eq!(
+            cli.upgrade_footprints(&lib).expect("upgrade"),
+            UpgradeOutcome::Unchanged
+        );
+        let after = std::fs::read_to_string(lib.join(file_name)).expect("read footprint");
+        assert_eq!(after.replace("\r\n", "\n"), text);
+    }
+}
