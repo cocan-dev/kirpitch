@@ -26,5 +26,8 @@ follows [Semantic Versioning](https://semver.org/).
 - `kirpitch-gen-footprint`: KiCad 10 footprint generator (SMD pads, courtyard,
   fab outline with pin 1 chamfer, silkscreen, pin 1 marker) with snapshot and
   `kicad-cli` tests.
+- `kirpitch-gen-symbol`: KiCad 10 symbol generator (pins placed by type on the
+  2.54 mm grid, stacked power pins, MPN and manufacturer fields) whose output
+  equals KiCad's own canonical layout.
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.
