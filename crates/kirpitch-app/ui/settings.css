@@ -99,3 +99,42 @@
 .preset strong { font-size: 15px; }
 .preset .pill { margin-top: auto; }
 .add-model-btn { align-self: flex-start; border-radius: 999px; border-color: var(--brick); }
+
+/* ---- Polish: steady layout, a real checkbox, calmer motion ---- */
+
+/* Nothing slides in again when a card is redrawn. */
+.model-body { animation: none; }
+.pane { animation: none; }
+
+/* A checkbox that matches the rest. */
+#settings input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none; flex: none; position: relative;
+  width: 20px; height: 20px; margin: 0; border: 1.5px solid var(--line); border-radius: 6px;
+  background: var(--bg); cursor: pointer; transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+#settings input[type="checkbox"]:hover { border-color: var(--brick); }
+#settings input[type="checkbox"]:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--glow); border-color: var(--brick); }
+#settings input[type="checkbox"]:checked { background: var(--brick); border-color: var(--brick); }
+#settings input[type="checkbox"]:checked::after {
+  content: ""; position: absolute; left: 5.5px; top: 1.5px; width: 5px; height: 10px;
+  border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+.check { cursor: pointer; line-height: 1.35; }
+.check.big input { margin-top: 1px; }
+
+/* Lines that appear and disappear keep their room. */
+.f .help { min-height: 1.5em; line-height: 1.5; }
+.f .note { min-height: 3em; }
+.grid2 { align-items: start; }
+.pick-row > button { min-width: 7.5em; white-space: nowrap; flex: none; }
+.pick-row > button.ghost { min-width: 0; }
+.key-box { min-height: 7.5em; }
+.test-row { min-height: 2.75em; }
+
+/* Mistakes show where they are made. */
+.f input.invalid, .pick-row input.invalid { border-color: var(--err); box-shadow: 0 0 0 3px color-mix(in srgb, var(--err) 25%, transparent); }
+button.danger { background: var(--err); border-color: var(--err); color: #fff; }
+
+/* The cards do not jump when a button is hovered inside the page. */
+.settings button:not(:disabled):hover { transform: none; }
+.settings { scroll-behavior: auto; overflow-anchor: none; }
