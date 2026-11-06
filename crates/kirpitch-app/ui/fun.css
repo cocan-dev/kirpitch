@@ -133,21 +133,16 @@ tr.sel td { animation: pulse-row 0.7s ease-out 1; }
 .pg-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .pg-head strong { font-size: 15px; }
 .pg-time { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 6.5em; text-align: right; }
-.pg-bar { height: 8px; border-radius: 999px; background: color-mix(in srgb, var(--line) 70%, transparent); overflow: hidden; }
-.pg-bar > div { height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--brick), var(--copper)); transition: width 0.4s ease; }
-.pg-bar > div.ok { background: var(--ok); }
-.pg-bar > div.bad { background: var(--err); }
-#pg-eta { margin: 0; min-height: 1.4em; }
 .pg-steps { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.pg-step { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: center; padding: 6px 2px; border-radius: 8px; }
+.pg-step { display: grid; grid-template-columns: 24px 1fr auto; gap: 10px; align-items: center; padding: 6px 2px; border-radius: 8px; }
 .pg-step .pg-text { display: flex; flex-direction: column; min-width: 0; }
 .pg-step .pg-label { font-size: 14px; }
 .pg-step .pg-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 1.3em; }
 .pg-step .pg-took { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; text-align: right; min-width: 5.5em; }
-.pg-mark { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; font-size: 12px; line-height: 1; box-sizing: border-box; }
+.pg-mark { width: 22px; height: 22px; border-radius: 50%; border: 2.5px solid var(--line); display: grid; place-items: center; font-size: 12px; line-height: 1; box-sizing: border-box; }
 .pg-step.pending { opacity: 0.55; }
 .pg-step.running { background: color-mix(in srgb, var(--brick) 10%, transparent); }
-.pg-step.running .pg-mark { border-color: var(--line); border-top-color: var(--brick); animation: pg-spin 0.9s linear infinite; }
+.pg-step.running .pg-mark { border-color: color-mix(in srgb, var(--brick) 25%, transparent); border-top-color: var(--brick); animation: pg-spin 0.9s linear infinite; }
 .pg-step.running .pg-took { color: var(--text); }
 .pg-step.done .pg-mark { background: var(--ok); border-color: var(--ok); color: #fff; }
 .pg-step.failed .pg-mark { background: var(--err); border-color: var(--err); color: #fff; }
@@ -155,7 +150,6 @@ tr.sel td { animation: pulse-row 0.7s ease-out 1; }
 .pg-step.skipped { opacity: 0.6; }
 .pg-step.skipped .pg-mark { border-style: dashed; color: var(--muted); }
 @keyframes pg-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .pg-step.running .pg-mark { animation: none; border-top-color: var(--line); background: var(--brick); } .pg-bar > div { transition: none; } }
 .build-progress { align-self: stretch; width: 100%; box-sizing: border-box; text-align: left; }
 .build-progress > * { text-align: left; }
 
@@ -171,3 +165,4 @@ tr.sel td { animation: pulse-row 0.7s ease-out 1; }
 .dialog input[type="checkbox"]:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--glow); border-color: var(--brick); }
 .dialog input[type="checkbox"]:checked { background: var(--brick); border-color: var(--brick); }
 .dialog input[type="checkbox"]:checked::after { content: ""; position: absolute; left: 5.5px; top: 1.5px; width: 5px; height: 10px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.build-progress[hidden] { display: none; }
