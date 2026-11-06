@@ -280,14 +280,15 @@ pub fn models_cmd(command: ModelsCommand, out: &mut dyn Write) -> Result<(), Fai
                     any_bad = true;
                     continue;
                 }
-                let client = match Client::from_env(model, transport()) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        writeln!(out, "  not usable: {e}").map_err(|e| e.to_string())?;
-                        any_bad = true;
-                        continue;
-                    }
-                };
+                let client =
+                    match Client::connect(name, model, transport(), &kirpitch_models::OsKeyStore) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            writeln!(out, "  not usable: {e}").map_err(|e| e.to_string())?;
+                            any_bad = true;
+                            continue;
+                        }
+                    };
                 let r = probe(name, &client);
                 let yes = |b: bool| if b { "yes" } else { "NO" };
                 let opt = |b: Option<bool>| b.map_or("not tested", |v| yes(v));

@@ -5,11 +5,12 @@
 // Do not open a console window on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use kirpitch_models::{CurlTransport, OsKeyStore, active_config_path};
 use kirpitch_review::{
-    DatasheetInput, DatasheetOutcome, Example, ImportOutcome, NewPartInput, PageImage, PinInput,
-    RegionTable, SpecView, approve_stage, build_from_datasheet, export_files, import_pins,
-    list_examples, new_part, now_rfc3339, open_example, open_spec, read_region,
-    render_datasheet_page, save_copy, set_pins,
+    DatasheetInput, DatasheetOutcome, Example, ImportOutcome, ModelTest, NewPartInput, PageImage,
+    PinInput, RegionTable, SettingsInput, SettingsView, SpecView, approve_stage,
+    build_from_datasheet, export_files, import_pins, list_examples, new_part, now_rfc3339,
+    open_example, open_spec, read_region, render_datasheet_page, save_copy, set_pins,
 };
 
 #[tauri::command]
@@ -125,6 +126,42 @@ async fn pick_folder(start_dir: Option<String>) -> Option<String> {
     Some(picked.path().display().to_string())
 }
 
+#[tauri::command]
+fn get_settings() -> SettingsView {
+    kirpitch_review::current_settings()
+}
+
+#[tauri::command]
+fn put_settings(input: SettingsInput) -> Result<SettingsView, String> {
+    kirpitch_review::save_settings(&active_config_path(), &input, &OsKeyStore)
+}
+
+#[tauri::command]
+fn put_api_key(name: String, key: String) -> Result<SettingsView, String> {
+    kirpitch_review::set_api_key(&active_config_path(), &name, &key, &OsKeyStore)
+}
+
+#[tauri::command]
+fn remove_api_key(name: String) -> Result<SettingsView, String> {
+    kirpitch_review::delete_api_key(&active_config_path(), &name, &OsKeyStore)
+}
+
+/// Testing a model sends requests and can take a while, so it runs off the
+/// thread of the window.
+#[tauri::command]
+async fn check_model(name: String) -> Result<ModelTest, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        kirpitch_review::test_model(
+            &active_config_path(),
+            &name,
+            std::sync::Arc::new(CurlTransport),
+            &OsKeyStore,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -142,7 +179,12 @@ fn main() {
             build_part,
             pick_file,
             pick_save,
-            pick_folder
+            pick_folder,
+            get_settings,
+            put_settings,
+            put_api_key,
+            remove_api_key,
+            check_model
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Kirpitch app");

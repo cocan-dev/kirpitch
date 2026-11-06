@@ -8,6 +8,13 @@
 //! a window; `main.rs` only connects these functions to the web view.
 
 mod parts;
+mod settings;
+
+pub use settings::{
+    ModelInput, ModelTest, ModelView, ProviderInfo, SettingsInput, SettingsView, config_from_input,
+    current_settings, delete_api_key, save_settings, set_api_key, settings_view, test_model,
+    user_folders,
+};
 
 pub use parts::{
     DatasheetInput, DatasheetOutcome, Example, NewPartInput, build_from_datasheet,
@@ -153,7 +160,14 @@ pub struct ModelViewSvg {
 /// The fab profile of this run: the file named in `KIRPITCH_FAB_PROFILE`, or
 /// the generic profile (also when the file cannot be read).
 fn fab() -> FabProfile {
-    FabProfile::from_env().unwrap_or_default()
+    // The file named in the environment, else the one in the settings.
+    if std::env::var_os(kirpitch_core::fab::ENV_FAB_PROFILE).is_some() {
+        return FabProfile::from_env().unwrap_or_default();
+    }
+    user_folders()
+        .fab_profile
+        .and_then(|p| FabProfile::from_file(Path::new(&p)).ok())
+        .unwrap_or_default()
 }
 
 /// Loads a PartSpec file.
@@ -466,7 +480,7 @@ fn escape(text: &str) -> String {
 pub fn export_files(path: &str, out_dir: &str, target: Option<u32>) -> Result<Vec<String>, String> {
     use kirpitch_kicad::KicadTarget;
     let spec = load_spec(Path::new(path))?;
-    let target = match target {
+    let target = match target.or(user_folders().kicad_target) {
         Some(major) => KicadTarget::from_major(major).map_err(|e| e.to_string())?,
         None => KicadTarget::detect(kirpitch_kicad::KicadCli::discover().as_ref()),
     };
@@ -556,6 +570,11 @@ pub struct PageImage {
 pub fn find_pdfium_dir() -> Option<std::path::PathBuf> {
     if let Some(dir) = std::env::var_os("KIRPITCH_PDFIUM_LIB_DIR") {
         return Some(dir.into());
+    }
+    if let Some(dir) = user_folders().pdfium_dir.map(std::path::PathBuf::from)
+        && dir.is_dir()
+    {
+        return Some(dir);
     }
     let (platform, lib) = if cfg!(windows) {
         ("win-x64", "bin")

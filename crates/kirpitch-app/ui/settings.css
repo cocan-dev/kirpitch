@@ -1,0 +1,67 @@
+/* The settings screen. */
+
+.settings { max-width: 1100px; padding-bottom: 96px; }
+.settings-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.settings-head h2 { margin: 0; font-size: 26px; }
+.settings-head p { margin: 4px 0 0; }
+.settings-body { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; align-items: start; }
+.settings-tabs { position: sticky; top: 72px; display: flex; flex-direction: column; gap: 4px; }
+.settings-tabs button { text-align: left; border-radius: var(--radius); background: transparent; border-color: transparent; padding: 10px 14px; }
+.settings-tabs button.current { background: var(--panel); border-color: var(--line); box-shadow: var(--shadow); font-weight: 600; }
+.settings-tabs button:hover:not(.current) { background: color-mix(in srgb, var(--brick) 8%, transparent); box-shadow: none; transform: none; }
+.pane { display: flex; flex-direction: column; gap: 14px; animation: rise 0.3s both; }
+.pane[hidden] { display: none; }
+.pane > p { margin: 0; }
+.pane hr { border: 0; border-top: 1px solid var(--line); width: 100%; }
+
+.f { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.f .lab { font-size: 13px; font-weight: 600; }
+.f .help { font-size: 12px; color: var(--muted); }
+.f input[type="text"], .f input[type="password"], .f select { width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
+.f input:focus, .f select:focus { border-color: var(--brick); box-shadow: 0 0 0 3px var(--glow); outline: none; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px 16px; }
+.pick-row { display: flex; gap: 8px; align-items: center; }
+.pick-row input { flex: 1; min-width: 0; }
+.check { display: flex; align-items: center; gap: 8px; }
+.check.big { align-items: flex-start; font-size: 14px; }
+.check.big input { margin-top: 4px; }
+
+.model-card { display: flex; flex-direction: column; gap: 12px; }
+.model-head { display: flex; align-items: center; gap: 10px; }
+.model-head h4 { margin: 0; font-size: 16px; }
+.model-head .ghost { margin-left: auto; }
+.key-box { padding: 10px 12px; border: 1px dashed var(--line); border-radius: var(--radius); display: flex; flex-direction: column; gap: 6px; }
+.key-box p { margin: 0; }
+.advanced summary { cursor: pointer; color: var(--muted); padding: 2px 0 8px; }
+.test-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.test-result { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.test-result p { margin: 0; flex-basis: 100%; }
+.add-model select { width: auto; min-width: 260px; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--brick); background: var(--panel); color: var(--text); font: inherit; cursor: pointer; }
+.task-row { display: grid; grid-template-columns: minmax(240px, 360px) 1fr; gap: 16px; align-items: end; }
+
+.pill.good { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, transparent); }
+.pill.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, transparent); }
+.pill.bad { color: var(--err); border-color: color-mix(in srgb, var(--err) 50%, transparent); }
+.pill { font-family: inherit; }
+
+.settings-bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; display: flex; align-items: center; gap: 12px;
+  padding: 12px 20px; background: color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter: blur(8px);
+  border-top: 1px solid var(--line); box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.12);
+}
+.settings[hidden] ~ * .settings-bar { display: none; }
+.settings[hidden] .settings-bar { display: none; }
+#btn-settings.has-changes { position: relative; }
+#btn-settings.has-changes::after { content: ""; position: absolute; top: 2px; right: 2px; width: 9px; height: 9px; border-radius: 50%; background: var(--err); }
+
+@media (max-width: 900px) {
+  .settings-body { grid-template-columns: 1fr; }
+  .settings-tabs { position: static; flex-direction: row; overflow-x: auto; }
+  .task-row { grid-template-columns: 1fr; }
+}
+
+.pick-row input[type="text"], .pick-row input[type="password"] { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
+.pick-row input:focus { border-color: var(--brick); box-shadow: 0 0 0 3px var(--glow); outline: none; }
+.settings-head button { white-space: nowrap; }
+.ok-text.small, .err-text.small { font-size: 13px; }
+.task-row .pill { justify-self: start; }

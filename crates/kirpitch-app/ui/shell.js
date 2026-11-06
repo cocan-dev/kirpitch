@@ -278,6 +278,8 @@ function renderCrumbs() {
 }
 
 function goHome() {
+  $("settings").hidden = true;
+  if (typeof settingsReturn !== "undefined") settingsReturn = null;
   current = null;
   selected = null;
   $("work").hidden = true;
@@ -290,6 +292,7 @@ function goHome() {
 }
 
 function render(view, keepSheet) {
+  $("settings").hidden = true;
   const newPart = !current || current.path !== view.path;
   current = view;
   $("empty").hidden = true;

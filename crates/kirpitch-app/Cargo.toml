@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 kirpitch-review = { path = "../kirpitch-review" }
+kirpitch-models = { path = "../kirpitch-models" }
 tauri = "2"
 
 [build-dependencies]

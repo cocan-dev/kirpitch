@@ -1,0 +1,202 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+//! The settings screen: models, keys, tasks and folders.
+
+use std::fs;
+use std::sync::Arc;
+
+use kirpitch_kicad::testing::TempDir;
+use kirpitch_models::{KeyStore, MemoryKeyStore, MockTransport};
+use kirpitch_review::{
+    ModelInput, SettingsInput, delete_api_key, save_settings, set_api_key, settings_view,
+    test_model,
+};
+use serde_json::json;
+
+fn model(name: &str, provider: &str) -> ModelInput {
+    serde_json::from_value(json!({
+        "name": name, "provider": provider, "model": "some-model",
+    }))
+    .unwrap()
+}
+
+fn input(models: Vec<ModelInput>) -> SettingsInput {
+    serde_json::from_value(json!({ "models": [] }))
+        .map(|mut s: SettingsInput| {
+            s.models = models;
+            s
+        })
+        .unwrap()
+}
+
+#[test]
+fn a_missing_file_is_an_empty_configuration_with_the_providers() {
+    let tmp = TempDir::new("settings-empty");
+    let v = settings_view(&tmp.path().join("kirpitch.toml"), &MemoryKeyStore::new());
+    assert!(!v.exists && v.models.is_empty() && v.config_error.is_none());
+    let ids: Vec<&str> = v.providers.iter().map(|p| p.id.as_str()).collect();
+    assert_eq!(ids, ["anthropic", "openai", "openai-compatible", "ollama"]);
+    assert_eq!(v.providers[3].default_url, "http://localhost:11434");
+}
+
+#[test]
+fn models_tasks_and_folders_are_saved_and_read_back() {
+    let tmp = TempDir::new("settings-save");
+    let path = tmp.path().join("nested/kirpitch.toml");
+    let keys = MemoryKeyStore::new();
+    let mut local = model("local", "ollama");
+    local.think = Some(false);
+    let mut cloud = model("cloud", "anthropic");
+    cloud.keychain = true;
+    cloud.price_in = Some(3.0);
+    let mut s = input(vec![local, cloud]);
+    s.pin_tables = "local".into();
+    s.drawings = "cloud".into();
+    s.local_only = false;
+    s.parts = "C:/parts".into();
+    s.kicad_target = "9".into();
+    let v = save_settings(&path, &s, &keys).unwrap();
+    assert!(v.exists);
+    assert_eq!(v.models.len(), 2);
+    let cloud = v.models.iter().find(|m| m.name == "cloud").unwrap();
+    assert!(cloud.keychain && !cloud.has_key && !cloud.local);
+    assert_eq!(cloud.effective_url, "https://api.anthropic.com");
+    let local = v.models.iter().find(|m| m.name == "local").unwrap();
+    assert!(local.local && local.think == Some(false));
+    assert_eq!(
+        (v.pin_tables.as_str(), v.drawings.as_str()),
+        ("local", "cloud")
+    );
+    assert_eq!(
+        (v.parts.as_str(), v.kicad_target.as_str()),
+        ("C:/parts", "9")
+    );
+    // The command line reads the same file.
+    let text = fs::read_to_string(&path).unwrap();
+    assert!(text.contains("[models.cloud]") && text.contains("keychain = true"));
+}
+
+#[test]
+fn keys_live_in_the_keychain_and_never_in_the_file() {
+    let tmp = TempDir::new("settings-keys");
+    let path = tmp.path().join("kirpitch.toml");
+    let keys = MemoryKeyStore::new();
+    let mut cloud = model("cloud", "openai");
+    cloud.keychain = true;
+    save_settings(&path, &input(vec![cloud]), &keys).unwrap();
+    let v = set_api_key(&path, "cloud", "sk-very-secret", &keys).unwrap();
+    assert!(v.models[0].has_key);
+    assert_eq!(
+        keys.get("cloud").unwrap().as_deref(),
+        Some("sk-very-secret")
+    );
+    assert!(
+        !fs::read_to_string(&path)
+            .unwrap()
+            .contains("sk-very-secret")
+    );
+    // A blank key, an unknown model and a model without a keychain are refused.
+    assert!(set_api_key(&path, "cloud", "  ", &keys).is_err());
+    assert!(
+        set_api_key(&path, "nope", "k", &keys)
+            .unwrap_err()
+            .contains("save the model")
+    );
+    save_settings(&path, &input(vec![model("plain", "ollama")]), &keys).unwrap();
+    assert!(
+        set_api_key(&path, "plain", "k", &keys)
+            .unwrap_err()
+            .contains("not set to keep")
+    );
+    // Removing a model removes its key.
+    assert_eq!(keys.get("cloud").unwrap(), None);
+}
+
+#[test]
+fn deleting_a_key_and_renaming_a_model_keep_the_keychain_tidy() {
+    let tmp = TempDir::new("settings-rename");
+    let path = tmp.path().join("kirpitch.toml");
+    let keys = MemoryKeyStore::new();
+    let mut m = model("first", "openai");
+    m.keychain = true;
+    save_settings(&path, &input(vec![m.clone()]), &keys).unwrap();
+    set_api_key(&path, "first", "k1", &keys).unwrap();
+    // Rename: the key follows.
+    let mut renamed = m.clone();
+    renamed.old_name = Some("first".into());
+    renamed.name = "second".into();
+    save_settings(&path, &input(vec![renamed]), &keys).unwrap();
+    assert_eq!(keys.get("second").unwrap().as_deref(), Some("k1"));
+    assert_eq!(keys.get("first").unwrap(), None);
+    // Delete the key only.
+    let v = delete_api_key(&path, "second", &keys).unwrap();
+    assert!(!v.models[0].has_key);
+}
+
+#[test]
+fn the_form_is_checked_before_anything_is_written() {
+    let tmp = TempDir::new("settings-bad");
+    let path = tmp.path().join("kirpitch.toml");
+    let keys = MemoryKeyStore::new();
+    let err = |s: SettingsInput| save_settings(&path, &s, &keys).unwrap_err();
+    assert!(err(input(vec![model("bad name", "ollama")])).contains("not a good model name"));
+    assert!(err(input(vec![model("a", "ollama"), model("a", "openai")])).contains("two models"));
+    assert!(err(input(vec![model("a", "carrier-pigeon")])).contains("unknown kind"));
+    let mut no_model = model("a", "ollama");
+    no_model.model = " ".into();
+    assert!(err(input(vec![no_model])).contains("needs a model name"));
+    let mut url = model("a", "openai-compatible");
+    url.base_url = "ftp://x".into();
+    assert!(err(input(vec![url])).contains("http://"));
+    let mut compat = model("a", "openai-compatible");
+    compat.base_url = String::new();
+    assert!(err(input(vec![compat])).contains("base_url"));
+    let mut task = input(vec![model("a", "ollama")]);
+    task.pin_tables = "missing".into();
+    assert!(err(task).contains("missing"));
+    let mut target = input(vec![]);
+    target.kicad_target = "7".into();
+    assert!(err(target).contains("8, 9 or 10"));
+    assert!(!path.exists());
+}
+
+#[test]
+fn a_broken_file_is_reported_and_can_be_replaced() {
+    let tmp = TempDir::new("settings-broken");
+    let path = tmp.path().join("kirpitch.toml");
+    fs::write(&path, "this is not toml [[[").unwrap();
+    let keys = MemoryKeyStore::new();
+    let v = settings_view(&path, &keys);
+    assert!(v.config_error.is_some() && v.models.is_empty());
+    let v = save_settings(&path, &input(vec![model("a", "ollama")]), &keys).unwrap();
+    assert!(v.config_error.is_none() && v.models.len() == 1);
+}
+
+fn reply(v: &serde_json::Value) -> String {
+    json!({"message": {"content": v.to_string()}, "prompt_eval_count": 5, "eval_count": 2})
+        .to_string()
+}
+
+#[test]
+fn a_saved_model_can_be_tested_and_a_cloud_model_is_refused_in_local_only_mode() {
+    let tmp = TempDir::new("settings-test");
+    let path = tmp.path().join("kirpitch.toml");
+    let keys = MemoryKeyStore::new();
+    save_settings(&path, &input(vec![model("local", "ollama")]), &keys).unwrap();
+    let t = Arc::new(MockTransport::new());
+    t.push_ok(&reply(&json!({"answer": 5})));
+    t.push_ok(&reply(&json!({"colour": "red"})));
+    t.push_ok(&reply(&json!({"code": "KESTREL-4471"})));
+    let r = test_model(&path, "local", t, &keys).unwrap();
+    assert!(r.reachable && r.structured_json);
+    assert_eq!((r.vision, r.context_8k), (Some(true), Some(true)));
+    assert!(test_model(&path, "nope", Arc::new(MockTransport::new()), &keys).is_err());
+
+    let mut s = input(vec![model("cloud", "openai")]);
+    s.local_only = true;
+    save_settings(&path, &s, &keys).unwrap();
+    let t = Arc::new(MockTransport::new());
+    let err = test_model(&path, "cloud", t.clone(), &keys).unwrap_err();
+    assert!(err.contains("local_only"), "{err}");
+    assert!(t.requests().is_empty());
+}

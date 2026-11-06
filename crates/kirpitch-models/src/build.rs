@@ -17,6 +17,7 @@ use kirpitch_core::{BoundingBox, Confidence, Mm, Source, Sourced, Tolerance};
 
 use crate::client::Client;
 use crate::config::{Config, Task};
+use crate::keys::{KeyStore, OsKeyStore};
 use crate::tasks::{
     Cache, MetadataAnswer, PackageAnswer, PageLines, PinsResult, Span, Stats, TaskError,
     extract_metadata, extract_package, extract_pins,
@@ -239,10 +240,12 @@ fn model_client(
     config: &Config,
     task: Task,
     transport: &Arc<dyn Transport>,
+    keys: &dyn KeyStore,
     report: &mut BuildReport,
 ) -> Result<Client, String> {
     let (name, model) = config.model_for(task).map_err(|e| e.to_string())?;
-    let client = Client::from_env(model, transport.clone()).map_err(|e| e.to_string())?;
+    let client =
+        Client::connect(name, model, transport.clone(), keys).map_err(|e| e.to_string())?;
     report
         .models
         .push((task, name.to_string(), config.stays_local(task)));
@@ -259,6 +262,19 @@ pub fn build(
     pages: &[PageLines],
     options: &BuildOptions,
 ) -> BuildReport {
+    build_with_keys(config, transport, cache, pages, options, &OsKeyStore)
+}
+
+/// Like [`build`], with the place where keys are looked up given (tests give
+/// their own).
+pub fn build_with_keys(
+    config: &Config,
+    transport: Arc<dyn Transport>,
+    cache: &Cache,
+    pages: &[PageLines],
+    options: &BuildOptions,
+    keys: &dyn KeyStore,
+) -> BuildReport {
     let mut report = BuildReport {
         spec: None,
         pins: None,
@@ -270,27 +286,28 @@ pub fn build(
     let mut stats = Stats::default();
     let hint = options.hint.as_deref();
 
-    let metadata =
-        if options.mpn.is_some() && options.manufacturer.is_some() && options.description.is_some()
-        {
-            Some(MetadataAnswer {
-                mpn: options.mpn.clone().unwrap_or_default(),
-                manufacturer: options.manufacturer.clone().unwrap_or_default(),
-                description: options.description.clone().unwrap_or_default(),
-            })
-        } else {
-            match model_client(config, Task::Metadata, &transport, &mut report).and_then(|c| {
-                extract_metadata(&c, cache, &mut stats, pages).map_err(|e: TaskError| e.to_string())
-            }) {
-                Ok(m) => Some(m),
-                Err(e) => {
-                    report.failures.push(format!("metadata: {e}"));
-                    None
-                }
+    let metadata = if options.mpn.is_some()
+        && options.manufacturer.is_some()
+        && options.description.is_some()
+    {
+        Some(MetadataAnswer {
+            mpn: options.mpn.clone().unwrap_or_default(),
+            manufacturer: options.manufacturer.clone().unwrap_or_default(),
+            description: options.description.clone().unwrap_or_default(),
+        })
+    } else {
+        match model_client(config, Task::Metadata, &transport, keys, &mut report).and_then(|c| {
+            extract_metadata(&c, cache, &mut stats, pages).map_err(|e: TaskError| e.to_string())
+        }) {
+            Ok(m) => Some(m),
+            Err(e) => {
+                report.failures.push(format!("metadata: {e}"));
+                None
             }
-        };
+        }
+    };
 
-    match model_client(config, Task::PinTables, &transport, &mut report).and_then(|c| {
+    match model_client(config, Task::PinTables, &transport, keys, &mut report).and_then(|c| {
         extract_pins(&c, cache, &mut stats, pages, hint, options.second_read)
             .map_err(|e| e.to_string())
     }) {
@@ -301,16 +318,16 @@ pub fn build(
         Err(e) => report.failures.push(format!("pins: {e}")),
     }
 
-    let package =
-        match model_client(config, Task::Drawings, &transport, &mut report).and_then(|c| {
+    let package = match model_client(config, Task::Drawings, &transport, keys, &mut report)
+        .and_then(|c| {
             extract_package(&c, cache, &mut stats, pages, hint).map_err(|e| e.to_string())
         }) {
-            Ok(p) => Some(p),
-            Err(e) => {
-                report.failures.push(format!("package: {e}"));
-                None
-            }
-        };
+        Ok(p) => Some(p),
+        Err(e) => {
+            report.failures.push(format!("package: {e}"));
+            None
+        }
+    };
 
     if let (Some(m), Some(p), Some(k)) = (&metadata, &report.pins, &package) {
         let default_page = pages.first().map_or(1, |p| p.page);
