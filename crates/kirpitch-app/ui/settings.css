@@ -21,7 +21,7 @@
 .f input:focus, .f select:focus { border-color: var(--brick); box-shadow: 0 0 0 3px var(--glow); outline: none; }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px 16px; }
 .pick-row { display: flex; gap: 8px; align-items: center; }
-.pick-row input { flex: 1; min-width: 0; }
+.pick-row input, .pick-row select { flex: 1; min-width: 0; }
 .check { display: flex; align-items: center; gap: 8px; }
 .check.big { align-items: flex-start; font-size: 14px; }
 .check.big input { margin-top: 4px; }

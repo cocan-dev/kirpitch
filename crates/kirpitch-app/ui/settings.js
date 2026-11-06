@@ -276,22 +276,26 @@ function applyFound(m, f) {
 function modelPicker(m) {
   const found = discovered.get(m);
   const row = el("div", { class: "pick-row" });
-  const input = textInput(m.model, (v) => (m.model = v.trim()), { placeholder: "name, or press Find models" });
-  const listId = "found-" + Math.random().toString(36).slice(2);
-  if (found && found.state === "done") {
-    input.setAttribute("list", listId);
-    const list = el("datalist", { id: listId });
-    found.models.forEach((f) => list.append(el("option", { value: f.id, label: foundLine(f), text: foundLine(f) })));
-    row.append(list);
-  }
-  // Choosing from the list (or typing a name that is in it) fills in the prices.
-  input.addEventListener("change", () => {
-    const f = found && found.models.find((x) => x.id === input.value.trim());
-    if (f) {
-      applyFound(m, f);
+  let input;
+  if (found && found.state === "done" && found.models.length) {
+    // A visible list of what the server offers; the current name stays
+    // selectable even when the server does not list it.
+    const known = found.models.some((x) => x.id === m.model);
+    const options = [["", "Choose a model (" + found.models.length + " found)…"]];
+    if (m.model && !known) options.push([m.model, m.model + " (not in the list)"]);
+    found.models.forEach((x) => {
+      const line = foundLine(x);
+      options.push([x.id, line ? x.id + " — " + line : x.id]);
+    });
+    input = selectInput(options, m.model, (v) => {
+      const x = found.models.find((y) => y.id === v);
+      if (x) applyFound(m, x);
+      else m.model = v;
       renderSettings();
-    }
-  });
+    });
+  } else {
+    input = textInput(m.model, (v) => (m.model = v.trim()), { placeholder: "name, or press Find models" });
+  }
   const find = el("button", { type: "button", text: found && found.state === "loading" ? "Looking…" : "Find models" });
   find.disabled = !!(found && found.state === "loading");
   find.addEventListener("click", () => discoverModels(m));
@@ -306,7 +310,7 @@ function modelPicker(m) {
     wrap.append(note);
   } else if (found && found.state === "done") {
     const f = found.models.find((x) => x.id === m.model);
-    let text = found.models.length + " models found. Start typing to narrow the list.";
+    let text = found.models.length + " models found. Choose one from the list.";
     if (f) {
       const line = foundLine(f);
       text = (line || "This model is on the server.") + (f.price_source === "OpenRouter list" ? " (price from the OpenRouter list; check your plan)" : "");
