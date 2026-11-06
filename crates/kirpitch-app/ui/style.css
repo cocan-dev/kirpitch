@@ -65,20 +65,6 @@ button:disabled { opacity: .5; cursor: default; }
 .message.ok { border-color: var(--ok); color: var(--ok); }
 main { padding: 16px; max-width: 1400px; margin: 0 auto; }
 .empty { text-align: center; padding-top: 80px; color: var(--muted); }
-.part h2 { margin: 0; font-size: 20px; }
-.part p { margin: 2px 0 12px; }
-.gates { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-bottom: 12px; }
-.gate { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
-.gate h3 { margin: 0 0 4px; font-size: 15px; text-transform: capitalize; display: flex; align-items: center; gap: 8px; }
-.chip { font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; font-weight: 600; text-transform: none; }
-.chip.approved { color: var(--ok); }
-.chip.open { color: var(--muted); }
-.chip.stale { color: var(--warn); }
-.gate .counts { margin: 0 0 8px; color: var(--muted); }
-.gate .counts .e { color: var(--err); font-weight: 600; }
-.gate .counts .w { color: var(--warn); font-weight: 600; }
-.gate form { display: flex; gap: 8px; }
-.gate form input { flex: 1; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
 .panel h3 { margin: 0 0 8px; font-size: 15px; }
 .count { color: var(--muted); font-weight: 400; }
@@ -114,10 +100,6 @@ svg .label { fill: var(--text); text-anchor: middle; dominant-baseline: central;
 tr.clickable { cursor: pointer; }
 tr.clickable:hover td { background: var(--bg); }
 tr.selected td { background: var(--bg); box-shadow: inset 2px 0 0 var(--brick); }
-.head { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 3fr); gap: 12px; align-items: start; }
-.head .gates { margin-bottom: 12px; }
-.triple { display: grid; grid-template-columns: minmax(300px, 1.1fr) minmax(280px, 1fr) minmax(320px, 1.2fr); gap: 12px; align-items: start; }
-@media (max-width: 1100px) { .triple { grid-template-columns: 1fr; } .head { grid-template-columns: 1fr; } }
 .drawing { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin-bottom: 8px; }
 .drawing svg { width: 100%; height: auto; max-height: 360px; display: block; }
 .drawing .empty-note { color: var(--muted); font-size: 12px; margin: 0; }

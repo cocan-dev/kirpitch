@@ -118,14 +118,6 @@ renderRecentList = function () {
 };
 renderRecentList();
 
-// ---- Findings: no news is good news ----------------------------------------------
-
-const renderFindingsBase = renderFindings;
-renderFindings = function (view) {
-  renderFindingsBase(view);
-  if (!view.findings.length) $("view-findings").replaceChildren(withMascot("No findings. Suspiciously perfect."));
-};
-
 // ---- Pops and the celebration ------------------------------------------------------
 
 function celebrate() {
@@ -157,10 +149,6 @@ function updateReady(view) {
 }
 
 $("ready").firstElementChild.innerHTML = MASCOT;
-$("ready-write").addEventListener("click", () => {
-  $("out-dir").scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "center" });
-  $("out-dir").focus();
-});
 
 const renderStart = render;
 render = function (view, keepSheet) {
@@ -172,12 +160,6 @@ render = function (view, keepSheet) {
     work.classList.remove("enter");
     void work.offsetWidth; // restart the animation
     work.classList.add("enter");
-  }
-  if (samePart) {
-    const chips = document.querySelectorAll("#gates .chip");
-    view.gates.forEach((g, i) => {
-      if (before.gates[i] && before.gates[i].status !== g.status && chips[i]) chips[i].classList.add("pop");
-    });
   }
   updateReady(view);
   if (samePart && !allApproved(before) && allApproved(view)) celebrate();
