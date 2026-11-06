@@ -18,7 +18,7 @@ pub use error::{LoadError, NumberError};
 pub use fab::FabProfile;
 pub use partspec::{PartSpec, SCHEMA_VERSION};
 pub use source::{BoundingBox, Confidence, Source, Sourced};
-pub use units::{LengthUnit, Mm, Tolerance};
+pub use units::{LengthUnit, Mm, Tolerance, format_number};
 pub use validate::{Check, Finding, Level, has_errors, validate};
 
 /// Returns the version of this crate, as set in the workspace manifest.

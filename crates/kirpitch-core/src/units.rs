@@ -65,6 +65,17 @@ impl Mm {
     }
 }
 
+/// Formats any number the way lengths are formatted in generated files (see
+/// [`Mm::format`]). Used for angles and ratios too. NaN and infinity, which
+/// cannot come from a valid PartSpec, are written as `0`.
+pub fn format_number(value: f64) -> String {
+    if value.is_finite() {
+        Mm(value).format()
+    } else {
+        "0".to_string()
+    }
+}
+
 impl JsonSchema for Mm {
     fn schema_name() -> std::borrow::Cow<'static, str> {
         "Mm".into()
