@@ -41,6 +41,14 @@ pub struct ModelView {
     pub api_key_header: String,
     /// Ollama: may the model think first.
     pub think: Option<bool>,
+    /// How hard the model thinks (empty: not sent).
+    pub effort: String,
+    /// Context window to ask for (Ollama).
+    pub context_length: Option<u32>,
+    /// Temperature (empty: the default).
+    pub temperature: Option<f64>,
+    /// Extra request fields, a JSON object as text.
+    pub extra_body: String,
     /// Price of a million input tokens.
     pub price_in: Option<f64>,
     /// Price of a million output tokens.
@@ -250,6 +258,10 @@ fn model_view(name: &str, m: &ModelConfig, keys: &dyn KeyStore) -> ModelView {
             .is_some_and(|v| std::env::var(v).is_ok_and(|x| !x.is_empty())),
         api_key_header: m.api_key_header.clone().unwrap_or_default(),
         think: m.think,
+        effort: m.effort.clone().unwrap_or_default(),
+        context_length: m.context_length,
+        temperature: m.temperature,
+        extra_body: m.extra_body.clone().unwrap_or_default(),
         price_in: m.price_in,
         price_out: m.price_out,
         local: model_is_local(m),
@@ -328,6 +340,18 @@ pub struct ModelInput {
     /// Ollama: may the model think first.
     #[serde(default)]
     pub think: Option<bool>,
+    /// How hard the model thinks: none, minimal, low, medium or high.
+    #[serde(default)]
+    pub effort: String,
+    /// Context window to ask for (Ollama).
+    #[serde(default)]
+    pub context_length: Option<u32>,
+    /// Temperature.
+    #[serde(default)]
+    pub temperature: Option<f64>,
+    /// Extra request fields, a JSON object as text.
+    #[serde(default)]
+    pub extra_body: String,
     /// Price of a million input tokens.
     #[serde(default)]
     pub price_in: Option<f64>,
@@ -431,6 +455,10 @@ pub fn config_from_input(input: &SettingsInput) -> Result<Config, String> {
                 api_key_header: opt(&m.api_key_header),
                 vision: None,
                 think: m.think,
+                effort: opt(&m.effort),
+                context_length: m.context_length,
+                temperature: m.temperature,
+                extra_body: opt(&m.extra_body),
                 keychain: m.keychain,
                 price_in: m.price_in,
                 price_out: m.price_out,

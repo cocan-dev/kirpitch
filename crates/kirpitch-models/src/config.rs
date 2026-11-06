@@ -76,12 +76,83 @@ pub struct ModelConfig {
     /// name of this model. A key in the environment variable wins.
     #[serde(default, skip_serializing_if = "is_false")]
     pub keychain: bool,
+    /// How hard the model thinks before it answers: `none`, `minimal`, `low`,
+    /// `medium` or `high`. Sent in the way each kind of server takes it
+    /// (`reasoning_effort` for OpenAI-style servers, `think` for Ollama, a thinking
+    /// budget for Anthropic). Not sent when left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    /// Size of the context window to ask for, in tokens. Ollama only (`num_ctx`):
+    /// left out, Kirpitch asks for what each question needs, so Ollama does not
+    /// cut the page text off at its small default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_length: Option<u32>,
+    /// Temperature, 0 to 2. Left out: 0 (as repeatable as the server can be),
+    /// and not sent at all when `effort` is set, since reasoning models refuse it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f64>,
+    /// More fields for the request, as a JSON object. They are added to the body
+    /// and win over what Kirpitch sets, so any option a server has can be used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extra_body: Option<String>,
     /// Price of one million input tokens, for the cost estimate.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub price_in: Option<f64>,
     /// Price of one million output tokens, for the cost estimate.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub price_out: Option<f64>,
+}
+
+/// The values of `effort`.
+pub const EFFORTS: [&str; 5] = ["none", "minimal", "low", "medium", "high"];
+
+/// Fields of the request that a model's own settings may not replace.
+const PROTECTED_FIELDS: [&str; 3] = ["model", "messages", "stream"];
+
+impl ModelConfig {
+    /// Checks the options that shape the request.
+    ///
+    /// # Errors
+    ///
+    /// An option has a value that makes no sense; the message says which.
+    pub fn check_options(&self) -> Result<(), String> {
+        if let Some(e) = &self.effort
+            && !EFFORTS.contains(&e.as_str())
+        {
+            return Err(format!("effort `{e}` is not one of {}", EFFORTS.join(", ")));
+        }
+        if let Some(n) = self.context_length
+            && !(512..=4_000_000).contains(&n)
+        {
+            return Err("the context length must be from 512 to 4000000 tokens".into());
+        }
+        if let Some(t) = self.temperature
+            && !(0.0..=2.0).contains(&t)
+        {
+            return Err("the temperature must be from 0 to 2".into());
+        }
+        self.extra_fields().map(|_| ())
+    }
+
+    /// The extra request fields, parsed.
+    ///
+    /// # Errors
+    ///
+    /// The text is not a JSON object, or sets a field that cannot be replaced.
+    pub fn extra_fields(&self) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+        let Some(text) = self.extra_body.as_deref().filter(|t| !t.trim().is_empty()) else {
+            return Ok(serde_json::Map::new());
+        };
+        let value: serde_json::Value = serde_json::from_str(text)
+            .map_err(|e| format!("the extra fields are not JSON ({e})"))?;
+        let serde_json::Value::Object(map) = value else {
+            return Err("the extra fields must be a JSON object, like {\"top_p\": 0.9}".into());
+        };
+        if let Some(k) = PROTECTED_FIELDS.iter().find(|k| map.contains_key(**k)) {
+            return Err(format!("the extra fields cannot set `{k}`"));
+        }
+        Ok(map)
+    }
 }
 
 /// Which model does which task.
@@ -467,6 +538,8 @@ impl Config {
             if m.base_url.is_none() && m.provider.default_base_url().is_none() {
                 return Err(ConfigError::NoBaseUrl(name.clone()));
             }
+            m.check_options()
+                .map_err(|e| ConfigError::Parse(format!("model `{name}`: {e}")))?;
         }
         for (task, model) in [
             (Task::PinTables, &self.tasks.pin_tables),
