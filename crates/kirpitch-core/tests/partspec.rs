@@ -236,3 +236,78 @@ fn zero_sizes_and_bad_sources_are_errors() {
         "pins[0].source.bbox".into()
     )));
 }
+
+#[test]
+fn hand_written_values_may_omit_sources() {
+    let spec = load();
+    assert_eq!(spec.origin, kirpitch_core::partspec::Origin::Hand);
+    assert!(!findings(&spec).iter().any(|f| f.0 == Check::SourceRequired));
+    // The default origin is not written to files.
+    assert!(!spec.to_json_string().contains("\"origin\""));
+}
+
+#[test]
+fn extracted_values_need_page_and_region() {
+    use kirpitch_core::partspec::Origin;
+    let mut spec = load();
+    spec.origin = Origin::Region;
+    let f = findings(&spec);
+    // The fixture has no sources on pins and pads.
+    assert!(f.contains(&(Check::SourceRequired, Level::Error, "pins[0].source".into())));
+    assert!(f.contains(&(
+        Check::SourceRequired,
+        Level::Error,
+        "land_pattern.pads[7].source".into()
+    )));
+    // Sources without a region are not enough either.
+    let src = kirpitch_core::Source {
+        page: 1,
+        bbox: None,
+        confidence: None,
+    };
+    spec.pins[0].source = Some(src);
+    let f = findings(&spec);
+    assert!(f.contains(&(
+        Check::SourceRequired,
+        Level::Error,
+        "pins[0].source.bbox".into()
+    )));
+    assert!(!f.contains(&(Check::SourceRequired, Level::Error, "pins[0].source".into())));
+}
+
+#[test]
+fn model_readings_also_need_a_confidence() {
+    use kirpitch_core::partspec::Origin;
+    use kirpitch_core::{BoundingBox, Confidence, Source};
+    let mut spec = load();
+    spec.origin = Origin::Llm;
+    let mut src = Source {
+        page: 1,
+        bbox: Some(BoundingBox([0.1, 0.1, 0.2, 0.2])),
+        confidence: None,
+    };
+    spec.pins[0].source = Some(src);
+    let f = findings(&spec);
+    assert!(f.contains(&(
+        Check::SourceRequired,
+        Level::Error,
+        "pins[0].source.confidence".into()
+    )));
+    src.confidence = Some(Confidence::new(0.9).unwrap());
+    spec.pins[0].source = Some(src);
+    assert!(!findings(&spec).contains(&(
+        Check::SourceRequired,
+        Level::Error,
+        "pins[0].source.confidence".into()
+    )));
+}
+
+#[test]
+fn origin_round_trips_in_json() {
+    use kirpitch_core::partspec::Origin;
+    let mut spec = load();
+    spec.origin = Origin::Llm;
+    let text = spec.to_json_string();
+    assert!(text.contains("\"origin\": \"llm\""));
+    assert_eq!(PartSpec::from_json_str(&text).unwrap().origin, Origin::Llm);
+}
