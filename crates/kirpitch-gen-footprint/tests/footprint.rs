@@ -2,16 +2,15 @@
 
 //! Footprint generation for the SOIC-8 example PartSpec.
 
-use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
 use kirpitch_core::PartSpec;
 use kirpitch_gen_footprint::{GenerateError, Options, file_name, generate};
 use kirpitch_kicad::KicadTarget;
+use kirpitch_kicad::Node;
 use kirpitch_kicad::sexpr::{check_round_trip, parse};
-use kirpitch_kicad::testing::{TempDir, assert_snapshot, kicad_cli_or_skip};
-use kirpitch_kicad::{Node, UpgradeOutcome};
+use kirpitch_kicad::testing::{assert_footprint_loads, assert_snapshot, kicad_cli_or_skip};
 
 const SPEC: &str = include_str!("../../kirpitch-core/tests/fixtures/soic8_example.json");
 
@@ -202,22 +201,5 @@ fn kicad_loads_the_footprint() {
     let Some(cli) = kicad_cli_or_skip() else {
         return;
     };
-    let tmp = TempDir::new("gen-fp");
-    let lib = tmp.path().join("lib.pretty");
-    fs::create_dir_all(&lib).unwrap();
-    let text = output();
-    fs::write(lib.join(file_name(&spec())), &text).unwrap();
-    let svgs = cli
-        .export_footprint_svg(&lib, &tmp.path().join("svg"))
-        .expect("kicad-cli exports the footprint");
-    assert_eq!(svgs.len(), 1);
-    check_round_trip(&text).expect("own parse and round trip");
-    if cli.version().unwrap().major >= 10 {
-        assert_eq!(
-            cli.upgrade_footprints(&lib).unwrap(),
-            UpgradeOutcome::Unchanged
-        );
-        let after = fs::read_to_string(lib.join(file_name(&spec()))).unwrap();
-        assert_eq!(after.replace("\r\n", "\n"), text);
-    }
+    assert_footprint_loads(&cli, "gen-fp", &output(), &file_name(&spec()));
 }

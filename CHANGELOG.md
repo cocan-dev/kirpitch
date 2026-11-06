@@ -29,5 +29,8 @@ follows [Semantic Versioning](https://semver.org/).
 - `kirpitch-gen-symbol`: KiCad 10 symbol generator (pins placed by type on the
   2.54 mm grid, stacked power pins, MPN and manufacturer fields) whose output
   equals KiCad's own canonical layout.
+- Golden test set: TI LM358, TI NE555 and Microchip 24LC256 in SOIC-8 with
+  datasheet URL and SHA-256 (no PDFs), hand-written PartSpecs and expected KiCad
+  files; symbols place bidirectional pins on the right.
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.

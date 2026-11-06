@@ -1,0 +1,319 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "mpn": "LM358DR",
+    "manufacturer": "Texas Instruments",
+    "description": "Industry-standard dual operational amplifier, SOIC-8",
+    "keywords": [
+      "dual opamp",
+      "operational amplifier"
+    ],
+    "datasheet_url": "https://www.ti.com/lit/ds/symlink/lm358.pdf",
+    "datasheet_sha256": "8277dff7b89138c63b3582d37f378065a1dea3cae5ed1e2926ddc2779eb7e3a2"
+  },
+  "package": {
+    "family": "SOIC",
+    "name": "SOIC-8_3.9x4.9mm_P1.27mm",
+    "pin_count": 8,
+    "pitch": 1.27,
+    "body": {
+      "length": 4.9,
+      "width": 3.9,
+      "height_max": 1.75
+    },
+    "dimensions": {
+      "A": {
+        "value": {
+          "nom": 1.75,
+          "max": 1.75
+        },
+        "source": {
+          "page": 63
+        }
+      },
+      "A1": {
+        "value": {
+          "min": 0.11,
+          "nom": 0.18,
+          "max": 0.25
+        },
+        "source": {
+          "page": 63
+        }
+      },
+      "D": {
+        "value": {
+          "min": 4.81,
+          "nom": 4.905,
+          "max": 5.0
+        },
+        "source": {
+          "page": 63
+        }
+      },
+      "E": {
+        "value": {
+          "min": 5.8,
+          "nom": 5.995,
+          "max": 6.19
+        },
+        "source": {
+          "page": 63
+        }
+      },
+      "E1": {
+        "value": {
+          "min": 3.81,
+          "nom": 3.895,
+          "max": 3.98
+        },
+        "source": {
+          "page": 63
+        }
+      },
+      "L": {
+        "value": {
+          "min": 0.41,
+          "nom": 0.84,
+          "max": 1.27
+        },
+        "source": {
+          "page": 63
+        }
+      },
+      "b": {
+        "value": {
+          "min": 0.31,
+          "nom": 0.41,
+          "max": 0.51
+        },
+        "source": {
+          "page": 63
+        }
+      },
+      "c": {
+        "value": {
+          "min": 0.13,
+          "nom": 0.19,
+          "max": 0.25
+        },
+        "source": {
+          "page": 63
+        }
+      },
+      "e": {
+        "value": {
+          "nom": 1.27
+        },
+        "source": {
+          "page": 63
+        }
+      }
+    },
+    "source": {
+      "page": 63
+    }
+  },
+  "pins": [
+    {
+      "number": "1",
+      "name": "OUT1",
+      "electrical_type": "output",
+      "group": "Amplifier 1",
+      "source": {
+        "page": 3
+      }
+    },
+    {
+      "number": "2",
+      "name": "IN1-",
+      "electrical_type": "input",
+      "group": "Amplifier 1",
+      "source": {
+        "page": 3
+      }
+    },
+    {
+      "number": "3",
+      "name": "IN1+",
+      "electrical_type": "input",
+      "group": "Amplifier 1",
+      "source": {
+        "page": 3
+      }
+    },
+    {
+      "number": "4",
+      "name": "V-",
+      "electrical_type": "power_in",
+      "group": "Power",
+      "source": {
+        "page": 3
+      }
+    },
+    {
+      "number": "5",
+      "name": "IN2+",
+      "electrical_type": "input",
+      "group": "Amplifier 2",
+      "source": {
+        "page": 3
+      }
+    },
+    {
+      "number": "6",
+      "name": "IN2-",
+      "electrical_type": "input",
+      "group": "Amplifier 2",
+      "source": {
+        "page": 3
+      }
+    },
+    {
+      "number": "7",
+      "name": "OUT2",
+      "electrical_type": "output",
+      "group": "Amplifier 2",
+      "source": {
+        "page": 3
+      }
+    },
+    {
+      "number": "8",
+      "name": "V+",
+      "electrical_type": "power_in",
+      "group": "Power",
+      "source": {
+        "page": 3
+      }
+    }
+  ],
+  "land_pattern": {
+    "pads": [
+      {
+        "number": "1",
+        "shape": "round_rect",
+        "x": -2.7,
+        "y": -1.905,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "corner_ratio": 0.0833,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 64
+        }
+      },
+      {
+        "number": "2",
+        "shape": "round_rect",
+        "x": -2.7,
+        "y": -0.635,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "corner_ratio": 0.0833,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 64
+        }
+      },
+      {
+        "number": "3",
+        "shape": "round_rect",
+        "x": -2.7,
+        "y": 0.635,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "corner_ratio": 0.0833,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 64
+        }
+      },
+      {
+        "number": "4",
+        "shape": "round_rect",
+        "x": -2.7,
+        "y": 1.905,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "corner_ratio": 0.0833,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 64
+        }
+      },
+      {
+        "number": "5",
+        "shape": "round_rect",
+        "x": 2.7,
+        "y": 1.905,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "corner_ratio": 0.0833,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 64
+        }
+      },
+      {
+        "number": "6",
+        "shape": "round_rect",
+        "x": 2.7,
+        "y": 0.635,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "corner_ratio": 0.0833,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 64
+        }
+      },
+      {
+        "number": "7",
+        "shape": "round_rect",
+        "x": 2.7,
+        "y": -0.635,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "corner_ratio": 0.0833,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 64
+        }
+      },
+      {
+        "number": "8",
+        "shape": "round_rect",
+        "x": 2.7,
+        "y": -1.905,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "corner_ratio": 0.0833,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 64
+        }
+      }
+    ],
+    "source": {
+      "page": 64
+    }
+  },
+  "approvals": {}
+}

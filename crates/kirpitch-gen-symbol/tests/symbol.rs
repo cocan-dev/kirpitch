@@ -2,16 +2,15 @@
 
 //! Symbol generation for the SOIC-8 example PartSpec.
 
-use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
 use kirpitch_core::PartSpec;
 use kirpitch_core::partspec::{Pad, Pin};
 use kirpitch_gen_symbol::{GenerateError, Options, file_name, generate};
+use kirpitch_kicad::KicadTarget;
 use kirpitch_kicad::sexpr::check_round_trip;
-use kirpitch_kicad::testing::{TempDir, assert_snapshot, kicad_cli_or_skip};
-use kirpitch_kicad::{KicadTarget, UpgradeOutcome};
+use kirpitch_kicad::testing::{assert_snapshot, assert_symbol_loads, kicad_cli_or_skip};
 
 const SPEC: &str = include_str!("../../kirpitch-core/tests/fixtures/soic8_example.json");
 
@@ -186,43 +185,5 @@ fn kicad_loads_the_symbol_with_stacked_pins() {
 }
 
 fn check_with_kicad(cli: &kirpitch_kicad::KicadCli, label: &str, text: &str, file_name: &str) {
-    let tmp = TempDir::new(label);
-    let file = tmp.path().join(file_name);
-    fs::write(&file, text).unwrap();
-    let svgs = cli
-        .export_symbol_svg(&file, &tmp.path().join("svg"))
-        .expect("kicad-cli exports the symbol");
-    assert_eq!(svgs.len(), 1);
-    check_round_trip(text).expect("own parse and round trip");
-    if cli.version().unwrap().major >= 10 {
-        assert_eq!(
-            cli.upgrade_symbols(&file).unwrap(),
-            UpgradeOutcome::Unchanged
-        );
-
-        // Pretend the file is old: KiCad then rewrites it in its own layout.
-        // An identical result (apart from the generator name) proves that our
-        // layout, field defaults and pin order are what KiCad itself writes.
-        let old = text.replace(
-            &format!("(version {})", KicadTarget::V10.symbol_format_version()),
-            "(version 20240101)",
-        );
-        fs::write(&file, old).unwrap();
-        assert_eq!(cli.upgrade_symbols(&file).unwrap(), UpgradeOutcome::Updated);
-        let rewritten = fs::read_to_string(&file)
-            .unwrap()
-            .replace("\r\n", "\n")
-            .replace("kicad_symbol_editor", "kirpitch");
-        if rewritten != text {
-            let (a, b) = (rewritten.lines(), text.lines());
-            let diff: Vec<String> = a
-                .zip(b)
-                .enumerate()
-                .filter(|(_, (x, y))| x != y)
-                .take(5)
-                .map(|(i, (x, y))| format!("line {}: KiCad `{x}` vs ours `{y}`", i + 1))
-                .collect();
-            panic!("KiCad rewrites the file differently:\n{}", diff.join("\n"));
-        }
-    }
+    assert_symbol_loads(cli, label, text, file_name);
 }

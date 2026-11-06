@@ -44,6 +44,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "kirpitch-golden"
+version = "0.0.1"
+dependencies = [
+ "kirpitch-core",
+ "kirpitch-gen-footprint",
+ "kirpitch-gen-symbol",
+ "kirpitch-kicad",
+ "serde_json",
+]
+
+[[package]]
 name = "kirpitch-kicad"
 version = "0.0.1"
 dependencies = [

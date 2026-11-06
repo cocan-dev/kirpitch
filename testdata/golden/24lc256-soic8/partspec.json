@@ -1,0 +1,307 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "mpn": "24LC256",
+    "manufacturer": "Microchip Technology",
+    "description": "256 Kbit I2C serial EEPROM, SOIC-8",
+    "keywords": [
+      "eeprom",
+      "i2c",
+      "memory"
+    ],
+    "datasheet_url": "https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/24AA256-24LC256-24FC256-256-Kbit-I2C-Serial-EEPROM-20001203X.pdf",
+    "datasheet_sha256": "362d63fbe6daedc73acf7bfecb82952b0c757d99027293b4102dd2b1bc117d7e"
+  },
+  "package": {
+    "family": "SOIC",
+    "name": "SOIC-8_3.9x4.9mm_P1.27mm",
+    "pin_count": 8,
+    "pitch": 1.27,
+    "body": {
+      "length": 4.9,
+      "width": 3.9,
+      "height_max": 1.75
+    },
+    "dimensions": {
+      "A": {
+        "value": {
+          "nom": 1.75,
+          "max": 1.75
+        },
+        "source": {
+          "page": 26
+        }
+      },
+      "A1": {
+        "value": {
+          "min": 0.1,
+          "nom": 0.175,
+          "max": 0.25
+        },
+        "source": {
+          "page": 26
+        }
+      },
+      "A2": {
+        "value": {
+          "min": 1.25,
+          "nom": 1.25
+        },
+        "source": {
+          "page": 26
+        }
+      },
+      "D": {
+        "value": {
+          "nom": 4.9
+        },
+        "source": {
+          "page": 26
+        }
+      },
+      "E": {
+        "value": {
+          "nom": 6.0
+        },
+        "source": {
+          "page": 26
+        }
+      },
+      "E1": {
+        "value": {
+          "nom": 3.9
+        },
+        "source": {
+          "page": 26
+        }
+      },
+      "L": {
+        "value": {
+          "min": 0.4,
+          "nom": 0.835,
+          "max": 1.27
+        },
+        "source": {
+          "page": 26
+        }
+      },
+      "b": {
+        "value": {
+          "min": 0.31,
+          "nom": 0.41,
+          "max": 0.51
+        },
+        "source": {
+          "page": 26
+        }
+      },
+      "c": {
+        "value": {
+          "min": 0.17,
+          "nom": 0.21,
+          "max": 0.25
+        },
+        "source": {
+          "page": 26
+        }
+      },
+      "e": {
+        "value": {
+          "nom": 1.27
+        },
+        "source": {
+          "page": 26
+        }
+      }
+    },
+    "source": {
+      "page": 26
+    }
+  },
+  "pins": [
+    {
+      "number": "1",
+      "name": "A0",
+      "electrical_type": "input",
+      "source": {
+        "page": 1
+      }
+    },
+    {
+      "number": "2",
+      "name": "A1",
+      "electrical_type": "input",
+      "source": {
+        "page": 1
+      }
+    },
+    {
+      "number": "3",
+      "name": "A2",
+      "electrical_type": "input",
+      "source": {
+        "page": 1
+      }
+    },
+    {
+      "number": "4",
+      "name": "VSS",
+      "electrical_type": "power_in",
+      "source": {
+        "page": 1
+      }
+    },
+    {
+      "number": "5",
+      "name": "SDA",
+      "electrical_type": "bidirectional",
+      "source": {
+        "page": 1
+      }
+    },
+    {
+      "number": "6",
+      "name": "SCL",
+      "electrical_type": "input",
+      "source": {
+        "page": 1
+      }
+    },
+    {
+      "number": "7",
+      "name": "WP",
+      "electrical_type": "input",
+      "source": {
+        "page": 1
+      }
+    },
+    {
+      "number": "8",
+      "name": "VCC",
+      "electrical_type": "power_in",
+      "source": {
+        "page": 1
+      }
+    }
+  ],
+  "land_pattern": {
+    "pads": [
+      {
+        "number": "1",
+        "shape": "rect",
+        "x": -2.7,
+        "y": -1.905,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 27
+        }
+      },
+      {
+        "number": "2",
+        "shape": "rect",
+        "x": -2.7,
+        "y": -0.635,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 27
+        }
+      },
+      {
+        "number": "3",
+        "shape": "rect",
+        "x": -2.7,
+        "y": 0.635,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 27
+        }
+      },
+      {
+        "number": "4",
+        "shape": "rect",
+        "x": -2.7,
+        "y": 1.905,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 27
+        }
+      },
+      {
+        "number": "5",
+        "shape": "rect",
+        "x": 2.7,
+        "y": 1.905,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 27
+        }
+      },
+      {
+        "number": "6",
+        "shape": "rect",
+        "x": 2.7,
+        "y": 0.635,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 27
+        }
+      },
+      {
+        "number": "7",
+        "shape": "rect",
+        "x": 2.7,
+        "y": -0.635,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 27
+        }
+      },
+      {
+        "number": "8",
+        "shape": "rect",
+        "x": 2.7,
+        "y": -1.905,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 27
+        }
+      }
+    ],
+    "source": {
+      "page": 27
+    }
+  },
+  "approvals": {}
+}

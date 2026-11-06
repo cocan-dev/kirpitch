@@ -1,0 +1,311 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "mpn": "NE555DR",
+    "manufacturer": "Texas Instruments",
+    "description": "Precision timer, SOIC-8",
+    "keywords": [
+      "555",
+      "timer"
+    ],
+    "datasheet_url": "https://www.ti.com/lit/ds/symlink/ne555.pdf",
+    "datasheet_sha256": "a3756e59fd06d0ba736edf9ffe71d99d2aae33fb7e49fedc86165a241179f4a6"
+  },
+  "package": {
+    "family": "SOIC",
+    "name": "SOIC-8_3.9x4.9mm_P1.27mm",
+    "pin_count": 8,
+    "pitch": 1.27,
+    "body": {
+      "length": 4.9,
+      "width": 3.9,
+      "height_max": 1.75
+    },
+    "dimensions": {
+      "A": {
+        "value": {
+          "nom": 1.75,
+          "max": 1.75
+        },
+        "source": {
+          "page": 30
+        }
+      },
+      "A1": {
+        "value": {
+          "min": 0.11,
+          "nom": 0.18,
+          "max": 0.25
+        },
+        "source": {
+          "page": 30
+        }
+      },
+      "D": {
+        "value": {
+          "min": 4.81,
+          "nom": 4.905,
+          "max": 5.0
+        },
+        "source": {
+          "page": 30
+        }
+      },
+      "E": {
+        "value": {
+          "min": 5.8,
+          "nom": 5.995,
+          "max": 6.19
+        },
+        "source": {
+          "page": 30
+        }
+      },
+      "E1": {
+        "value": {
+          "min": 3.81,
+          "nom": 3.895,
+          "max": 3.98
+        },
+        "source": {
+          "page": 30
+        }
+      },
+      "L": {
+        "value": {
+          "min": 0.41,
+          "nom": 0.84,
+          "max": 1.27
+        },
+        "source": {
+          "page": 30
+        }
+      },
+      "b": {
+        "value": {
+          "min": 0.31,
+          "nom": 0.41,
+          "max": 0.51
+        },
+        "source": {
+          "page": 30
+        }
+      },
+      "c": {
+        "value": {
+          "min": 0.13,
+          "nom": 0.19,
+          "max": 0.25
+        },
+        "source": {
+          "page": 30
+        }
+      },
+      "e": {
+        "value": {
+          "nom": 1.27
+        },
+        "source": {
+          "page": 30
+        }
+      }
+    },
+    "source": {
+      "page": 30
+    }
+  },
+  "pins": [
+    {
+      "number": "1",
+      "name": "GND",
+      "electrical_type": "power_in",
+      "source": {
+        "page": 3
+      }
+    },
+    {
+      "number": "2",
+      "name": "TRIG",
+      "electrical_type": "input",
+      "source": {
+        "page": 3
+      }
+    },
+    {
+      "number": "3",
+      "name": "OUT",
+      "electrical_type": "output",
+      "source": {
+        "page": 3
+      }
+    },
+    {
+      "number": "4",
+      "name": "RESET",
+      "electrical_type": "input",
+      "source": {
+        "page": 3
+      }
+    },
+    {
+      "number": "5",
+      "name": "CONT",
+      "electrical_type": "bidirectional",
+      "source": {
+        "page": 3
+      }
+    },
+    {
+      "number": "6",
+      "name": "THRES",
+      "electrical_type": "input",
+      "source": {
+        "page": 3
+      }
+    },
+    {
+      "number": "7",
+      "name": "DISCH",
+      "electrical_type": "open_collector",
+      "source": {
+        "page": 3
+      }
+    },
+    {
+      "number": "8",
+      "name": "VCC",
+      "electrical_type": "power_in",
+      "source": {
+        "page": 3
+      }
+    }
+  ],
+  "land_pattern": {
+    "pads": [
+      {
+        "number": "1",
+        "shape": "round_rect",
+        "x": -2.7,
+        "y": -1.905,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "corner_ratio": 0.0833,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 31
+        }
+      },
+      {
+        "number": "2",
+        "shape": "round_rect",
+        "x": -2.7,
+        "y": -0.635,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "corner_ratio": 0.0833,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 31
+        }
+      },
+      {
+        "number": "3",
+        "shape": "round_rect",
+        "x": -2.7,
+        "y": 0.635,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "corner_ratio": 0.0833,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 31
+        }
+      },
+      {
+        "number": "4",
+        "shape": "round_rect",
+        "x": -2.7,
+        "y": 1.905,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "corner_ratio": 0.0833,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 31
+        }
+      },
+      {
+        "number": "5",
+        "shape": "round_rect",
+        "x": 2.7,
+        "y": 1.905,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "corner_ratio": 0.0833,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 31
+        }
+      },
+      {
+        "number": "6",
+        "shape": "round_rect",
+        "x": 2.7,
+        "y": 0.635,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "corner_ratio": 0.0833,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 31
+        }
+      },
+      {
+        "number": "7",
+        "shape": "round_rect",
+        "x": 2.7,
+        "y": -0.635,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "corner_ratio": 0.0833,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 31
+        }
+      },
+      {
+        "number": "8",
+        "shape": "round_rect",
+        "x": 2.7,
+        "y": -1.905,
+        "size_x": 1.55,
+        "size_y": 0.6,
+        "rotation_deg": 0.0,
+        "corner_ratio": 0.0833,
+        "paste": true,
+        "role": "signal",
+        "source": {
+          "page": 31
+        }
+      }
+    ],
+    "source": {
+      "page": 31
+    }
+  },
+  "approvals": {}
+}
