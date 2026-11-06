@@ -8,33 +8,63 @@ from one shared specification, and you approve each stage before the next one
 is built. It is written in Rust and runs locally, with any LLM (large language
 model) you have, or with none at all.
 
-**Status:** early development. Milestone 1 is done: from a hand-written
-PartSpec (Kirpitch's JSON description of a part) the command line tool writes a
-symbol and a footprint for SOIC-8 packages that load in KiCad 8, 9 and 10.
-Milestone 2a adds a review flow without a language model (package templates for SOIC/TSSOP/SOT-23/DIP, pin table import, gates and approvals in the CLI). PDF reading, extraction with language models, the desktop app and 3D models are not built yet.
+**Status:** version 1 (the MVP) is built and tested; there is no release yet.
+From a datasheet or by hand, Kirpitch makes a symbol, a footprint and a simple
+3D model for SOIC/TSSOP-style, SOT-23, DIP and QFN packages, for KiCad 8, 9 and
+10, with a review stage for each. What is and is not in version 1 is listed in
+the [requirements](docs/requirements.md#scope-and-milestones); the measured
+model results are in [docs/model-recommendations.md](docs/model-recommendations.md).
 
 ## Try it
 
-You need Rust (stable). KiCad is optional.
+You need Rust (stable). KiCad is optional (it is used to check the files).
+
+**From a PartSpec** (the JSON description of a part):
 
 ```sh
 cargo run -p kirpitch-cli -- check testdata/golden/lm358-soic8/partspec.json
 cargo run -p kirpitch-cli -- gen all testdata/golden/lm358-soic8/partspec.json -o out
 ```
 
-This writes `out/LM358DR.kicad_sym` and `out/kirpitch.pretty/SOIC-8_3.9x4.9mm_P1.27mm.kicad_mod`.
-Use `--target 8`, `9` or `10` to choose the KiCad version; the default is the
-installed one. `kirpitch schema` prints the JSON schema of a PartSpec.
+This writes `out/LM358DR.kicad_sym`, `out/kirpitch.pretty/...kicad_mod` and
+`out/kirpitch.3dshapes/...step` and `...wrl` (the footprint links the STEP file
+as `${KIPRJMOD}/kirpitch.3dshapes/...`). Use `--target 8`, `9` or `10` to choose the
+KiCad version; the default is the installed one.
+
+**By hand, with the review stages:**
+
+```sh
+kirpitch template spec.json --mpn LM358 --manufacturer TI --description "Dual op amp" dual-row ...
+kirpitch pins spec.json --import pins.csv        # or --pdf datasheet.pdf --page 3 --region l,t,r,b
+kirpitch review spec.json --stage pinout         # then footprint, then 3d
+kirpitch approve spec.json --stage pinout
+```
+
+**With a language model** (copy [kirpitch.example.toml](kirpitch.example.toml) to
+`kirpitch.toml` first; keys are only read from environment variables):
+
+```sh
+kirpitch models test
+kirpitch build datasheet.pdf -o spec.json --hint "SOIC-8, drawing D0008A" --second-read
+kirpitch bench          # needs the golden datasheets: cargo xtask fetch-datasheets
+```
+
+`build` needs a text-based PDF and `cargo xtask fetch-pdfium` once (set
+`KIRPITCH_PDFIUM_LIB_DIR` to the folder it prints). With `local_only = true` no
+data leaves your machine or network.
 
 ## The app
-
-There is a first desktop window (Tauri). Start it with
 
 ```sh
 cargo run -p kirpitch-app
 ```
 
-Type the path of a PartSpec file (for example `testdatagoldenm358-soic8partspec.json`) and press Open. To see the datasheet beside the pin table, run `cargo xtask fetch-pdfium` once, type the path of the datasheet PDF (for example `testdatapdfsm358.pdf`) and click a row. It shows the review stages, the pins and pads with their datasheet pages, the findings and a drawing of the footprint, lets you approve each stage and writes the KiCad files. On Linux it needs the WebKitGTK development packages; on Windows the WebView2 runtime that comes with Windows 11.
+Type the path of a PartSpec file and press Open. The window shows the pin table,
+the symbol, the footprint, the 3D views and the datasheet page side by side;
+selecting a pin highlights it everywhere. You can edit pins, drag a box on the
+datasheet page to read a pin table, approve each stage and write the KiCad files.
+On Linux it needs the WebKitGTK development packages; on Windows the WebView2
+runtime that comes with Windows 11.
 
 ## Documentation
 
