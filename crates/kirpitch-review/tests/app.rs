@@ -5,8 +5,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use kirpitch_app::{approve_stage, export_files, footprint_svg, load_spec, now_rfc3339, open_spec};
 use kirpitch_kicad::testing::TempDir;
+use kirpitch_review::{
+    approve_stage, export_files, footprint_svg, load_spec, now_rfc3339, open_spec,
+};
 
 fn golden(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -209,7 +211,7 @@ fn the_time_looks_like_a_utc_timestamp() {
 
 #[test]
 fn base64_matches_the_standard_vectors() {
-    use kirpitch_app::base64;
+    use kirpitch_review::base64;
     assert_eq!(base64(b""), "");
     assert_eq!(base64(b"f"), "Zg==");
     assert_eq!(base64(b"fo"), "Zm8=");
@@ -241,7 +243,7 @@ fn a_datasheet_page_is_rendered_when_pdfium_is_available() {
     ];
     fs::write(&pdf, kirpitch_extract::testing::make_pdf(&pages)).unwrap();
     let path = pdf.to_string_lossy().into_owned();
-    let image = kirpitch_app::render_datasheet_page(&path, 2, 400).unwrap();
+    let image = kirpitch_review::render_datasheet_page(&path, 2, 400).unwrap();
     assert_eq!((image.width, image.height, image.page_count), (400, 518, 2));
     assert_eq!(
         image.rgba_base64.len(),
@@ -249,12 +251,12 @@ fn a_datasheet_page_is_rendered_when_pdfium_is_available() {
     );
     // A page after the last one is clamped, a missing file is an error.
     assert_eq!(
-        kirpitch_app::render_datasheet_page(&path, 9, 400)
+        kirpitch_review::render_datasheet_page(&path, 9, 400)
             .unwrap()
             .page_count,
         2
     );
-    assert!(kirpitch_app::render_datasheet_page("nope.pdf", 1, 400).is_err());
+    assert!(kirpitch_review::render_datasheet_page("nope.pdf", 1, 400).is_err());
 }
 
 #[test]
@@ -290,7 +292,7 @@ fn stacked_power_pins_are_drawn_once() {
     pad.y = kirpitch_core::Mm::new(0.0).unwrap();
     spec.land_pattern.pads.push(pad);
     spec.package.pin_count = 9;
-    let svg = kirpitch_app::symbol_svg(&spec).unwrap();
+    let svg = kirpitch_review::symbol_svg(&spec).unwrap();
     assert_eq!(svg.matches("class=\"spin\"").count(), 8);
     assert!(!svg.contains("data-pin=\"9\""));
 }
@@ -349,7 +351,7 @@ fn a_region_of_the_page_becomes_the_pin_table() {
     // Under the heading: from y = 725 down to 515 pt of 792.
     let region = [0.0, 1.0 - 725.0 / 792.0, 1.0, 1.0 - 515.0 / 792.0];
 
-    let table = kirpitch_app::read_region(&pdf, 1, region).unwrap();
+    let table = kirpitch_review::read_region(&pdf, 1, region).unwrap();
     assert_eq!(table.rows.len(), 9);
     assert_eq!(table.rows[0], ["PIN", "NAME", "TYPE"]);
     assert_eq!(table.rows[8], ["8", "V+", "Power"]);
@@ -358,7 +360,7 @@ fn a_region_of_the_page_becomes_the_pin_table() {
     let edited = table.tsv.replace("V+\tPower", "V+\tPower supply");
     let tmp2 = TempDir::new("app-region-spec");
     let spec = copy_of("lm358-soic8", &tmp2);
-    let out = kirpitch_app::import_pins(&spec, &edited, 1, Some(region)).unwrap();
+    let out = kirpitch_review::import_pins(&spec, &edited, 1, Some(region)).unwrap();
     assert_eq!(out.view.pins.len(), 8);
     assert_eq!(out.view.pins[7].name, "V+");
     assert_eq!(out.view.pins[7].electrical_type, "power_in");
@@ -374,7 +376,7 @@ fn importing_pins_makes_an_approved_pinout_stale() {
     let tmp = TempDir::new("app-import-stale");
     let spec = copy_of("lm358-soic8", &tmp);
     approve_stage(&spec, "pinout", None, now_rfc3339()).unwrap();
-    let out = kirpitch_app::import_pins(
+    let out = kirpitch_review::import_pins(
         &spec,
         "1 OUT1 output\n2 IN1- input\n3 IN1+ input\n4 V- power\n5 IN2+ input\n6 IN2- input\n7 OUT2 output\n8 VCC power\n",
         3,
@@ -394,20 +396,20 @@ fn bad_regions_and_tables_give_readable_errors() {
         [0.0, 0.0, 1.5, 1.0],
     ] {
         assert!(
-            kirpitch_app::read_region("x.pdf", 1, bad)
+            kirpitch_review::read_region("x.pdf", 1, bad)
                 .unwrap_err()
                 .contains("empty or outside"),
             "{bad:?}"
         );
-        assert!(kirpitch_app::import_pins(&spec, "1 A", 1, Some(bad)).is_err());
+        assert!(kirpitch_review::import_pins(&spec, "1 A", 1, Some(bad)).is_err());
     }
     assert!(
-        kirpitch_app::import_pins(&spec, "", 1, None)
+        kirpitch_review::import_pins(&spec, "", 1, None)
             .unwrap_err()
             .contains("empty")
     );
     assert!(
-        kirpitch_app::import_pins(&spec, "1 A\n,B\n", 1, None)
+        kirpitch_review::import_pins(&spec, "1 A\n,B\n", 1, None)
             .unwrap_err()
             .contains("line 2")
     );
@@ -415,10 +417,10 @@ fn bad_regions_and_tables_give_readable_errors() {
     assert_eq!(open_spec(&spec).unwrap().pins.len(), 8);
 }
 
-fn inputs(view: &kirpitch_app::SpecView) -> Vec<kirpitch_app::PinInput> {
+fn inputs(view: &kirpitch_review::SpecView) -> Vec<kirpitch_review::PinInput> {
     view.pins
         .iter()
-        .map(|p| kirpitch_app::PinInput {
+        .map(|p| kirpitch_review::PinInput {
             number: p.number.clone(),
             name: p.name.clone(),
             electrical_type: p.electrical_type.clone(),
@@ -437,7 +439,7 @@ fn a_pin_can_be_renamed_and_retyped_and_keeps_its_source() {
     pins[4].name = "  CTRL ".into();
     pins[4].electrical_type = "input".into();
     pins[4].group = Some("  ".into());
-    let view = kirpitch_app::set_pins(&path, pins).unwrap();
+    let view = kirpitch_review::set_pins(&path, pins).unwrap();
     assert_eq!(view.pins[4].name, "CTRL");
     assert_eq!(view.pins[4].electrical_type, "input");
     assert_eq!(view.pins[4].group, None);
@@ -453,7 +455,7 @@ fn pins_can_be_added_deleted_and_moved() {
     let mut pins = inputs(&open_spec(&path).unwrap());
     pins.remove(0); // delete GND
     pins.swap(0, 1); // move OUT before TRIG
-    pins.push(kirpitch_app::PinInput {
+    pins.push(kirpitch_review::PinInput {
         number: "9".into(),
         name: "NC".into(),
         electrical_type: "no_connect".into(),
@@ -461,7 +463,7 @@ fn pins_can_be_added_deleted_and_moved() {
         page: None,
         region: None,
     });
-    let view = kirpitch_app::set_pins(&path, pins).unwrap();
+    let view = kirpitch_review::set_pins(&path, pins).unwrap();
     let names: Vec<&str> = view.pins.iter().map(|p| p.name.as_str()).collect();
     assert_eq!(
         names,
@@ -481,7 +483,7 @@ fn an_invalid_list_is_saved_and_shown_as_findings() {
     let path = copy_of("ne555-soic8", &tmp);
     let mut pins = inputs(&open_spec(&path).unwrap());
     pins[1].number = "1".into();
-    let view = kirpitch_app::set_pins(&path, pins).unwrap();
+    let view = kirpitch_review::set_pins(&path, pins).unwrap();
     assert!(
         view.findings
             .iter()
@@ -497,7 +499,7 @@ fn a_wrong_type_name_saves_nothing() {
     let before = fs::read_to_string(&path).unwrap();
     let mut pins = inputs(&open_spec(&path).unwrap());
     pins[0].electrical_type = "wobbly".into();
-    let err = kirpitch_app::set_pins(&path, pins).unwrap_err();
+    let err = kirpitch_review::set_pins(&path, pins).unwrap_err();
     assert!(err.contains("pin 1") && err.contains("wobbly"), "{err}");
     assert_eq!(fs::read_to_string(&path).unwrap(), before);
 }
@@ -509,6 +511,6 @@ fn editing_a_pin_reopens_an_approved_pinout() {
     approve_stage(&path, "pinout", None, now_rfc3339()).unwrap();
     let mut pins = inputs(&open_spec(&path).unwrap());
     pins[2].name = "OUTPUT".into();
-    let view = kirpitch_app::set_pins(&path, pins).unwrap();
+    let view = kirpitch_review::set_pins(&path, pins).unwrap();
     assert_eq!(view.gates[0].status, "stale");
 }

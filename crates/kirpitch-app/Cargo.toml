@@ -1,6 +1,6 @@
 [package]
 name = "kirpitch-app"
-description = "The Kirpitch desktop app"
+description = "The Kirpitch desktop app: the window around the review flow"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,22 +11,11 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-kirpitch-core = { path = "../kirpitch-core" }
-kirpitch-kicad = { path = "../kirpitch-kicad" }
-kirpitch-gen-symbol = { path = "../kirpitch-gen-symbol" }
-kirpitch-gen-footprint = { path = "../kirpitch-gen-footprint" }
-kirpitch-gen-3d = { path = "../kirpitch-gen-3d" }
-kirpitch-extract = { path = "../kirpitch-extract" }
+kirpitch-review = { path = "../kirpitch-review" }
 tauri = "2"
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.154"
 
 [build-dependencies]
 tauri-build = "2"
-
-[lib]
-name = "kirpitch_app"
-path = "src/lib.rs"
 
 [[bin]]
 name = "kirpitch-app"

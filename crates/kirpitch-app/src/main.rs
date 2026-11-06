@@ -5,7 +5,7 @@
 // Do not open a console window on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use kirpitch_app::{
+use kirpitch_review::{
     ImportOutcome, PageImage, PinInput, RegionTable, SpecView, approve_stage, export_files,
     import_pins, now_rfc3339, open_spec, read_region, render_datasheet_page, set_pins,
 };

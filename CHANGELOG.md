@@ -8,6 +8,8 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- CI: the app is split into `kirpitch-review` (logic and tests) and `kirpitch-app` (the Tauri window). Only a separate `Window` job installs the web view libraries; all other jobs run with `--exclude kirpitch-app`.
+- Symbol checks against the KiCad library conventions (`klc_symbol::check_symbol`): fields, grid, pin length, pins touching the body, text sizes, overlapping pins. Tested on the golden symbols and on symbols of SOIC, DIP and QFN parts for KiCad 8, 9 and 10. Rule numbers are still not cited (the KLC site refuses automated access).
 - Language model backend (`kirpitch-models`): `kirpitch.toml` with per-task routing and `local_only`, adapters for Anthropic, OpenAI-compatible servers and Ollama over the system `curl`, schema-checked answers with one repair step, cache. Commands `kirpitch build`, `kirpitch models test` and `kirpitch bench` (ADR 0026, `kirpitch.example.toml`).
 - 3D model: `kirpitch-gen-3d` builds a parametric model of body, pin 1 mark and terminals and writes STEP and VRML; `gen 3d`, `gen all` writes `kirpitch.3dshapes` and links it from the footprint; review stage `3d` with the `model_fit` check; flat views in the window (ADR 0025).
 - QFN support: `ipc::flat_no_lead`, `quad_flat_no_lead`, `kirpitch template ... qfn`, checked against KiCad's QFN-32 footprint.
