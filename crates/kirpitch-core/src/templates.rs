@@ -98,6 +98,70 @@ pub fn dual_row_gull_wing(
     if p.pin_count < 4 || !p.pin_count.is_multiple_of(2) {
         return Err(TemplateError::PinCount(p.pin_count));
     }
+    let per_side = (p.pin_count / 2) as usize;
+    let first = -(per_side as f64 - 1.0) / 2.0;
+    let mut slots = Vec::with_capacity(p.pin_count as usize);
+    for i in 0..per_side {
+        slots.push((-1.0, first + i as f64));
+    }
+    for i in 0..per_side {
+        slots.push((1.0, -first - i as f64));
+    }
+    let name = format!(
+        "{}-{}_{}x{}mm_P{}mm",
+        p.family,
+        p.pin_count,
+        format_number(p.body_width),
+        format_number(p.body_length),
+        format_number(p.pitch)
+    );
+    build(p, density, &slots, name)
+}
+
+/// A SOT-23 package with 3, 5 or 6 leads (JEDEC TO-236 and MO-178).
+///
+/// The leads sit on a grid of three positions along each side, as in KiCad's
+/// footprints: pins 1 to 3 down the left side, the others up the right side.
+/// `pin_count` must be 3, 5 or 6. The footprint is named `SOT-23` for three
+/// leads (the family name) and `SOT-23-5` or `SOT-23-6` otherwise.
+pub fn sot23(p: &DualRowGullWing, density: Density) -> Result<Template, TemplateError> {
+    // (side, row in pitches from the centre along y), in pin order.
+    let slots: Vec<(f64, f64)> = match p.pin_count {
+        3 => vec![(-1.0, -1.0), (-1.0, 1.0), (1.0, 0.0)],
+        5 => vec![
+            (-1.0, -1.0),
+            (-1.0, 0.0),
+            (-1.0, 1.0),
+            (1.0, 1.0),
+            (1.0, -1.0),
+        ],
+        6 => vec![
+            (-1.0, -1.0),
+            (-1.0, 0.0),
+            (-1.0, 1.0),
+            (1.0, 1.0),
+            (1.0, 0.0),
+            (1.0, -1.0),
+        ],
+        n => return Err(TemplateError::PinCount(n)),
+    };
+    let name = if p.pin_count == 3 {
+        p.family.clone()
+    } else {
+        format!("{}-{}", p.family, p.pin_count)
+    };
+    build(p, density, &slots, name)
+}
+
+/// Builds package and pads for pins at the given `(side, row)` slots, numbered
+/// from 1 in the order of the slots. `side` is -1 for the left and 1 for the
+/// right; `row` counts pitches from the centre of the body along y.
+fn build(
+    p: &DualRowGullWing,
+    density: Density,
+    slots: &[(f64, f64)],
+    name: String,
+) -> Result<Template, TemplateError> {
     let pitch = mm(p.pitch, "pitch")?;
     let body = Body {
         length: mm(p.body_length, "body_length")?,
@@ -115,15 +179,14 @@ pub fn dual_row_gull_wing(
         &Tolerances::default(),
     )?;
 
-    let per_side = (p.pin_count / 2) as usize;
-    let first_y = -(per_side as f64 - 1.0) / 2.0 * p.pitch;
     let ratio = CORNER_RATIO.min(MAX_CORNER_RADIUS / calc.x_max.min(calc.pad_length));
-    let pad = |number: usize, x: f64, y: f64| -> Result<Pad, TemplateError> {
-        Ok(Pad {
-            number: number.to_string(),
+    let mut pads = Vec::with_capacity(slots.len());
+    for (i, (side, row)) in slots.iter().enumerate() {
+        pads.push(Pad {
+            number: (i + 1).to_string(),
             shape: PadShape::RoundRect,
-            x: Mm::new(x).map_err(|_| TemplateError::BadValue("pad"))?,
-            y: Mm::new(y).map_err(|_| TemplateError::BadValue("pad"))?,
+            x: Mm::new(side * calc.pad_center).map_err(|_| TemplateError::BadValue("pad"))?,
+            y: Mm::new(row * p.pitch).map_err(|_| TemplateError::BadValue("pad"))?,
             size_x: Mm::new(calc.pad_length).map_err(|_| TemplateError::BadValue("pad"))?,
             size_y: Mm::new(calc.x_max).map_err(|_| TemplateError::BadValue("pad"))?,
             rotation_deg: 0.0,
@@ -131,18 +194,7 @@ pub fn dual_row_gull_wing(
             paste: true,
             role: PadRole::Signal,
             source: None,
-        })
-    };
-    let mut pads = Vec::with_capacity(p.pin_count as usize);
-    for i in 0..per_side {
-        pads.push(pad(i + 1, -calc.pad_center, first_y + i as f64 * p.pitch)?);
-    }
-    for i in 0..per_side {
-        pads.push(pad(
-            per_side + i + 1,
-            calc.pad_center,
-            -first_y - i as f64 * p.pitch,
-        )?);
+        });
     }
 
     let mut dimensions: BTreeMap<String, Sourced<Tolerance>> = BTreeMap::new();
@@ -154,14 +206,6 @@ pub fn dual_row_gull_wing(
     dimensions.insert("b".into(), dimension(p.lead_width)?);
     dimensions.insert("e".into(), dimension(Range::exact(p.pitch))?);
 
-    let name = format!(
-        "{}-{}_{}x{}mm_P{}mm",
-        p.family,
-        p.pin_count,
-        format_number(p.body_width),
-        format_number(p.body_length),
-        format_number(p.pitch)
-    );
     Ok(Template {
         package: Package {
             family: p.family.clone(),

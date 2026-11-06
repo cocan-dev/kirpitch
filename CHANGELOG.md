@@ -57,5 +57,7 @@ follows [Semantic Versioning](https://semver.org/).
 - Package template for dual-row gull-wing packages (SOIC, SOP, SSOP, TSSOP, MSOP)
   in `kirpitch_core::templates`: JEDEC letters in, package and IPC-7351 land
   pattern out, matching KiCad's official SOIC-8, SOIC-16 and TSSOP-14 pads.
+- SOT-23 template (3, 5 and 6 leads) matching KiCad's pin positions and SOT-23-5 pads;
+  footprints made from templates load in KiCad 8, 9 and 10.
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.
