@@ -88,6 +88,64 @@ pub struct SettingsView {
     pub prompts: Vec<PromptView>,
     /// A short code naming this set of prompts.
     pub prompts_fingerprint: String,
+    /// How the extraction runs now.
+    pub extraction: ExtractionValues,
+    /// The values used when nothing is set.
+    pub extraction_defaults: ExtractionValues,
+}
+
+/// The options of the extraction, all with their value.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExtractionValues {
+    /// Read the pin table twice by default.
+    pub second_read: bool,
+    /// Tries for each step.
+    pub attempts: u32,
+    /// Seconds to wait for one answer.
+    pub timeout_secs: u64,
+    /// Longest answer of the part number step.
+    pub max_tokens_metadata: u32,
+    /// Longest answer of the pin table step.
+    pub max_tokens_pins: u32,
+    /// Longest answer of the package step.
+    pub max_tokens_package: u32,
+    /// Characters of page text for the pin table.
+    pub pin_pages_chars: usize,
+    /// Characters of page text for the package.
+    pub package_pages_chars: usize,
+    /// Keep answers and reuse them.
+    pub cache: bool,
+}
+
+impl ExtractionValues {
+    fn of(e: &kirpitch_models::Extraction) -> ExtractionValues {
+        ExtractionValues {
+            second_read: e.second_read(),
+            attempts: e.attempts(),
+            timeout_secs: e.timeout_secs(),
+            max_tokens_metadata: e.max_tokens_metadata(),
+            max_tokens_pins: e.max_tokens_pins(),
+            max_tokens_package: e.max_tokens_package(),
+            pin_pages_chars: e.pin_pages_chars(),
+            package_pages_chars: e.package_pages_chars(),
+            cache: e.cache(),
+        }
+    }
+
+    fn to_extraction(&self) -> kirpitch_models::Extraction {
+        kirpitch_models::Extraction {
+            second_read: Some(self.second_read),
+            attempts: Some(self.attempts),
+            timeout_secs: Some(self.timeout_secs),
+            max_tokens_metadata: Some(self.max_tokens_metadata),
+            max_tokens_pins: Some(self.max_tokens_pins),
+            max_tokens_package: Some(self.max_tokens_package),
+            pin_pages_chars: Some(self.pin_pages_chars),
+            package_pages_chars: Some(self.package_pages_chars),
+            cache: Some(self.cache),
+        }
+        .normalized()
+    }
 }
 
 /// One prompt as the screen shows it.
@@ -230,6 +288,8 @@ pub fn settings_view(path: &Path, keys: &dyn KeyStore) -> SettingsView {
         providers: providers(),
         prompts: prompt_views(&config.prompts),
         prompts_fingerprint: config.prompts.fingerprint(),
+        extraction: ExtractionValues::of(&config.extraction),
+        extraction_defaults: ExtractionValues::of(&kirpitch_models::Extraction::default()),
     }
 }
 
@@ -307,6 +367,9 @@ pub struct SettingsInput {
     /// not saved.
     #[serde(default)]
     pub prompts: std::collections::BTreeMap<String, String>,
+    /// How the extraction runs; left as it is when missing.
+    #[serde(default)]
+    pub extraction: Option<ExtractionValues>,
 }
 
 fn opt(s: &str) -> Option<String> {
@@ -372,6 +435,10 @@ pub fn config_from_input(input: &SettingsInput) -> Result<Config, String> {
     config.privacy.local_only = input.local_only;
     for (key, text) in &input.prompts {
         config.prompts.set(key, text)?;
+    }
+    if let Some(values) = &input.extraction {
+        config.extraction = values.to_extraction();
+        config.extraction.check()?;
     }
     config.folders = Folders {
         parts: opt(&input.parts),

@@ -210,7 +210,7 @@
       <nav id="settings-tabs" class="settings-tabs" aria-label="Settings sections" role="tablist">
         <button type="button" data-pane="models" role="tab">Models and keys</button>
         <button type="button" data-pane="tasks" role="tab">Tasks and privacy</button>
-        <button type="button" data-pane="prompts" role="tab">Extraction prompts</button>
+        <button type="button" data-pane="prompts" role="tab">Extraction</button>
         <button type="button" data-pane="evaluate" role="tab">Evaluate</button>
         <button type="button" data-pane="folders" role="tab">Folders and defaults</button>
       </nav>
@@ -275,9 +275,7 @@
       <label class="wide">Save the part as
         <span class="pick-row"><input id="ds-out" type="text" required spellcheck="false"><button type="button" id="ds-out-browse">Browse…</button></span>
       </label>
-      <label class="wide">Model settings (leave empty for kirpitch.toml in the folder the app started in)
-        <span class="pick-row"><input id="ds-config" type="text" spellcheck="false"><button type="button" id="ds-config-browse">Browse…</button></span>
-      </label>
+      <p class="muted small" id="ds-settings-note">The models, prompts and limits come from Settings. <button type="button" id="ds-open-settings" class="link">Open settings</button></p>
       <label class="check"><input id="ds-second" type="checkbox"> Read the pin table twice and flag differences</label>
       <p id="ds-error" class="message error" hidden></p>
       <section id="ds-progress" class="build-progress" hidden aria-live="polite">
@@ -286,6 +284,14 @@
           <span id="pg-time" class="pg-time"></span>
         </header>
         <ol id="pg-steps" class="pg-steps"></ol>
+        <details id="pg-verbose" class="pg-verbose">
+          <summary><span>Model output</span> <span id="pg-verbose-count" class="muted small"></span></summary>
+          <div class="pg-verbose-bar">
+            <span class="muted small">What is sent to the model and what it answers, call by call. The model's own thinking is shown when the server returns it.</span>
+            <button type="button" id="pg-copy" class="ghost small-btn">Copy all</button>
+          </div>
+          <div id="pg-log" class="pg-log"></div>
+        </details>
       </section>
       <div id="ds-result" class="result" hidden></div>
       <div class="dialog-actions">

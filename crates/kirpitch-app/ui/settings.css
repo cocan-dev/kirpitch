@@ -179,3 +179,8 @@ button.danger { background: var(--err); border-color: var(--err); color: #fff; }
 .run-nums { display: flex; gap: 18px; flex-wrap: wrap; align-items: baseline; }
 .run-stat { display: inline-flex; gap: 6px; align-items: baseline; }
 .run-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Extraction options */
+.opt-checks { display: flex; flex-direction: column; gap: 10px; }
+.pane-title { margin: 8px 0 0; font-size: 18px; }
+#ds-settings-note button.link { background: none; border: 0; padding: 0; color: var(--brick); cursor: pointer; font: inherit; text-decoration: underline; }

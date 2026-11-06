@@ -433,3 +433,133 @@ fn prompts_are_saved_in_the_file_only_when_changed() {
     let back = Config::from_toml_str(&text).unwrap();
     assert_eq!(back.prompts, config.prompts);
 }
+
+fn ollama_config() -> Config {
+    Config::from_toml_str(
+        "[models.m]\nprovider = \"ollama\"\nbase_url = \"http://localhost:11434\"\nmodel = \"test\"\n",
+    )
+    .unwrap()
+}
+
+#[test]
+fn every_call_is_reported_with_what_the_model_said_and_thought() {
+    let m = Arc::new(MockTransport::new());
+    // A thinking model: nothing in the answer, a lot of thinking, stopped at
+    // the limit. Then a good answer.
+    m.push_ok(
+        &json!({"message": {"content": "", "thinking": "Let me think about this datasheet at length..."},
+                "done_reason": "length", "prompt_eval_count": 100, "eval_count": 2000})
+        .to_string(),
+    );
+    m.push_ok(
+        &json!({"message": {"content": metadata_answer().to_string()}, "done_reason": "stop"})
+            .to_string(),
+    );
+    let calls = std::sync::Mutex::new(Vec::new());
+    let options = BuildOptions {
+        mpn: None,
+        ..Default::default()
+    };
+    kirpitch_models::build_with_progress(
+        &ollama_config(),
+        m,
+        &Cache::none(),
+        &pages(),
+        &options,
+        &kirpitch_models::MemoryKeyStore::default(),
+        &|p| {
+            if let Some(c) = &p.call {
+                calls.lock().unwrap().push((p.stage, c.clone()));
+            }
+        },
+    );
+    let calls = calls.lock().unwrap();
+    let metadata: Vec<_> = calls.iter().filter(|(s, _)| *s == "metadata").collect();
+    // sent, received (empty), rejected, sent, received.
+    let phases: Vec<&str> = metadata.iter().map(|(_, c)| c.phase.as_str()).collect();
+    assert_eq!(phases, ["sent", "received", "rejected", "sent", "received"]);
+    let first = &metadata[1].1;
+    assert_eq!(first.text, "");
+    assert!(first.thinking.contains("think about this datasheet"));
+    assert_eq!(first.finish, "length");
+    assert_eq!(first.tokens_out, 2000);
+    assert_eq!(first.label, "metadata");
+    assert_eq!(metadata[1].1.attempt, 1);
+    assert_eq!(metadata[3].1.attempt, 2);
+    assert!(metadata[2].1.problem.contains("no JSON object"));
+    assert!(metadata[4].1.text.contains("LM358DR"));
+    assert_eq!(first.model, "test");
+}
+
+#[test]
+fn a_package_that_cannot_be_drawn_is_named_and_not_asked_again() {
+    let m = mock(&[
+        metadata_answer(),
+        pins_answer(),
+        json!({"family": "other", "package_name": "LQFP64", "pin_count": 64}),
+    ]);
+    let report = run(&m, &BuildOptions::default());
+    // One call for the package: asking again would not change the answer.
+    assert_eq!(m.requests().len(), 3);
+    assert!(report.spec.is_none());
+    assert!(report.pins.is_some(), "the pins are kept");
+    let failure = report
+        .failures
+        .iter()
+        .find(|f| f.starts_with("package"))
+        .unwrap();
+    assert!(failure.contains("LQFP64"), "{failure}");
+    assert!(failure.contains("not one of the shapes"), "{failure}");
+}
+
+#[test]
+fn the_options_set_the_tries_the_limits_and_the_time() {
+    let mut config = config();
+    config.extraction.attempts = Some(1);
+    config.extraction.max_tokens_pins = Some(1234);
+    config.extraction.timeout_secs = Some(77);
+    let mut bad = pins_answer();
+    bad["pins"][0]["type"] = json!("loud");
+    let m = mock(&[metadata_answer(), bad, package_answer()]);
+    let report = build(
+        &config,
+        m.clone(),
+        &Cache::none(),
+        &pages(),
+        &BuildOptions::default(),
+    );
+    // With one try there is no repair: the pin step fails after one call.
+    assert_eq!(m.requests().len(), 3);
+    assert!(
+        report.failures.iter().any(|f| f.starts_with("pins")),
+        "{:?}",
+        report.failures
+    );
+    let pins_body: Value = serde_json::from_str(&m.requests()[1].body).unwrap();
+    assert_eq!(pins_body["max_tokens"], json!(1234));
+}
+
+#[test]
+fn extraction_options_are_saved_only_when_changed_and_checked() {
+    let mut config = Config::default();
+    config.extraction.attempts = Some(3); // the default
+    config.extraction.timeout_secs = Some(120);
+    config.extraction = config.extraction.normalized();
+    assert_eq!(config.extraction.attempts, None);
+    let text = config.to_toml_string().unwrap();
+    assert!(
+        text.contains("[extraction]") && text.contains("timeout_secs = 120"),
+        "{text}"
+    );
+    assert!(!text.contains("attempts"), "{text}");
+    assert_eq!(
+        Config::from_toml_str(&text)
+            .unwrap()
+            .extraction
+            .timeout_secs(),
+        120
+    );
+    assert!(Config::from_toml_str("[extraction]\nattempts = 9\n").is_err());
+    assert!(Config::from_toml_str("[extraction]\ntimeout_secs = 5\n").is_err());
+    assert!(Config::from_toml_str("[extraction]\nmax_tokens_pins = 10\n").is_err());
+}

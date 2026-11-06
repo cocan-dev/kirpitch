@@ -99,6 +99,10 @@ pub struct Tasks {
     pub metadata: Option<String>,
 }
 
+fn is_default_extraction(e: &Extraction) -> bool {
+    *e == Extraction::default()
+}
+
 fn is_false(b: &bool) -> bool {
     !*b
 }
@@ -128,6 +132,156 @@ pub struct Folders {
     pub pdfium_dir: Option<String>,
 }
 
+/// How the extraction runs. Every value left out has the default below.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Extraction {
+    /// Read the pin table twice by default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub second_read: Option<bool>,
+    /// Tries for each step: the first and then repairs of a bad answer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempts: Option<u32>,
+    /// Seconds to wait for one answer of a model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_secs: Option<u64>,
+    /// Longest answer for the part number step, in tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens_metadata: Option<u32>,
+    /// Longest answer for the pin table step, in tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens_pins: Option<u32>,
+    /// Longest answer for the package step, in tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens_package: Option<u32>,
+    /// Most characters of page text sent for the pin table.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pin_pages_chars: Option<usize>,
+    /// Most characters of page text sent for the package.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_pages_chars: Option<usize>,
+    /// Keep answers on disk and reuse them for the same question.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache: Option<bool>,
+}
+
+impl Extraction {
+    /// Read the pin table twice.
+    pub fn second_read(&self) -> bool {
+        self.second_read.unwrap_or(false)
+    }
+    /// Tries for each step.
+    pub fn attempts(&self) -> u32 {
+        self.attempts.unwrap_or(3)
+    }
+    /// Seconds to wait for one answer.
+    pub fn timeout_secs(&self) -> u64 {
+        self.timeout_secs.unwrap_or(300)
+    }
+    /// Longest answer of the part number step.
+    pub fn max_tokens_metadata(&self) -> u32 {
+        self.max_tokens_metadata.unwrap_or(2000)
+    }
+    /// Longest answer of the pin table step.
+    pub fn max_tokens_pins(&self) -> u32 {
+        self.max_tokens_pins.unwrap_or(8000)
+    }
+    /// Longest answer of the package step.
+    pub fn max_tokens_package(&self) -> u32 {
+        self.max_tokens_package.unwrap_or(4000)
+    }
+    /// Characters of pin pages.
+    pub fn pin_pages_chars(&self) -> usize {
+        self.pin_pages_chars.unwrap_or(24_000)
+    }
+    /// Characters of package pages.
+    pub fn package_pages_chars(&self) -> usize {
+        self.package_pages_chars.unwrap_or(16_000)
+    }
+    /// Whether answers are kept.
+    pub fn cache(&self) -> bool {
+        self.cache.unwrap_or(true)
+    }
+
+    /// The same options with every value that equals its default left out.
+    pub fn normalized(&self) -> Extraction {
+        let d = Extraction::default();
+        Extraction {
+            second_read: self.second_read.filter(|v| *v != d.second_read()),
+            attempts: self.attempts.filter(|v| *v != d.attempts()),
+            timeout_secs: self.timeout_secs.filter(|v| *v != d.timeout_secs()),
+            max_tokens_metadata: self
+                .max_tokens_metadata
+                .filter(|v| *v != d.max_tokens_metadata()),
+            max_tokens_pins: self.max_tokens_pins.filter(|v| *v != d.max_tokens_pins()),
+            max_tokens_package: self
+                .max_tokens_package
+                .filter(|v| *v != d.max_tokens_package()),
+            pin_pages_chars: self.pin_pages_chars.filter(|v| *v != d.pin_pages_chars()),
+            package_pages_chars: self
+                .package_pages_chars
+                .filter(|v| *v != d.package_pages_chars()),
+            cache: self.cache.filter(|v| *v != d.cache()),
+        }
+    }
+
+    /// Checks the ranges.
+    ///
+    /// # Errors
+    ///
+    /// A value is outside what makes sense.
+    pub fn check(&self) -> Result<(), String> {
+        let range = |name: &str, ok: bool, what: &str| {
+            if ok {
+                Ok(())
+            } else {
+                Err(format!("{name} must be {what}"))
+            }
+        };
+        range(
+            "attempts",
+            (1..=5).contains(&self.attempts()),
+            "from 1 to 5",
+        )?;
+        range(
+            "the time limit",
+            (30..=3600).contains(&self.timeout_secs()),
+            "from 30 to 3600 seconds",
+        )?;
+        for (name, v) in [
+            (
+                "the answer limit of the part number step",
+                self.max_tokens_metadata(),
+            ),
+            (
+                "the answer limit of the pin table step",
+                self.max_tokens_pins(),
+            ),
+            (
+                "the answer limit of the package step",
+                self.max_tokens_package(),
+            ),
+        ] {
+            range(
+                name,
+                (256..=64_000).contains(&v),
+                "from 256 to 64000 tokens",
+            )?;
+        }
+        for (name, v) in [
+            ("the page text for the pin table", self.pin_pages_chars()),
+            ("the page text for the package", self.package_pages_chars()),
+        ] {
+            range(
+                name,
+                (2000..=200_000).contains(&v),
+                "from 2000 to 200000 characters",
+            )?;
+        }
+        Ok(())
+    }
+}
+
 /// Privacy settings.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -153,6 +307,9 @@ pub struct Config {
     /// Folders and defaults of the app.
     #[serde(default)]
     pub folders: Folders,
+    /// How the extraction runs; the values left out are the defaults.
+    #[serde(default, skip_serializing_if = "is_default_extraction")]
+    pub extraction: Extraction,
     /// The prompts that were changed; the others are the defaults.
     #[serde(default, skip_serializing_if = "Prompts::is_default")]
     pub prompts: Prompts,
@@ -268,6 +425,7 @@ impl Config {
     }
 
     fn check(&self) -> Result<(), ConfigError> {
+        self.extraction.check().map_err(ConfigError::Parse)?;
         for p in &crate::prompts::PROMPT_LIST {
             if self.prompts.get(p.key).chars().count() > crate::prompts::MAX_PROMPT_CHARS {
                 return Err(ConfigError::Parse(format!(

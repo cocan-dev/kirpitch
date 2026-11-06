@@ -236,10 +236,17 @@ fn a_datasheet_is_built_into_a_part_with_recorded_answers() {
         &|p| events.lock().unwrap().push((p.stage, p.state)),
     )
     .unwrap();
-    // Every stage reports when it starts and when it ends, in order.
-    use StageState::{Done, Started};
+    // Every stage reports when it starts and when it ends, in order. The calls
+    // to the models are reported in between: asked, then answered.
+    use StageState::{Call, Done, Started};
+    let all = events.lock().unwrap().clone();
+    for stage in ["metadata", "pins", "package"] {
+        let calls = all.iter().filter(|e| e.0 == stage && e.1 == Call).count();
+        assert_eq!(calls, 2, "{stage}: one question and one answer");
+    }
+    let steps: Vec<_> = all.iter().filter(|e| e.1 != Call).cloned().collect();
     assert_eq!(
-        *events.lock().unwrap(),
+        steps,
         [
             ("read", Started),
             ("read", Done),

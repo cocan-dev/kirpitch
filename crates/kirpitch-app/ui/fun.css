@@ -166,3 +166,22 @@ tr.sel td { animation: pulse-row 0.7s ease-out 1; }
 .dialog input[type="checkbox"]:checked { background: var(--brick); border-color: var(--brick); }
 .dialog input[type="checkbox"]:checked::after { content: ""; position: absolute; left: 5.5px; top: 1.5px; width: 5px; height: 10px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
 .build-progress[hidden] { display: none; }
+
+/* Model output */
+.pg-verbose { margin-top: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
+.pg-verbose > summary { cursor: pointer; font-weight: 600; }
+.pg-verbose-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 6px 0; }
+.pg-log { max-height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 2px; }
+.call { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--bg); }
+.call.running { border-color: var(--brick); }
+.call.failed, .call.rejected { border-color: color-mix(in srgb, var(--err) 60%, transparent); }
+.call-head { font-size: 12px; font-weight: 600; color: var(--muted); word-break: break-word; }
+.call.done .call-head { color: var(--text); }
+.call-body { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+.call-body p { margin: 0; }
+.call-text { margin: 0; white-space: pre-wrap; word-break: break-word; max-height: 14em; overflow: auto; padding: 8px; border-radius: 6px; background: color-mix(in srgb, var(--line) 35%, transparent); font: 12px/1.45 ui-monospace, Consolas, monospace; text-align: left; }
+.call-text.dim { color: var(--muted); }
+.call-empty { color: var(--warn); font-size: 13px; }
+.call-problem { color: var(--err); }
+.call-thinking > summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.pg-verbose-bar button { flex: none; white-space: nowrap; }

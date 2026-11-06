@@ -42,6 +42,8 @@ pub struct ChatRequest {
     pub no_think: bool,
     /// Longest answer in tokens.
     pub max_tokens: u32,
+    /// Seconds to wait for the answer; 0 means the usual `TIMEOUT_SECS`.
+    pub timeout_secs: u64,
 }
 
 /// Tokens used.
@@ -65,6 +67,10 @@ pub struct ChatResponse {
     /// The model stopped because it reached the length limit, so the answer
     /// is cut off.
     pub truncated: bool,
+    /// What the model wrote while thinking, when the server returns it.
+    pub thinking: String,
+    /// Why the model stopped, as the server says (`stop`, `length`, ...).
+    pub finish: String,
 }
 
 /// Why a call failed.
@@ -162,7 +168,14 @@ impl Client {
     pub fn chat(&self, request: &ChatRequest) -> Result<ChatResponse, ModelError> {
         let http = build_request(&self.model, self.key.as_deref(), request);
         let start = Instant::now();
-        let reply = self.transport.post(&http, TIMEOUT_SECS)?;
+        let reply = self.transport.post(
+            &http,
+            if request.timeout_secs > 0 {
+                request.timeout_secs
+            } else {
+                TIMEOUT_SECS
+            },
+        )?;
         if std::env::var_os(ENV_DEBUG).is_some() {
             eprintln!(
                 "[kirpitch debug] {} answered {}: {}",
@@ -239,7 +252,13 @@ pub fn build_request(model: &ModelConfig, key: Option<&str>, chat: &ChatRequest)
             } else {
                 "/v1/chat/completions"
             };
-            (format!("{base}{path}"), openai_body(name, chat))
+            let mut body = openai_body(name, chat);
+            // Ollama's OpenAI-compatible address understands this way of
+            // asking a thinking model not to think.
+            if chat.no_think && base.contains("ollama") {
+                body["reasoning_effort"] = json!("none");
+            }
+            (format!("{base}{path}"), body)
         }
         Provider::Ollama => {
             if let Some(k) = key {
@@ -406,11 +425,31 @@ pub fn parse_response(provider: Provider, body: &str) -> Result<ChatResponse, Mo
             )
         }
     };
+    let thinking = match provider {
+        Provider::Openai | Provider::OpenaiCompatible => v
+            .pointer("/choices/0/message/reasoning_content")
+            .or_else(|| v.pointer("/choices/0/message/reasoning"))
+            .and_then(Value::as_str),
+        Provider::Ollama => v.pointer("/message/thinking").and_then(Value::as_str),
+        Provider::Anthropic => None,
+    }
+    .unwrap_or("")
+    .to_string();
+    let finish = match provider {
+        Provider::Openai | Provider::OpenaiCompatible => v.pointer("/choices/0/finish_reason"),
+        Provider::Anthropic => v.get("stop_reason"),
+        Provider::Ollama => v.get("done_reason"),
+    }
+    .and_then(Value::as_str)
+    .unwrap_or("")
+    .to_string();
     Ok(ChatResponse {
         text,
         usage,
         seconds: 0.0,
         truncated,
+        thinking,
+        finish,
     })
 }
 

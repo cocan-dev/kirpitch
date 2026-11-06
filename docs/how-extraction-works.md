@@ -87,3 +87,29 @@ keeps the run (prompts, models, scores) in the `evals` folder next to your
 settings file. The History shows each run against the one before it, and
 **Use these prompts** puts the prompts of any run back. The command line has the
 same measurement for the golden parts: `kirpitch models bench`.
+
+## Watching it work, and the settings
+
+While a part is built, the datasheet dialog has a **Model output** panel (fold
+it open or shut; the choice is remembered). Each call to a model is listed: how
+much was sent and to which model, then what came back, how long it took, how
+many tokens, why the model stopped (`stop` or `length`), and the model's own
+thinking when the server returns it. An answer that was not accepted shows the
+reason, and the next try is listed under it. An empty answer is explained: if the
+model wrote only thinking and ran out of room, the panel says so. **Copy all**
+puts the whole log on the clipboard. Answers appear when a call ends (the
+servers are not asked to stream), with a counter while one is running.
+
+Everything that shapes the extraction is in **Settings, Extraction**: the
+tries for each step, the time limit for one answer, the answer limit of each
+step, how much page text is sent for the pin table and the package, reading the
+pin table twice by default, keeping answers, and all the prompts. They are saved
+in `kirpitch.toml` (`[extraction]` and `[prompts]`), so the command line uses
+the same values.
+
+## Packages this version cannot draw
+
+The footprint templates cover SOIC, SSOP, TSSOP, MSOP, SOT-23, DIP and QFN. For
+anything else (LQFP, TQFP, BGA, SOT-223 ...) the package step answers `other`
+with the package name. Kirpitch then stops that step at once instead of asking
+again, says which package it is, and still saves the pins it read as a CSV file.

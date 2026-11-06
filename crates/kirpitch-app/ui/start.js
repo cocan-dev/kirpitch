@@ -351,6 +351,8 @@ function openDatasheetDialog(pdf) {
     $("ds-dialog").classList.remove("running");
   }
   if (pdf) $("ds-pdf").value = pdf;
+  // The default of "read twice" is a setting.
+  if (typeof appSettings !== "undefined" && appSettings && appSettings.extraction && !$("ds-dialog").dataset.touched) $("ds-second").checked = !!appSettings.extraction.second_read;
   $("ds-dialog").showModal();
 }
 
@@ -375,7 +377,10 @@ $("ds-pdf-browse").addEventListener("click", async () => {
   if (path && !$("ds-out").value) $("ds-out").value = path.replace(/\.pdf$/i, "") + ".partspec.json";
 });
 $("ds-out-browse").addEventListener("click", () => browseInto("ds-out", "spec", "part.json"));
-$("ds-config-browse").addEventListener("click", () => browseInto("ds-config", "toml"));
+$("ds-open-settings").addEventListener("click", () => {
+  $("ds-dialog").close();
+  if (typeof showSettings === "function") showSettings();
+});
 
 function listOf(items, cls) {
   return el("ul", {}, ...items.map((t) => el("li", { class: cls || "", text: t })));
@@ -394,7 +399,7 @@ $("ds-form").addEventListener("submit", async (ev) => {
       out: $("ds-out").value.trim(),
       hint: $("ds-hint").value,
       second_read: $("ds-second").checked,
-      config: $("ds-config").value.trim(),
+      config: "",
     };
     const outcome = await invoke("build_part", { input });
     buildEnd(!!outcome.view, outcome.failures.length);

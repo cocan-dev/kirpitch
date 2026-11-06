@@ -48,6 +48,7 @@ function toDraft(view) {
     metadata: view.metadata,
     local_only: view.local_only,
     prompts: Object.fromEntries((view.prompts || []).map((p) => [p.key, p.text])),
+    extraction: { ...(view.extraction || {}) },
     parts: view.parts,
     output: view.output,
     datasheets: view.datasheets,
@@ -767,6 +768,58 @@ function promptCard(view) {
   return card;
 }
 
+// ---- How the extraction runs --------------------------------------------------------------
+
+function numberField(label, key, help, unit) {
+  const input = textInput(String(draft.extraction[key]), (v) => {
+    const n = Number(v.trim().replace(/[ ,_]/g, ""));
+    const bad = v.trim() === "" || !Number.isFinite(n) || n < 0 || !Number.isInteger(n);
+    input.classList.toggle("invalid", bad);
+    if (!bad) draft.extraction[key] = n;
+  });
+  input.inputMode = "numeric";
+  const defaults = (appSettings.extraction_defaults || {})[key];
+  return field(label + (unit ? " (" + unit + ")" : ""), input, help + (defaults != null ? " Usual: " + defaults.toLocaleString() + "." : ""));
+}
+
+function extractionCard() {
+  const card = el("section", { class: "panel prompt-card" });
+  const head = el("div", { class: "prompt-head" }, el("h4", { text: "How the models are asked" }));
+  const reset = el("button", { type: "button", class: "ghost small-btn", text: "Back to the usual values" });
+  reset.addEventListener("click", () => {
+    draft.extraction = { ...appSettings.extraction_defaults };
+    renderSettings();
+  });
+  head.append(reset);
+  const checks = el("div", { class: "opt-checks" });
+  const check = (key, text, help) => {
+    const box = el("input", { type: "checkbox" });
+    box.checked = !!draft.extraction[key];
+    box.addEventListener("change", () => {
+      draft.extraction[key] = box.checked;
+      updateDirty();
+    });
+    return el("label", { class: "check big" }, box, el("span", {}, el("strong", { text: text }), el("span", { class: "help", text: " " + help })));
+  };
+  checks.append(
+    check("second_read", "Read the pin table twice", "A second, differently worded reading; pins the two readings disagree on are flagged. Takes about twice as long. This is what the datasheet dialog starts with."),
+    check("cache", "Keep the answers", "Asking the same question again (same model, prompts and text) reuses the saved answer. Turn it off to always ask the model.")
+  );
+  const tries = selectInput([1, 2, 3, 4, 5].map((n) => [String(n), n === 1 ? "1 (never ask again)" : String(n)]), String(draft.extraction.attempts), (v) => (draft.extraction.attempts = Number(v)));
+  const grid = el("div", { class: "grid2" });
+  grid.append(
+    field("Tries for each step", tries, "The first try and then repairs: when an answer cannot be used, the model is told what was wrong and asked again. Usual: 3."),
+    numberField("Time limit for one answer", "timeout_secs", "Models that think can take minutes on a large pin table.", "seconds"),
+    numberField("Answer limit, part number", "max_tokens_metadata", "The most the model may write for this step.", "tokens"),
+    numberField("Answer limit, pin table", "max_tokens_pins", "A 100 pin table needs a few thousand tokens. A model that thinks needs far more, or turn its thinking off.", "tokens"),
+    numberField("Answer limit, package", "max_tokens_package", "The most the model may write for this step.", "tokens"),
+    numberField("Page text for the pin table", "pin_pages_chars", "How much of the datasheet is sent for this step. More finds more, costs more and is slower.", "characters"),
+    numberField("Page text for the package", "package_pages_chars", "How much of the datasheet is sent for this step.", "characters")
+  );
+  card.append(head, el("p", { class: "muted small", text: "These apply to every build and to Evaluate. They are saved in the settings file." }), checks, grid);
+  return card;
+}
+
 function renderPrompts() {
   const pane = $("pane-prompts");
   const views = appSettings.prompts || [];
@@ -776,7 +829,7 @@ function renderPrompts() {
     el("p", { class: "muted", text: "Every request to a model has a system prompt and, for each step, an instruction followed by the text of the pages. Change the words here to make a step read better. The prompts are saved in the same settings file and apply to the next build. The example answer and the page text are added by Kirpitch." }),
     el("p", { class: "muted small", text: (changedCount ? changedCount + " prompt(s) changed. " : "All prompts are the defaults. ") + "Saved prompt set: " + (appSettings.prompts_fingerprint || "") + ". The code changes whenever a prompt does, so a score can be tied to the prompts that earned it." })
   );
-  pane.replaceChildren(intro, ...views.map(promptCard));
+  pane.replaceChildren(extractionCard(), el("h3", { class: "pane-title", text: "Prompts" }), intro, ...views.map(promptCard));
 }
 
 function folderRow(key, label, help, kind) {
@@ -871,6 +924,7 @@ function toInput() {
     metadata: draft.metadata,
     local_only: draft.local_only,
     prompts: draft.prompts,
+    extraction: draft.extraction,
     parts: draft.parts,
     output: draft.output,
     datasheets: draft.datasheets,

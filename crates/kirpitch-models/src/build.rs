@@ -19,8 +19,8 @@ use crate::client::Client;
 use crate::config::{Config, Task};
 use crate::keys::{KeyStore, OsKeyStore};
 use crate::tasks::{
-    Cache, MetadataAnswer, PackageAnswer, PageLines, PinsResult, Span, Stats, TaskError,
-    extract_metadata, extract_package, extract_pins,
+    Cache, CallRecord, Ctx, MetadataAnswer, PackageAnswer, PageLines, PinsResult, Span, Stats,
+    TaskError, extract_metadata, extract_package, extract_pins,
 };
 use crate::transport::Transport;
 
@@ -264,6 +264,8 @@ pub enum StageState {
     Failed,
     /// Not needed.
     Skipped,
+    /// A report on a call to a model (the `call` of the report says more).
+    Call,
 }
 
 /// A report on the progress of a build, for a screen that shows it.
@@ -276,6 +278,9 @@ pub struct Progress {
     /// A line for the person: which model is asked, what was found, why it
     /// failed.
     pub detail: String,
+    /// The call to a model, for reports with the state `Call`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub call: Option<CallRecord>,
 }
 
 fn note(on: &dyn Fn(&Progress), stage: &'static str, state: StageState, detail: impl Into<String>) {
@@ -283,6 +288,7 @@ fn note(on: &dyn Fn(&Progress), stage: &'static str, state: StageState, detail: 
         stage,
         state,
         detail: detail.into(),
+        call: None,
     });
 }
 
@@ -339,6 +345,24 @@ pub fn build_with_progress(
     };
     let mut stats = Stats::default();
     let hint = options.hint.as_deref();
+    let obs = |c: &CallRecord| {
+        let stage = match c.label.split(' ').next().unwrap_or("") {
+            "metadata" => "metadata",
+            "package" => "package",
+            _ => "pins",
+        };
+        on(&Progress {
+            stage,
+            state: StageState::Call,
+            detail: String::new(),
+            call: Some(c.clone()),
+        });
+    };
+    let ctx = Ctx {
+        prompts: &config.prompts,
+        options: &config.extraction,
+        obs: &obs,
+    };
 
     let metadata = if options.mpn.is_some()
         && options.manufacturer.is_some()
@@ -358,7 +382,7 @@ pub fn build_with_progress(
             asking(config, Task::Metadata),
         );
         match model_client(config, Task::Metadata, &transport, keys, &mut report).and_then(|c| {
-            extract_metadata(&c, cache, &mut stats, pages, &config.prompts)
+            extract_metadata(&c, cache, &mut stats, pages, &ctx)
                 .map_err(|e: TaskError| e.to_string())
         }) {
             Ok(m) => {
@@ -396,7 +420,7 @@ pub fn build_with_progress(
             pages,
             hint,
             options.second_read,
-            &config.prompts,
+            &ctx,
         )
         .map_err(|e| e.to_string())
     }) {
@@ -425,8 +449,7 @@ pub fn build_with_progress(
 
     let package = match model_client(config, Task::Drawings, &transport, keys, &mut report)
         .and_then(|c| {
-            extract_package(&c, cache, &mut stats, pages, hint, &config.prompts)
-                .map_err(|e| e.to_string())
+            extract_package(&c, cache, &mut stats, pages, hint, &ctx).map_err(|e| e.to_string())
         }) {
         Ok(p) => {
             note(on, "package", StageState::Done, "dimensions read");

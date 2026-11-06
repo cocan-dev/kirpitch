@@ -48,7 +48,7 @@ pub const DEFAULT_PACKAGE: &str = "Read the outline dimensions of the package in
 - D: body length (along the pin rows) and E1: body width (across the rows), E: lead span tip to tip. These are for SOIC, SSOP, TSSOP, MSOP, SOT-23.\n\
 - QFN: D and E are the two body sizes, D2 and E2 the exposed pad.\n\
 - L: lead or terminal length; b: lead or terminal width.\n\
-Leave out what the text does not give. Choose the family that fits the package name.\n{hint}\n{pages}";
+Leave out what the text does not give. Choose the family that fits the package name; when it is none of them (for example LQFP, TQFP, BGA, SOT-223) use `other` and write the package name in `package_name`.\n{hint}\n{pages}";
 
 /// The prompts a person changed. `None` means the default.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
