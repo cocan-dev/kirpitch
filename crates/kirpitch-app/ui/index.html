@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kirpitch</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="fun.css">
 </head>
 <body>
   <header class="top">
@@ -26,27 +27,38 @@
   <p id="message" class="message" role="status" hidden></p>
 
   <main id="empty" class="empty">
-    <h2>Start</h2>
-    <div class="start-actions">
-      <button type="button" id="start-new" class="primary">New part…</button>
-      <button type="button" id="start-open">Open file…</button>
-      <button type="button" id="start-datasheet">From datasheet…</button>
+    <div class="hero">
+      <div id="hero-art" aria-hidden="true"></div>
+      <div>
+        <h2>What are we building <span class="spark">today?</span></h2>
+        <p>Turn a datasheet into a KiCad part you can trust: pins, footprint and a 3D model, each one checked, and each one approved by you.</p>
+        <div class="start-actions">
+          <button type="button" id="start-new" class="primary">New part…</button>
+          <button type="button" id="start-open">Open file…</button>
+          <button type="button" id="start-datasheet">From datasheet…</button>
+        </div>
+        <p class="hint small">Tip: drop a PartSpec (.json) or a datasheet (.pdf) anywhere on this window.</p>
+      </div>
     </div>
-    <p class="hint">You can also drop a PartSpec file (.json) onto this window.</p>
     <div class="start-lists">
       <section aria-label="Examples">
-        <h3>Examples</h3>
-        <p class="muted small">Working copies of the golden parts: your approvals and edits never change the originals.</p>
-        <ul id="examples" class="start-list"></ul>
+        <h3>Try an example</h3>
+        <p class="muted small">You get a working copy, so nothing you do changes the originals.</p>
+        <div id="examples" class="cards"></div>
       </section>
       <section aria-label="Recent">
-        <h3>Recent</h3>
-        <ul id="recent-list" class="start-list"></ul>
+        <h3>Pick up where you left off</h3>
+        <ul id="recent-list" class="recent-list"></ul>
       </section>
     </div>
   </main>
 
   <main id="work" hidden>
+    <div id="ready" class="ready" hidden>
+      <span aria-hidden="true">PINNY</span>
+      <div class="grow"><strong>Part ready to ship!</strong><p>Pinout, footprint and 3D model are all approved. Time to write the KiCad files.</p></div>
+      <button type="button" id="ready-write" class="primary">Write KiCad files</button>
+    </div>
     <div class="head">
       <section class="part" aria-label="Part">
         <h2 id="mpn"></h2>
@@ -192,5 +204,6 @@
 
   <script src="app.js"></script>
   <script src="start.js"></script>
+  <script src="fun.js"></script>
 </body>
 </html>
