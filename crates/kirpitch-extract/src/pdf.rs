@@ -6,7 +6,8 @@
 //! the top-left corner, the same convention as `kirpitch_core::BoundingBox`.
 //! Page numbers count from 1 like everywhere else in Kirpitch.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use kirpitch_core::BoundingBox;
 use pdfium_render::prelude::*;
@@ -92,8 +93,12 @@ pub struct RenderedPage {
 
 /// Reads PDFs with pdfium.
 pub struct PdfReader {
-    pdfium: Pdfium,
+    pdfium: Arc<Pdfium>,
 }
+
+/// pdfium can only be initialised once per process, so every reader shares the
+/// instance that was loaded first, together with the folder it came from.
+static SHARED: Mutex<Option<(Option<PathBuf>, Arc<Pdfium>)>> = Mutex::new(None);
 
 fn page_err(page: u32, e: impl std::fmt::Display) -> PdfError {
     PdfError::Page {
@@ -104,16 +109,32 @@ fn page_err(page: u32, e: impl std::fmt::Display) -> PdfError {
 
 impl PdfReader {
     /// Loads pdfium from `library_dir`, or from the system when it is `None`.
+    ///
+    /// pdfium is loaded once per process; later calls return a reader on the
+    /// same instance. Asking for another folder than the first call is an error.
     pub fn new(library_dir: Option<&Path>) -> Result<PdfReader, PdfError> {
+        let mut shared = SHARED.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((dir, pdfium)) = shared.as_ref() {
+            if dir.as_deref() == library_dir {
+                return Ok(PdfReader {
+                    pdfium: Arc::clone(pdfium),
+                });
+            }
+            return Err(PdfError::Library(format!(
+                "pdfium is already loaded from {}",
+                dir.as_deref()
+                    .map_or("the system".to_string(), |d| d.display().to_string())
+            )));
+        }
         let name = match library_dir {
             Some(dir) => Pdfium::pdfium_platform_library_name_at_path(dir).into_os_string(),
             None => Pdfium::pdfium_platform_library_name(),
         };
         let bindings =
             Pdfium::bind_to_library(name).map_err(|e| PdfError::Library(e.to_string()))?;
-        Ok(PdfReader {
-            pdfium: Pdfium::new(bindings),
-        })
+        let pdfium = Arc::new(Pdfium::new(bindings));
+        *shared = Some((library_dir.map(Path::to_path_buf), Arc::clone(&pdfium)));
+        Ok(PdfReader { pdfium })
     }
 
     fn open<'a>(&'a self, bytes: &'a [u8]) -> Result<PdfDocument<'a>, PdfError> {
