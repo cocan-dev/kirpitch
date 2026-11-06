@@ -160,6 +160,62 @@ fn pages_text(pages: &[&PageLines]) -> String {
         .join("\n")
 }
 
+/// A report on one call to a model, for a screen that shows what the models say.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
+pub struct CallRecord {
+    /// The step, for example `pins` or `pins (second reading)`.
+    pub label: String,
+    /// 1 for the first question, 2 and more for repairs.
+    pub attempt: u32,
+    /// `sent` (waiting for the model), `received`, `cached` or `failed`.
+    pub phase: String,
+    /// The model name.
+    pub model: String,
+    /// Characters in the question.
+    pub prompt_chars: usize,
+    /// The limit on the answer, in tokens.
+    pub max_tokens: u32,
+    /// What the model answered (cut to a reasonable length).
+    pub text: String,
+    /// What it wrote while thinking, if the server returns that.
+    pub thinking: String,
+    /// Tokens sent.
+    pub tokens_in: u64,
+    /// Tokens received.
+    pub tokens_out: u64,
+    /// Seconds the call took.
+    pub seconds: f64,
+    /// Why the model stopped.
+    pub finish: String,
+    /// What was wrong with the answer, or why the call failed.
+    pub problem: String,
+}
+
+/// The longest text kept in a report.
+const CLIP: usize = 30_000;
+
+fn clip(text: &str) -> String {
+    if text.chars().count() <= CLIP {
+        return text.to_string();
+    }
+    let head: String = text.chars().take(CLIP).collect();
+    format!(
+        "{head}\n... ({} more characters)",
+        text.chars().count() - CLIP
+    )
+}
+
+/// What an extraction step needs besides the client: the prompts, the options
+/// and where to report each call.
+pub struct Ctx<'a> {
+    /// The prompts.
+    pub prompts: &'a Prompts,
+    /// The options.
+    pub options: &'a crate::config::Extraction,
+    /// Told of each call to a model.
+    pub obs: &'a dyn Fn(&CallRecord),
+}
+
 /// Totals over a run.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Stats {
@@ -307,8 +363,13 @@ fn ask_json<T>(
     cache: &Cache,
     stats: &mut Stats,
     mut request: ChatRequest,
+    label: &str,
+    ctx: &Ctx<'_>,
     check: impl Fn(&Value) -> Result<T, String>,
 ) -> Result<T, TaskError> {
+    request.timeout_secs = ctx.options.timeout_secs();
+    let attempts = ctx.options.attempts();
+    let model = client.model().model.clone();
     // Not every server enforces the schema (Ollama models that run in the
     // cloud do not), so the prompt always carries it as well.
     if let Some(example) = &request.example {
@@ -329,12 +390,28 @@ Answer with only a JSON object that follows this JSON schema, with these exact f
     let mut truncated = false;
     let mut last = String::new();
     let mut began = String::new();
-    for attempt in 0..3 {
+    for attempt in 0..attempts {
         let key = Cache::key(client, &request);
+        let record = |phase: &str| CallRecord {
+            label: label.to_string(),
+            attempt: attempt + 1,
+            phase: phase.to_string(),
+            model: model.clone(),
+            prompt_chars: request.user.chars().count() + request.system.chars().count(),
+            max_tokens: request.max_tokens,
+            ..CallRecord::default()
+        };
         let (text, from_cache) = match cache.get(&key) {
-            Some(t) => (t, true),
+            Some(t) => {
+                (ctx.obs)(&CallRecord {
+                    text: clip(&t),
+                    ..record("cached")
+                });
+                (t, true)
+            }
             None => {
-                let r = match client.chat(&request) {
+                (ctx.obs)(&record("sent"));
+                let called = match client.chat(&request) {
                     // A server that does not know JSON schemas: the schema is
                     // in the prompt already, so ask again without it and rely
                     // on the repair step.
@@ -342,10 +419,29 @@ Answer with only a JSON object that follows this JSON schema, with these exact f
                         status: 400 | 422, ..
                     }) if request.schema.is_some() => {
                         request.schema = None;
-                        client.chat(&request)?
+                        client.chat(&request)
                     }
-                    other => other?,
+                    other => other,
                 };
+                let r = match called {
+                    Ok(r) => r,
+                    Err(e) => {
+                        (ctx.obs)(&CallRecord {
+                            problem: e.to_string(),
+                            ..record("failed")
+                        });
+                        return Err(e.into());
+                    }
+                };
+                (ctx.obs)(&CallRecord {
+                    text: clip(&r.text),
+                    thinking: clip(&r.thinking),
+                    tokens_in: r.usage.input_tokens,
+                    tokens_out: r.usage.output_tokens,
+                    seconds: r.seconds,
+                    finish: r.finish.clone(),
+                    ..record("received")
+                });
                 stats.calls += 1;
                 stats.usage.input_tokens += r.usage.input_tokens;
                 stats.usage.output_tokens += r.usage.output_tokens;
@@ -364,13 +460,22 @@ Answer with only a JSON object that follows this JSON schema, with these exact f
                 return Ok(value);
             }
             Err(problem) => {
+                (ctx.obs)(&CallRecord {
+                    problem: problem.clone(),
+                    ..record("rejected")
+                });
+                // An answer that says the thing is not supported is final:
+                // asking again would not change it.
+                if let Some(message) = problem.strip_prefix("unsupported:") {
+                    return Err(TaskError::Unusable(message.trim().to_string()));
+                }
                 last = problem.clone();
                 began = text
                     .chars()
                     .take(160)
                     .map(|c| if c.is_control() { ' ' } else { c })
                     .collect();
-                if attempt < 2 {
+                if attempt + 1 < attempts {
                     if truncated {
                         // The answer was cut off at the limit: allow much more.
                         request.max_tokens = (request.max_tokens * 4).min(32_000);
@@ -420,8 +525,9 @@ pub fn extract_metadata(
     cache: &Cache,
     stats: &mut Stats,
     pages: &[PageLines],
-    prompts: &Prompts,
+    ctx: &Ctx<'_>,
 ) -> Result<MetadataAnswer, TaskError> {
+    let prompts = ctx.prompts;
     let first: Vec<&PageLines> = pages.iter().take(2).collect();
     let schema = json!({
         "type": "object",
@@ -440,10 +546,10 @@ pub fn extract_metadata(
         example: Some(
             json!({"mpn": "LM358DR", "manufacturer": "Texas Instruments", "description": "Dual operational amplifier"}),
         ),
-        max_tokens: 2000,
+        max_tokens: ctx.options.max_tokens_metadata(),
         ..Default::default()
     };
-    ask_json(client, cache, stats, request, |v| {
+    ask_json(client, cache, stats, request, "metadata", ctx, |v| {
         let get = |k: &str| text_field(v, k).ok_or_else(|| format!("`{k}` is missing"));
         Ok(MetadataAnswer {
             mpn: get("mpn")?,
@@ -623,8 +729,9 @@ pub fn extract_pins(
     pages: &[PageLines],
     hint: Option<&str>,
     second_read: bool,
-    prompts: &Prompts,
+    ctx: &Ctx<'_>,
 ) -> Result<PinsResult, TaskError> {
+    let prompts = ctx.prompts;
     let keywords = [
         ("pin functions", 8),
         ("pin configuration", 8),
@@ -635,7 +742,7 @@ pub fn extract_pins(
         ("tape and reel", -6),
         ("orderable", -3),
     ];
-    let chosen = select_with_hint(pages, &keywords, hint, 3, 4, 24_000);
+    let chosen = select_with_hint(pages, &keywords, hint, 3, 4, ctx.options.pin_pages_chars());
     if chosen.is_empty() {
         return Err(TaskError::Unusable(
             "no page of the datasheet text mentions pins".into(),
@@ -675,13 +782,21 @@ pub fn extract_pins(
             {"number": "1", "name": "OUT1", "type": "output", "page": 3, "confidence": 0.9},
             {"number": "4", "name": "GND", "type": "power_in", "page": 3, "confidence": 0.9}
         ]})),
-        max_tokens: 8000,
+        max_tokens: ctx.options.max_tokens_pins(),
         ..Default::default()
     };
-    let first = ask_json(client, cache, stats, ask(0), pins_from_json)?;
+    let first = ask_json(client, cache, stats, ask(0), "pins", ctx, pins_from_json)?;
     let mut notes = Vec::new();
     let second = if second_read {
-        match ask_json(client, cache, stats, ask(1), pins_from_json) {
+        match ask_json(
+            client,
+            cache,
+            stats,
+            ask(1),
+            "pins (second reading)",
+            ctx,
+            pins_from_json,
+        ) {
             Ok(p) => Some(p),
             Err(e) => {
                 notes.push(format!("the second reading failed: {e}"));
@@ -851,6 +966,12 @@ pub fn package_from_json(v: &Value) -> Result<PackageAnswer, String> {
         .ok_or("`family` is missing")?
         .to_ascii_lowercase()
         .replace(['-', ' '], "");
+    if family == "other" {
+        let name = text_field(v, "package_name").unwrap_or_else(|| "this package".into());
+        return Err(format!(
+            "unsupported: the package `{name}` is not one of the shapes this version can draw (soic, ssop, tssop, msop, sot23, dip, qfn). The pins were still read: save them and make the footprint by hand"
+        ));
+    }
     if !["soic", "ssop", "tssop", "msop", "sot23", "dip", "qfn"].contains(&family.as_str()) {
         return Err(format!(
             "`family` `{family}` is not one of soic, ssop, tssop, msop, sot23, dip, qfn"
@@ -957,8 +1078,9 @@ pub fn extract_package(
     stats: &mut Stats,
     pages: &[PageLines],
     hint: Option<&str>,
-    prompts: &Prompts,
+    ctx: &Ctx<'_>,
 ) -> Result<PackageAnswer, TaskError> {
+    let prompts = ctx.prompts;
     let keywords = [
         ("package outline", 6),
         ("mechanical data", 4),
@@ -979,7 +1101,14 @@ pub fn extract_package(
         ("ordering information", -5),
         ("orderable", -5),
     ];
-    let chosen = select_with_hint(pages, &keywords, hint, 8, 3, 16_000);
+    let chosen = select_with_hint(
+        pages,
+        &keywords,
+        hint,
+        8,
+        3,
+        ctx.options.package_pages_chars(),
+    );
     if chosen.is_empty() {
         return Err(TaskError::Unusable(
             "no page of the datasheet text describes the package".into(),
@@ -993,7 +1122,8 @@ pub fn extract_package(
     let schema = json!({
         "type": "object",
         "properties": {
-            "family": {"type": "string", "enum": ["soic", "ssop", "tssop", "msop", "sot23", "dip", "qfn"]},
+            "family": {"type": "string", "enum": ["soic", "ssop", "tssop", "msop", "sot23", "dip", "qfn", "other"]},
+            "package_name": {"type": "string", "description": "the name of the package when family is other, for example LQFP64"},
             "pin_count": {"type": "integer", "description": "number of terminals, not counting an exposed pad"},
             "e": {"type": "number", "description": "pitch in mm"},
             "A": {"type": "number", "description": "largest height in mm"},
@@ -1021,8 +1151,16 @@ pub fn extract_package(
             "L": {"min": 0.4, "max": 1.27}, "b": {"min": 0.31, "max": 0.51},
             "page": 12, "confidence": 0.8
         })),
-        max_tokens: 4000,
+        max_tokens: ctx.options.max_tokens_package(),
         ..Default::default()
     };
-    ask_json(client, cache, stats, request, package_from_json)
+    ask_json(
+        client,
+        cache,
+        stats,
+        request,
+        "package",
+        ctx,
+        package_from_json,
+    )
 }

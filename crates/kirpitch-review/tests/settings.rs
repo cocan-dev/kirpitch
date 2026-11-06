@@ -290,3 +290,46 @@ fn changed_prompts_are_saved_shown_and_reset() {
             .contains("unknown prompt")
     );
 }
+
+#[test]
+fn extraction_options_are_saved_shown_and_checked() {
+    let tmp = TempDir::new("extraction");
+    let path = tmp.path().join("kirpitch.toml");
+    let keys = MemoryKeyStore::default();
+    let view = settings_view(&path, &keys);
+    assert_eq!(view.extraction, view.extraction_defaults);
+    assert_eq!(view.extraction.attempts, 3);
+
+    let mut changed = view.extraction.clone();
+    changed.attempts = 2;
+    changed.timeout_secs = 900;
+    changed.cache = false;
+    let mut s = input(vec![]);
+    s.extraction = Some(changed);
+    let saved = save_settings(&path, &s, &keys).unwrap();
+    assert_eq!(saved.extraction.attempts, 2);
+    assert_eq!(saved.extraction.timeout_secs, 900);
+    assert!(!saved.extraction.cache);
+    assert_eq!(saved.extraction.max_tokens_pins, 8000);
+    let file = fs::read_to_string(&path).unwrap();
+    assert!(
+        file.contains("[extraction]") && file.contains("attempts = 2"),
+        "{file}"
+    );
+    assert!(!file.contains("max_tokens_pins"), "{file}");
+
+    // Sending the defaults leaves nothing in the file; a bad value is refused.
+    let mut back = input(vec![]);
+    back.extraction = Some(view.extraction_defaults.clone());
+    save_settings(&path, &back, &keys).unwrap();
+    assert!(!fs::read_to_string(&path).unwrap().contains("[extraction]"));
+    let mut bad = view.extraction_defaults.clone();
+    bad.attempts = 99;
+    let mut s = input(vec![]);
+    s.extraction = Some(bad);
+    assert!(
+        save_settings(&path, &s, &keys)
+            .unwrap_err()
+            .contains("attempts")
+    );
+}

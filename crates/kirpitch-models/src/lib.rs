@@ -26,12 +26,12 @@ pub use build::{
 };
 pub use client::{ChatRequest, ChatResponse, Client, ModelError, Usage};
 pub use config::{
-    CONFIG_FILE, Config, ConfigError, Folders, ModelConfig, Provider, Task, active_config_path,
-    is_local_url, user_config_dir,
+    CONFIG_FILE, Config, ConfigError, Extraction, Folders, ModelConfig, Provider, Task,
+    active_config_path, is_local_url, user_config_dir,
 };
 pub use discover::{FoundModel, ListRequest, list_models};
 pub use keys::{KeyError, KeyStore, MemoryKeyStore, OsKeyStore};
 pub use probe::{ProbeResult, probe};
 pub use prompts::{PROMPT_LIST, PromptInfo, Prompts};
-pub use tasks::{Cache, PageLines, Stats, TaskError, TextLine};
+pub use tasks::{Cache, CallRecord, PageLines, Stats, TaskError, TextLine};
 pub use transport::{CurlTransport, MockTransport, Reply, Request, Transport, TransportError};

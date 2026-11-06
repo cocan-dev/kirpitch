@@ -444,6 +444,7 @@ pub fn build_with_transport_progress(
             stage,
             state,
             detail,
+            call: None,
         });
     };
     if input.out.trim().is_empty() {
@@ -481,11 +482,15 @@ pub fn build_with_transport_progress(
         ..Default::default()
     };
     say("read", StageState::Done, format!("{} pages", pages.len()));
-    let cache = Cache::in_dir(&if input.cache_dir.trim().is_empty() {
-        std::env::temp_dir().join("kirpitch-cache")
+    let cache = if config.extraction.cache() {
+        Cache::in_dir(&if input.cache_dir.trim().is_empty() {
+            std::env::temp_dir().join("kirpitch-cache")
+        } else {
+            PathBuf::from(input.cache_dir.trim())
+        })
     } else {
-        PathBuf::from(input.cache_dir.trim())
-    });
+        Cache::none()
+    };
     let report = kirpitch_models::build_with_progress(
         &config,
         transport,

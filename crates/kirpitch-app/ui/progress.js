@@ -52,6 +52,7 @@ function buildBegin(second) {
   $("ds-progress").hidden = false;
   $("ds-dialog").classList.add("running");
   $("pg-title").textContent = "Reading the datasheet";
+  resetLog();
   paintBuild();
   build.clock = setInterval(paintBuild, 250);
   build.poll = setInterval(pollBuild, 300);
@@ -76,6 +77,10 @@ async function pollBuild() {
 // One report from the Rust side.
 function buildEvent(p) {
   if (!build || build.finished) return;
+  if (p.state === "call") {
+    if (p.call) logCall(p.call);
+    return;
+  }
   const i = build.steps.findIndex((x) => x.id === p.stage);
   if (i < 0) return;
   const s = build.steps[i];
@@ -130,6 +135,7 @@ const STEP_WORD = { pending: "", running: "working…", done: "", failed: "faile
 function paintBuild(frozenTotal) {
   if (!build) return;
   const now = Date.now();
+  tickLog(now);
   const total = frozenTotal != null ? frozenTotal : (now - build.started) / 1000;
   $("pg-time").textContent = fmtTime(total);
 
@@ -149,5 +155,130 @@ function paintBuild(frozenTotal) {
     li.querySelector(".pg-label").textContent = s.label;
     li.querySelector(".pg-detail").textContent = s.detail || STEP_WORD[s.state];
     li.querySelector(".pg-took").textContent = time;
+  }
+}
+
+// ---- The model output ---------------------------------------------------------------------------
+//
+// Every call to a model is shown as it happens: what is asked (how much, which
+// model), then what comes back, the thinking when the server returns it, and why
+// an answer was not accepted. This panel can be folded; its state is remembered.
+
+const VERBOSE_KEY = "kirpitch.verboseOutput";
+let logCalls = new Map(); // "label#attempt" -> { box, head, body, sentAt }
+
+function resetLog() {
+  logCalls = new Map();
+  $("pg-log").replaceChildren();
+  $("pg-verbose-count").textContent = "";
+  try {
+    $("pg-verbose").open = localStorage.getItem(VERBOSE_KEY) === "open";
+  } catch (e) {
+    // The panel starts folded.
+  }
+}
+
+$("pg-verbose").addEventListener("toggle", () => {
+  try {
+    localStorage.setItem(VERBOSE_KEY, $("pg-verbose").open ? "open" : "closed");
+  } catch (e) {
+    // Nothing to remember it with.
+  }
+});
+
+$("pg-copy").addEventListener("click", async () => {
+  const text = [...$("pg-log").querySelectorAll(".call")].map((c) => c.innerText).join("\n\n");
+  try {
+    await navigator.clipboard.writeText(text);
+    $("pg-copy").textContent = "Copied";
+  } catch (e) {
+    $("pg-copy").textContent = "Select the text and copy it";
+  }
+  setTimeout(() => ($("pg-copy").textContent = "Copy all"), 2000);
+});
+
+function nice(n) {
+  return Number(n).toLocaleString();
+}
+
+function callEntry(c) {
+  const key = c.label + "#" + c.attempt;
+  let e = logCalls.get(key);
+  if (!e) {
+    const box = el("div", { class: "call" });
+    const head = el("div", { class: "call-head" });
+    const body = el("div", { class: "call-body" });
+    box.append(head, body);
+    const log = $("pg-log");
+    const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+    log.append(box);
+    if (atBottom) log.scrollTop = log.scrollHeight;
+    e = { box, head, body, sentAt: 0 };
+    logCalls.set(key, e);
+    $("pg-verbose-count").textContent = "(" + logCalls.size + " call" + (logCalls.size === 1 ? "" : "s") + ")";
+  }
+  return e;
+}
+
+function pre(text, cls) {
+  return el("pre", { class: "call-text " + (cls || ""), text });
+}
+
+function logCall(c) {
+  const e = callEntry(c);
+  const title = c.label + (c.attempt > 1 ? ", try " + c.attempt + " (asking again)" : "");
+  if (c.phase === "sent") {
+    e.sentAt = Date.now();
+    e.box.className = "call running";
+    e.head.textContent = "→ " + title + " · " + c.model + " · " + nice(c.prompt_chars) + " characters sent, answer up to " + nice(c.max_tokens) + " tokens";
+    e.body.replaceChildren(el("p", { class: "muted small call-wait", text: "waiting for the model… 0 s" }));
+    return;
+  }
+  if (c.phase === "rejected") {
+    e.box.classList.add("rejected");
+    e.body.append(el("p", { class: "call-problem small", text: "✗ not accepted: " + c.problem }));
+    return;
+  }
+  e.sentAt = 0;
+  if (c.phase === "failed") {
+    e.box.className = "call failed";
+    e.head.textContent = "✗ " + title + " · " + c.model + " · the call failed";
+    e.body.replaceChildren(el("p", { class: "call-problem small", text: c.problem }));
+    return;
+  }
+  if (c.phase === "cached") {
+    e.box.className = "call cached";
+    e.head.textContent = "← " + title + " · answer from the cache (no model was asked)";
+    e.body.replaceChildren(pre(c.text));
+    return;
+  }
+  // received
+  e.box.className = "call done";
+  const bits = [c.seconds.toFixed(0) + " s", nice(c.tokens_out) + " tokens out"];
+  if (c.finish) bits.push("stopped: " + c.finish);
+  e.head.textContent = "← " + title + " · " + c.model + " · " + bits.join(" · ");
+  const parts = [];
+  if (c.text.trim()) {
+    parts.push(pre(c.text));
+  } else {
+    const why = c.thinking
+      ? "The answer is empty. The model wrote " + nice(c.thinking.length) + " characters of thinking and no answer" + (c.finish === "length" ? ", then ran out of room." : ".")
+      : "The answer is empty." + (c.finish === "length" ? " The model ran out of room (the server does not show its thinking)." : "");
+    parts.push(el("p", { class: "call-empty", text: why }));
+  }
+  if (c.thinking) {
+    const d = el("details", { class: "call-thinking" }, el("summary", { text: "Thinking (" + nice(c.thinking.length) + " characters)" }));
+    d.append(pre(c.thinking, "dim"));
+    parts.push(d);
+  }
+  e.body.replaceChildren(...parts);
+}
+
+// The seconds of calls that are waiting count up.
+function tickLog(now) {
+  for (const e of logCalls.values()) {
+    if (!e.sentAt) continue;
+    const w = e.body.querySelector(".call-wait");
+    if (w) w.textContent = "waiting for the model… " + Math.floor((now - e.sentAt) / 1000) + " s";
   }
 }
