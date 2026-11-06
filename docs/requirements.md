@@ -274,7 +274,7 @@ The MVP (minimum viable product) covers text-based PDFs and standard IC packages
 
 **Out of scope for now:** fitting SPICE models from datasheet curves, BGA (ball grid array) parts with more than 256 balls, and placing parts into schematics.
 
-**Milestone 2a status (November 2026):** partly done. Built: mandatory sources for extracted values, the remaining cross-checks, the IPC-7351B gull-wing calculator, templates for dual-row gull-wing packages, SOT-23 and DIP, through-hole footprints, pin table import, the CLI review flow with gates and approvals, and the first KLC footprint checks. Still to do: PDF rendering and region pick (needs the pdfium dependency, [ADR 0016](decisions/0016-pdf-library.md)), KLC symbol checks and rule numbers, QFN, a golden set of about 12 parts (the first three PartSpecs still need a human review), and loading a fab profile from a file. Milestone 2b has not started.
+**Milestone 2a status (November 2026):** nearly done. Built: mandatory sources for extracted values, the remaining cross-checks, the IPC-7351B gull-wing calculator, templates for dual-row gull-wing packages, SOT-23 and DIP, through-hole footprints, pin table import from text, CSV or a region of a PDF page (pdfium, [ADR 0016](decisions/0016-pdf-library.md)), the CLI review flow with gates and approvals, and the first KLC footprint checks. Still to do: OCR for scanned pages, KLC symbol checks and rule numbers, QFN, a golden set of about 12 parts (the first three PartSpecs still need a human review), and loading a fab profile from a file. Milestone 2b has not started.
 
 **Milestone 1 status:** done in November 2026 for SOIC-8 (symbol and footprint, KiCad 8, 9 and 10, three golden parts). Points found on the way that need a decision later:
 
