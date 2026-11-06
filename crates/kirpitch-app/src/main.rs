@@ -76,18 +76,32 @@ fn copy_part(path: String, dest: String) -> Result<SpecView, String> {
 /// Reading a datasheet with a model takes a while, so it runs off the thread
 /// of the window.
 #[tauri::command]
-async fn build_part(
-    app: tauri::AppHandle,
-    input: DatasheetInput,
-) -> Result<DatasheetOutcome, String> {
-    use tauri::Emitter;
+async fn build_part(input: DatasheetInput) -> Result<DatasheetOutcome, String> {
+    if let Ok(mut log) = BUILD_LOG.lock() {
+        log.clear();
+    }
     tauri::async_runtime::spawn_blocking(move || {
         build_from_datasheet_with_progress(&input, &|progress| {
-            let _ = app.emit("build-progress", progress);
+            if let Ok(mut log) = BUILD_LOG.lock() {
+                log.push(progress.clone());
+            }
         })
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// What the build now running has reported so far. The window asks for it a
+/// few times a second; `since` is how many reports it already has.
+static BUILD_LOG: std::sync::Mutex<Vec<kirpitch_models::Progress>> =
+    std::sync::Mutex::new(Vec::new());
+
+#[tauri::command]
+fn build_progress(since: usize) -> Vec<kirpitch_models::Progress> {
+    BUILD_LOG
+        .lock()
+        .map(|log| log.iter().skip(since).cloned().collect())
+        .unwrap_or_default()
 }
 
 /// What kind of file a dialog asks for.
@@ -194,6 +208,7 @@ fn main() {
             create_part,
             copy_part,
             build_part,
+            build_progress,
             pick_file,
             pick_save,
             pick_folder,
