@@ -74,5 +74,8 @@ follows [Semantic Versioning](https://semver.org/).
 - Region pick: `kirpitch pins --pdf FILE --page N --region l,t,r,b` reads a pin table from
   a region of a datasheet page (column detection from text positions); the page
   and region are saved as the source of every pin.
+- Desktop app (`kirpitch-app`, Tauri 2): open a PartSpec, see both review gates, pin and pad
+  tables with source pages, findings and a footprint drawing, approve stages and
+  write KiCad files. Start it with `cargo run -p kirpitch-app` (ADR 0023).
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.

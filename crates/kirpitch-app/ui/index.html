@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kirpitch</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Kirpitch</h1>
+    <form id="open-form" class="open">
+      <label for="path" class="sr">PartSpec file</label>
+      <input id="path" type="text" spellcheck="false" placeholder="Path of a PartSpec file, for example C:\parts\lm358\partspec.json" list="recent">
+      <datalist id="recent"></datalist>
+      <button type="submit">Open</button>
+    </form>
+  </header>
+
+  <p id="message" class="message" role="status" hidden></p>
+
+  <main id="empty" class="empty">
+    <p>Open a PartSpec file to review it.</p>
+    <p class="hint">Build one with <code>kirpitch template</code> and <code>kirpitch pins</code>, or open one from <code>testdata\golden</code>.</p>
+  </main>
+
+  <main id="work" hidden>
+    <section class="part" aria-label="Part">
+      <h2 id="mpn"></h2>
+      <p id="part-line" class="muted"></p>
+    </section>
+
+    <section class="gates" id="gates" aria-label="Review stages"></section>
+
+    <div class="columns">
+      <section class="panel">
+        <div class="tabs" role="tablist">
+          <button role="tab" id="tab-pinout" aria-selected="true" data-tab="pinout">Pinout</button>
+          <button role="tab" id="tab-footprint" aria-selected="false" data-tab="footprint">Footprint</button>
+          <button role="tab" id="tab-findings" aria-selected="false" data-tab="findings">Findings <span id="findings-count" class="count"></span></button>
+        </div>
+        <div id="view-pinout" class="view"></div>
+        <div id="view-footprint" class="view" hidden></div>
+        <div id="view-findings" class="view" hidden></div>
+      </section>
+
+      <aside class="panel preview">
+        <h3>Footprint <span id="package-name" class="muted"></span></h3>
+        <div id="svg" class="svg"></div>
+        <p class="muted small">Millimetres, y points down. Pin 1 has a bold outline.</p>
+      </aside>
+    </div>
+
+    <section class="panel export">
+      <h3>Write KiCad files</h3>
+      <form id="export-form" class="export-form">
+        <label>Folder <input id="out-dir" type="text" spellcheck="false" placeholder="C:\parts\out"></label>
+        <label>KiCad version
+          <select id="target">
+            <option value="">Installed version</option>
+            <option value="10">10</option>
+            <option value="9">9</option>
+            <option value="8">8</option>
+          </select>
+        </label>
+        <button type="submit">Write files</button>
+      </form>
+      <ul id="written" class="written"></ul>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
