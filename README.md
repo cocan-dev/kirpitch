@@ -11,7 +11,7 @@ model) you have, or with none at all.
 **Status:** early development. Milestone 1 is done: from a hand-written
 PartSpec (Kirpitch's JSON description of a part) the command line tool writes a
 symbol and a footprint for SOIC-8 packages that load in KiCad 8, 9 and 10.
-Extraction from datasheets, the desktop app and 3D models are not built yet.
+Milestone 2a adds a review flow without a language model (package templates for SOIC/TSSOP/SOT-23/DIP, pin table import, gates and approvals in the CLI). PDF reading, extraction with language models, the desktop app and 3D models are not built yet.
 
 ## Try it
 
