@@ -206,3 +206,61 @@ fn kicad_loads_the_dip_footprints() {
         }
     }
 }
+
+fn qfn_spec() -> PartSpec {
+    use kirpitch_core::templates::{QuadFlatNoLead, quad_flat_no_lead};
+    let t = quad_flat_no_lead(
+        &QuadFlatNoLead {
+            family: "QFN".into(),
+            pins_x: 8,
+            pins_y: 8,
+            pitch: 0.4,
+            body_x: Range::new(3.95, 4.05),
+            body_y: Range::new(3.95, 4.05),
+            height_max: 1.0,
+            lead_length: Range::new(0.35, 0.45),
+            lead_width: Range::new(0.15, 0.25),
+            exposed_pad: Some((2.65, 2.65)),
+        },
+        Density::Nominal,
+    )
+    .unwrap();
+    part(t, 33)
+}
+
+/// Options for a maker whose process allows 0.05 mm between pads.
+fn fine_options(target: KicadTarget) -> Options {
+    Options {
+        target,
+        fab: kirpitch_core::FabProfile {
+            min_copper_gap: kirpitch_core::Mm::new(0.05).unwrap(),
+            ..kirpitch_core::FabProfile::generic()
+        },
+    }
+}
+
+#[test]
+fn qfn_footprint_needs_the_fine_profile_and_has_the_exposed_pad() {
+    let spec = qfn_spec();
+    assert!(generate(&spec, &Options::default()).is_err());
+    let text = generate(&spec, &fine_options(KicadTarget::LATEST)).unwrap();
+    assert!(text.starts_with("(footprint \"QFN-32-1EP_4x4mm_P0.4mm_EP2.65x2.65mm\"\n"));
+    assert!(text.contains("(pad \"33\" smd rect"));
+    // Pin 1 marker and fab chamfer sit at the top-left corner.
+    assert!(text.contains("F.Fab"));
+    // Courtyard is on the 0.01 grid and 0.25 mm outside pads and body.
+    let found = kirpitch_kicad::klc::check_footprint(&text).unwrap();
+    assert!(found.is_empty(), "{found:?}");
+}
+
+#[test]
+fn kicad_loads_the_qfn_footprint() {
+    let Some(cli) = kicad_cli_or_skip() else {
+        return;
+    };
+    let spec = qfn_spec();
+    for &target in KicadTarget::ALL {
+        let text = generate(&spec, &fine_options(target)).unwrap();
+        assert_footprint_loads(&cli, target, "qfn", &text, &file_name(&spec));
+    }
+}

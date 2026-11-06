@@ -180,7 +180,15 @@ pub fn gull_wing(
     if input.pitch <= 0.0 || !input.pitch.is_finite() {
         return Err(IpcError::BadDimension("pitch"));
     }
-    let g = goals(density, input.pitch);
+    pad_row(input, goals(density, input.pitch), tol)
+}
+
+/// The formulas for one row of pads, with the fillet goals of the lead type.
+fn pad_row(
+    input: &GullWingInput,
+    g: FilletGoals,
+    tol: &Tolerances,
+) -> Result<GullWingPads, IpcError> {
     let (f, p) = (tol.fabrication, tol.placement);
 
     // Inside span S = L - 2T with the statistical (root sum of squares)
@@ -215,9 +223,85 @@ pub fn gull_wing(
     })
 }
 
+/// Calculates the pads of one side of a flat no-lead package (QFN, DFN).
+///
+/// `input.lead_span` is the body size across the package (`D` or `E`), because
+/// the terminals end at the body edge; `lead_length` is the terminal length
+/// (`L`) and `lead_width` its width (`b`). The fillet goals are those of
+/// IPC-7351B for flat no-lead terminals: toe 0.2, 0.3 and 0.4 mm, no heel, side
+/// -0.04 mm. For a QFN call it once for the x direction and once for the y
+/// direction.
+pub fn flat_no_lead(
+    input: &GullWingInput,
+    density: Density,
+    tol: &Tolerances,
+) -> Result<GullWingPads, IpcError> {
+    check("body", input.lead_span)?;
+    check("lead_length", input.lead_length)?;
+    check("lead_width", input.lead_width)?;
+    if input.pitch <= 0.0 || !input.pitch.is_finite() {
+        return Err(IpcError::BadDimension("pitch"));
+    }
+    let g = match density {
+        Density::Least => goal(0.2, 0.0, -0.04, 0.1),
+        Density::Nominal => goal(0.3, 0.0, -0.04, 0.25),
+        Density::Most => goal(0.4, 0.0, -0.04, 0.5),
+    };
+    pad_row(input, g, tol)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A QFN-32 with 4 x 4 mm body: D and E 4 +- 0.05, L 0.4 +- 0.05, b 0.2 +-
+    /// 0.05, pitch 0.4. KiCad has pads of 0.8 x 0.2 at x = +-1.95 for
+    /// QFN-32-1EP_4x4mm_P0.4mm_EP2.65x2.65mm.
+    #[test]
+    fn qfn32_matches_the_official_kicad_footprint() {
+        let pads = flat_no_lead(
+            &GullWingInput {
+                lead_span: Range::new(3.95, 4.05),
+                lead_length: Range::new(0.35, 0.45),
+                lead_width: Range::new(0.15, 0.25),
+                pitch: 0.4,
+            },
+            Density::Nominal,
+            &Tolerances::default(),
+        )
+        .unwrap();
+        assert!(close(pads.z_max, 4.7), "{pads:?}");
+        assert!(close(pads.g_min, 3.1), "{pads:?}");
+        assert!(close(pads.pad_length, 0.8), "{pads:?}");
+        assert!(close(pads.pad_center, 1.95), "{pads:?}");
+        assert!(close(pads.x_max, 0.2), "{pads:?}");
+    }
+
+    #[test]
+    fn no_lead_pads_grow_with_the_density_level() {
+        let input = GullWingInput {
+            lead_span: Range::new(3.95, 4.05),
+            lead_length: Range::new(0.35, 0.45),
+            lead_width: Range::new(0.15, 0.25),
+            pitch: 0.4,
+        };
+        let tol = Tolerances::default();
+        let a = flat_no_lead(&input, Density::Least, &tol).unwrap();
+        let b = flat_no_lead(&input, Density::Nominal, &tol).unwrap();
+        let c = flat_no_lead(&input, Density::Most, &tol).unwrap();
+        assert!(a.pad_length < b.pad_length && b.pad_length < c.pad_length);
+        assert!(
+            flat_no_lead(
+                &GullWingInput {
+                    lead_span: Range::new(-1.0, 1.0),
+                    ..input
+                },
+                Density::Nominal,
+                &tol
+            )
+            .is_err()
+        );
+    }
 
     fn close(a: f64, b: f64) -> bool {
         (a - b).abs() < 1e-9
