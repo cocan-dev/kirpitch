@@ -34,5 +34,7 @@ follows [Semantic Versioning](https://semver.org/).
   files; symbols place bidirectional pins on the right.
 - `cargo xtask fetch-datasheets` and `verify-datasheets`: download the golden
   datasheets into the ignored `testdata/pdfs/` and report changed hashes (drift).
+- `kirpitch` command-line tool with `schema`, `check` and `gen symbol|footprint|all`
+  (KiCad target from `--target`, the installed KiCad, or the newest supported).
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.

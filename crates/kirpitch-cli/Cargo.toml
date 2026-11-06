@@ -1,0 +1,22 @@
+[package]
+name = "kirpitch-cli"
+description = "The kirpitch command-line tool"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "kirpitch"
+path = "src/main.rs"
+
+[dependencies]
+kirpitch-core = { path = "../kirpitch-core" }
+kirpitch-kicad = { path = "../kirpitch-kicad" }
+kirpitch-gen-symbol = { path = "../kirpitch-gen-symbol" }
+kirpitch-gen-footprint = { path = "../kirpitch-gen-footprint" }
+clap = { version = "4.6.7", features = ["derive"] }
