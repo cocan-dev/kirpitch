@@ -28,3 +28,6 @@ CLAUDE.md
 # Downloaded datasheet PDFs are copyrighted and must never be committed.
 testdata/pdfs/
 testdata/pdfium/
+
+# Answers remembered from language models
+.kirpitch-cache/

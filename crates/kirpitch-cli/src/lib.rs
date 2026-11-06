@@ -13,6 +13,7 @@
 //! validation errors. (clap itself uses 2 for command-line mistakes.)
 
 mod flow;
+mod models_cmd;
 
 use std::ffi::OsString;
 use std::fs;
@@ -66,6 +67,15 @@ enum Command {
     Review(flow::ReviewArgs),
     /// Approve a review stage
     Approve(flow::ApproveArgs),
+    /// Read a datasheet with a language model and write a PartSpec
+    Build(models_cmd::BuildArgs),
+    /// Work with the configured language models
+    Models {
+        #[command(subcommand)]
+        command: models_cmd::ModelsCommand,
+    },
+    /// Measure the extraction on the golden set
+    Bench(models_cmd::BenchArgs),
     /// Generate KiCad files from a PartSpec
     Gen {
         /// Which file to generate
@@ -107,9 +117,45 @@ pub(crate) fn fab() -> FabProfile {
         .unwrap_or_else(FabProfile::generic)
 }
 
+/// How requests reach the language models; tests replace it.
+static TRANSPORT: std::sync::Mutex<Option<std::sync::Arc<dyn kirpitch_models::Transport>>> =
+    std::sync::Mutex::new(None);
+
+pub(crate) fn transport() -> std::sync::Arc<dyn kirpitch_models::Transport> {
+    TRANSPORT
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+        .unwrap_or_else(|| std::sync::Arc::new(kirpitch_models::CurlTransport))
+}
+
 /// Runs the tool with `args` (the first one is the program name), writing
 /// normal output to `out` and messages to `err`.
 pub fn run<I, T>(args: I, out: &mut dyn Write, err: &mut dyn Write) -> ExitCode
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    *TRANSPORT.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    run_inner(args, out, err)
+}
+
+/// Like [`run`], but sends model requests through `transport` (for tests).
+pub fn run_with_transport<I, T>(
+    args: I,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    transport: std::sync::Arc<dyn kirpitch_models::Transport>,
+) -> ExitCode
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    *TRANSPORT.lock().unwrap_or_else(|e| e.into_inner()) = Some(transport);
+    run_inner(args, out, err)
+}
+
+fn run_inner<I, T>(args: I, out: &mut dyn Write, err: &mut dyn Write) -> ExitCode
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
@@ -170,6 +216,9 @@ fn execute(command: Command, out: &mut dyn Write, err: &mut dyn Write) -> Result
             write!(out, "{}", json_schema_string()).map_err(|e| e.to_string())?;
             Ok(())
         }
+        Command::Build(args) => models_cmd::build_cmd(args, out, err),
+        Command::Models { command } => models_cmd::models_cmd(command, out),
+        Command::Bench(args) => models_cmd::bench_cmd(args, out),
         Command::Template(args) => flow::template(args, out),
         Command::Pins(args) => flow::pins(args, out, err),
         Command::Status(args) => flow::status(args, out),
