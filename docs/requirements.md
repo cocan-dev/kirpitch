@@ -265,6 +265,8 @@ The MVP (minimum viable product) covers text-based PDFs and standard IC packages
 1. **PartSpec + symbol and footprint generators:** the schema, a built-in generic fab profile and the structural checks, plus the symbol and footprint generators, driven by hand-written PartSpecs. No LLM yet. Footprints use the land pattern given in the PartSpec. See [ADR 0001](decisions/0001-milestone-1-scope.md).
    - **1b. 3D generator:** after evaluating the STEP engine (see Tech stack). SPICE generation stays in milestone 5.
 2. **Extraction:** no-LLM mode (region pick, package templates), then LLM extraction of pinouts and package dimensions for ICs through any configured provider. Includes mandatory source tracing for extracted values, the IPC-7351 land pattern calculator, the full cross-checks, KLC checks and `kirpitch bench`.
+   - **2a (no model needed):** IPC-7351 calculator, full cross-checks, package templates and more package families, pin table import, PDF region pick, CLI review flow with approvals, KLC checks as a Rust port and a golden set of about 12 parts. 2a comes first.
+   - **2b (models):** `kirpitch-extract`, LLM trait and adapters (OpenAI-compatible first), structured extraction, cache, second read and `kirpitch bench`. See [ADR 0015](decisions/0015-milestone-2-split-and-order.md).
 3. **Desktop review app:** the Tauri app with side-by-side review and live previews, plus the library browser with history and diffs.
 4. **Connectors:** extraction from dimensioned drawings, and connector 3D models.
 5. **Extras:** SPICE models, fetching by MPN, PCM packaging, and the KiCad plugin.

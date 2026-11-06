@@ -42,5 +42,8 @@ follows [Semantic Versioning](https://semver.org/).
   per KiCad version and a KiCad 9 job in the `kicad-cli` workflow.
 - KiCad 8 writers for symbols and footprints (`--target 8`) and a KiCad 8 job in the
   `kicad-cli` workflow.
+- Milestone 2 decisions (ADRs 0015 to 0020): split in 2a and 2b, pdfium for PDFs,
+  KLC checks in Rust, silkscreen width in the generic fab profile, exposed pads,
+  golden set growth.
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.
