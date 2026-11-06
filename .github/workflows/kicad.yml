@@ -1,0 +1,39 @@
+name: KiCad
+
+# Runs the tests that load generated files with kicad-cli, once per supported
+# KiCad version, in the official container images (ADR 0007). Only Linux
+# runners can do this; the other CI jobs skip these tests.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  kicad-cli:
+    name: kicad-cli (KiCad ${{ matrix.kicad }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # KiCad 9 and 8 are added with their writers.
+        kicad: ["10.0.8"]
+    env:
+      # A missing kicad-cli is a failure here, never a silent skip.
+      KIRPITCH_REQUIRE_KICAD: "1"
+      KIRPITCH_KICAD_IMAGE: kicad/kicad:${{ matrix.kicad }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup show
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: docker pull "$KIRPITCH_KICAD_IMAGE"
+      - name: Point the tests at kicad-cli in the container
+        run: echo "KIRPITCH_KICAD_CLI=$GITHUB_WORKSPACE/scripts/kicad-cli-docker.sh" >> "$GITHUB_ENV"
+      - run: ./scripts/kicad-cli-docker.sh version
+      - run: cargo test --all
