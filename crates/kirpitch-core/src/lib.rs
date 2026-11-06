@@ -11,6 +11,7 @@ pub mod fab;
 pub mod ipc;
 pub mod names;
 pub mod partspec;
+pub mod pintable;
 pub mod source;
 pub mod templates;
 pub mod units;

@@ -61,5 +61,7 @@ follows [Semantic Versioning](https://semver.org/).
   footprints made from templates load in KiCad 8, 9 and 10.
 - Through-hole pads (`kind: thru_hole`, `drill`), body centre, the `drill` check, the DIP
   template and through-hole footprints (silkscreen between the rows, pin 1 notch).
+- Pin table import (`kirpitch_core::pintable`): CSV, tab, semicolon, bar or space
+  separated text with or without header; guessed types are reported.
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.
