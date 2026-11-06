@@ -6,7 +6,7 @@
 //! the PartSpec, and the courtyard, fab outline, silkscreen and pin 1 marker are
 //! derived from the pads and the package body following the KiCad Library
 //! Conventions (KLC). No language model is involved. Milestone 1 writes the
-//! KiCad 10 and 9 formats and surface-mount pads only.
+//! KiCad 10, 9 and 8 formats and surface-mount pads only.
 //!
 //! Conventions covered (ADR 0008), with values taken from KiCad's own
 //! official footprints: courtyard 0.25 mm from the pads and body on a 0.01 mm
@@ -134,7 +134,7 @@ pub fn generate(spec: &PartSpec, options: &Options) -> Result<String, GenerateEr
     for (a, b) in silk_segments(pads, body_half_x + SILK_OFFSET, body_half_y + SILK_OFFSET) {
         fp = fp.child(line(a, b, SILK_WIDTH, "F.SilkS"));
     }
-    fp = fp.child(pin_one_marker(pin_one));
+    fp = fp.child(pin_one_marker(pin_one, options.target));
     fp = fp.child(courtyard_rect(&courtyard));
     fp = fp.child(fab_outline(body_half_x, body_half_y, pin_one));
     fp = fp.child(
@@ -151,7 +151,7 @@ pub fn generate(spec: &PartSpec, options: &Options) -> Result<String, GenerateEr
             .child(effects()),
     );
     for pad in pads {
-        fp = fp.child(pad_node(pad));
+        fp = fp.child(pad_node(pad, options.target));
     }
     if options.target.has_embedded_fonts_setting() {
         fp = fp.child(list("embedded_fonts").atom("no"));
@@ -286,7 +286,7 @@ fn fab_outline(half_x: f64, half_y: f64, pin_one: &Pad) -> List {
 }
 
 /// A filled triangle just outside pin 1, pointing at the pad.
-fn pin_one_marker(pad: &Pad) -> List {
+fn pin_one_marker(pad: &Pad, target: KicadTarget) -> List {
     let outward = if pad.y.get() > 0.0 { 1.0 } else { -1.0 };
     let (_, y0, _, y1) = pad.bounds();
     let edge = if outward > 0.0 { y1 } else { y0 };
@@ -301,7 +301,7 @@ fn pin_one_marker(pad: &Pad) -> List {
                 .child(list("xy").num(x + 0.24).num(base_y)),
         )
         .child(stroke(SILK_WIDTH))
-        .child(list("fill").atom("yes"))
+        .child(list("fill").atom(target.footprint_fill_keyword()))
         .child(list("layer").string("F.SilkS"))
 }
 
@@ -370,7 +370,7 @@ fn free_intervals(from: f64, to: f64, mut cuts: Vec<(f64, f64)>) -> Vec<(f64, f6
     free
 }
 
-fn pad_node(pad: &Pad) -> List {
+fn pad_node(pad: &Pad, target: KicadTarget) -> List {
     let shape = match pad.shape {
         PadShape::Rect => "rect",
         PadShape::RoundRect => "roundrect",
@@ -381,8 +381,12 @@ fn pad_node(pad: &Pad) -> List {
     if pad.rotation_deg != 0.0 {
         at = at.num(pad.rotation_deg);
     }
-    let mut layers = list("layers").string("F.Cu").string("F.Mask");
-    if pad.paste {
+    let mut layers = list("layers").string("F.Cu");
+    if pad.paste && target.footprint_paste_layer_before_mask() {
+        layers = layers.string("F.Paste");
+    }
+    layers = layers.string("F.Mask");
+    if pad.paste && !target.footprint_paste_layer_before_mask() {
         layers = layers.string("F.Paste");
     }
     let mut node = list("pad")

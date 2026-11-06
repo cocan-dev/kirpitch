@@ -8,7 +8,7 @@
 //! outputs and bidirectional pins on the right, positive supplies on top and grounds at the bottom.
 //! Pins that share a name and are power pins (for example several GND pins) are
 //! stacked on one position, with all but the first hidden. Milestone 1 writes
-//! the KiCad 10 and 9 formats and single-unit symbols only; multi-unit symbols come
+//! the KiCad 10, 9 and 8 formats and single-unit symbols only; multi-unit symbols come
 //! later.
 
 use kirpitch_core::partspec::Pin;
@@ -136,7 +136,7 @@ pub fn generate(spec: &PartSpec, options: &Options) -> Result<String, GenerateEr
         placed.sort_by(|a, b| natural_cmp(&a.pin.number, &b.pin.number));
     }
     for p in &placed {
-        body = body.child(pin_node(p));
+        body = body.child(pin_node(p, target));
     }
 
     // KiCad stores "no datasheet" as an empty string and rewrites "~" to it.
@@ -259,14 +259,18 @@ struct Placed<'a> {
     hidden: bool,
 }
 
-fn pin_node(p: &Placed<'_>) -> List {
+fn pin_node(p: &Placed<'_>, target: KicadTarget) -> List {
     let mut pin = list("pin")
         .atom(p.pin.electrical_type.as_str())
         .atom("line")
         .child(list("at").num(p.x).num(p.y).num(p.angle))
         .child(list("length").num(PIN_LENGTH));
     if p.hidden {
-        pin = pin.child(list("hide").atom("yes"));
+        pin = if target.symbol_pin_hide_is_bare_word() {
+            pin.atom("hide")
+        } else {
+            pin.child(list("hide").atom("yes"))
+        };
     }
     pin.child(
         list("name")

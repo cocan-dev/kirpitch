@@ -9,7 +9,11 @@
 #   cargo test --all
 #
 # The temporary folder and the repository are made visible in the container at
-# the same paths, and the tool runs as the current user.
+# the same paths, and the tool runs as the current user. Its home and temporary
+# folder are private to each call, because KiCad keeps lock files there and
+# parallel calls would otherwise warn about each other. Home and temporary
+# folder of the tool itself are private to each call, because KiCad keeps lock
+# files there and parallel calls would otherwise warn about each other.
 set -euo pipefail
 
 image="${KIRPITCH_KICAD_IMAGE:?set KIRPITCH_KICAD_IMAGE, for example kicad/kicad:10.0.8}"
@@ -18,7 +22,9 @@ tmp="${TMPDIR:-/tmp}"
 
 exec docker run --rm \
   --user "$(id -u):$(id -g)" \
-  -e HOME=/tmp \
+  --tmpfs /kicad-tmp:rw,mode=1777 \
+  -e HOME=/kicad-tmp \
+  -e TMPDIR=/kicad-tmp \
   -v "$tmp:$tmp" \
   -v "$repo:$repo" \
   -w "$PWD" \

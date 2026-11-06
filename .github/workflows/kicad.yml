@@ -22,8 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # KiCad 8 is added with its writer.
-        kicad: ["10.0.8", "9.0.9"]
+        kicad: ["10.0.8", "9.0.9", "8.0.9"]
     env:
       # A missing kicad-cli is a failure here, never a silent skip.
       KIRPITCH_REQUIRE_KICAD: "1"

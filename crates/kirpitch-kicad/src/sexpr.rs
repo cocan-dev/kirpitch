@@ -5,7 +5,8 @@
 //! The writer reproduces the layout KiCad itself writes (observed in KiCad
 //! 10): one tab per level, atoms and strings on the line of the list name, every
 //! child list on its own line, and a closing bracket on its own line only when
-//! the list has child lists. The one exception is the point list of a symbol
+//! the list has child lists. A word after a child list stays on the line of that
+//! list (KiCad 8 writes `(length 2.54) hide`). The one exception is the point list of a symbol
 //! graphic, whose points stay on one line; use [`List::inline_children`].
 //!
 //! The parser exists for the load check of ADR 0012: a generated file must
@@ -156,7 +157,6 @@ fn write_scalar(node: &Node, out: &mut String) {
 fn write_list(list: &List, level: usize, out: &mut String) {
     out.push('(');
     let has_children = list.items.iter().any(|n| matches!(n, Node::List(_)));
-    let mut seen_child = false;
     let mut first = true;
     let mut inline_open = false;
     for item in &list.items {
@@ -175,15 +175,12 @@ fn write_list(list: &List, level: usize, out: &mut String) {
                     indent(level + 1, out);
                 }
                 write_list(child, level + 1, out);
-                seen_child = true;
             }
             scalar => {
-                if first {
-                    // The first item (normally the name) follows the bracket.
-                } else if seen_child {
-                    out.push('\n');
-                    indent(level + 1, out);
-                } else {
+                // The first item (normally the name) follows the bracket. Later
+                // words stay on the current line, also after a child list, as
+                // in KiCad 8 pins: `(length 2.54) hide`.
+                if !first {
                     out.push(' ');
                 }
                 write_scalar(scalar, out);

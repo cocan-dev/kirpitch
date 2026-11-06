@@ -40,5 +40,7 @@ follows [Semantic Versioning](https://semver.org/).
   `scripts/kicad-cli-docker.sh` as the wrapper.
 - KiCad 9 writers for symbols and footprints (`--target 9`), with expected files
   per KiCad version and a KiCad 9 job in the `kicad-cli` workflow.
+- KiCad 8 writers for symbols and footprints (`--target 8`) and a KiCad 8 job in the
+  `kicad-cli` workflow.
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.

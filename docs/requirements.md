@@ -237,7 +237,7 @@ The constraint: KiCad major releases almost always change file formats. Newer ve
 - **Feature gating:** features that only newer versions have, such as embedded files, are used only when the target supports them. Anything dropped for an older target appears as a warning in the report.
 - **Never downgrade by conversion:** KiCad has `fp upgrade` and `sym upgrade` commands but no downgrade. Older formats are always written fresh from the PartSpec.
 - **Testing:** CI (continuous integration) runs a Linux container with each supported KiCad version and load-tests every golden part in that version's `kicad-cli`. Linux, macOS and Windows all run the format, lint and snapshot tests; only the `kicad-cli` tests are Linux-only ([ADR 0007](decisions/0007-kicad-cli-tests-on-linux-ci-only.md)). A nightly job also runs against KiCad development builds, to catch format changes before the next major release.
-- **Staging:** the writers are built in the order KiCad 10, 9, 8.
+- **Staging:** the writers were built in the order KiCad 10, 9, 8; all three exist (see [ADR 0014](decisions/0014-kicad-format-differences.md) for how the formats differ).
 
 ## KiCad library integration
 

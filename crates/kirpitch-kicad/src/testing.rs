@@ -128,7 +128,7 @@ pub fn assert_symbol_loads(
             cli.upgrade_symbols(&file).expect("upgrade"),
             UpgradeOutcome::Unchanged
         );
-        let old = text.replace(&format!("(version {version})"), "(version 20240101)");
+        let old = text.replace(&format!("(version {version})"), "(version 20220101)");
         std::fs::write(&file, old).expect("write old symbol");
         assert_eq!(
             cli.upgrade_symbols(&file).expect("upgrade"),

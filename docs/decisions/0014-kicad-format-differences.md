@@ -1,3 +1,6 @@
+| Order of pins in a symbol unit | by pin number | left to right, then top to bottom | by pin number |
+| Filled polygon in a footprint | `(fill yes)` | `(fill yes)` | `(fill solid)` |
+| Layers of an SMD pad with paste | `F.Cu F.Mask F.Paste` | `F.Cu F.Mask F.Paste` | `F.Cu F.Paste F.Mask` |
 # 0014. How the KiCad file formats differ between versions
 
 - **Status:** accepted (6 November 2026)
@@ -23,9 +26,6 @@ check of ADR 0012.
 | Symbol property `show_name`, `do_not_autoplace`, own `hide` | yes | no | no |
 | `hide` of a symbol field | in the property | in `effects` | in `effects` |
 | Order of pins in a symbol unit | by pin number | left to right, then top to bottom | by pin number |
-
-(Only the columns of versions that have a writer are implemented; the KiCad 8
-column is filled in when its writer is added.)
 
 ## Not different
 
