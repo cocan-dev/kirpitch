@@ -1,3 +1,4 @@
+| Exposed pad paste | 2. Footprint | A large pad with one paste area is reviewed (split paste windows are in the backlog, [ADR 0019](decisions/0019-exposed-pads.md)) | Warning |
 # Kirpitch — Requirements
 
 **Status:** living draft, open to feedback through [GitHub issues](https://github.com/cocan-dev/kirpitch/issues) · **Last updated:** 6 November 2026 · **Maintainer:** Niky Cocan
