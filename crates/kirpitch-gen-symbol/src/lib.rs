@@ -5,7 +5,7 @@
 //!
 //! The layout is deterministic code: pins are placed by electrical type, in the
 //! order of the PartSpec, on a 2.54 mm (100 mil) grid. Inputs go on the left,
-//! outputs on the right, positive supplies on top and grounds at the bottom.
+//! outputs and bidirectional pins on the right, positive supplies on top and grounds at the bottom.
 //! Pins that share a name and are power pins (for example several GND pins) are
 //! stacked on one position, with all but the first hidden. Milestone 1 writes
 //! the KiCad 10 format and single-unit symbols only; multi-unit symbols come
@@ -77,9 +77,17 @@ impl Default for Options {
     }
 }
 
-/// The file name of the library: the part number plus `.kicad_sym`.
+/// The file name of the library: the part number plus `.kicad_sym`, with
+/// characters that are not allowed in file names (`/ \ : * ? " < > |`)
+/// replaced by `_`.
 pub fn file_name(spec: &PartSpec) -> String {
-    format!("{}.kicad_sym", spec.metadata.mpn)
+    let safe: String = spec
+        .metadata
+        .mpn
+        .chars()
+        .map(|c| if "/\\:*?\"<>|".contains(c) { '_' } else { c })
+        .collect();
+    format!("{safe}.kicad_sym")
 }
 
 /// Generates the text of the `.kicad_sym` file.
@@ -238,6 +246,7 @@ fn side_of(pin: &Pin) -> Side {
         ElectricalType::PowerOut
         | ElectricalType::Output
         | ElectricalType::TriState
+        | ElectricalType::Bidirectional
         | ElectricalType::OpenCollector
         | ElectricalType::OpenEmitter => Side::Right,
         _ => Side::Left,
