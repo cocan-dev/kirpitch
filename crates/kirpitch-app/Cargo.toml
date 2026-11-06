@@ -20,3 +20,10 @@ tauri-build = "2"
 [[bin]]
 name = "kirpitch-app"
 path = "src/main.rs"
+
+# Native file dialogs. On Linux they use GTK, which the window needs anyway.
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+rfd = { version = "0.15", default-features = false }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rfd = { version = "0.15", default-features = false, features = ["gtk3"] }

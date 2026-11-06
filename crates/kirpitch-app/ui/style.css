@@ -152,3 +152,33 @@ td.edit.num-in input { width: 4.2em; }
 .model-views figure { margin: 0; }
 .model-views figcaption { font-size: 0.75rem; opacity: 0.7; text-align: center; }
 .model-views svg { width: 100%; height: auto; max-height: 9rem; background: rgba(127, 127, 127, 0.08); }
+
+/* Start screen, actions and dialogs */
+.top .actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.empty { max-width: 60rem; margin: 2rem auto; padding: 0 1rem; text-align: left; }
+.empty h2 { margin: 0 0 0.6rem; }
+.start-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
+.start-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 1.5rem; margin-top: 1.2rem; }
+.start-list { list-style: none; margin: 0.4rem 0 0; padding: 0; }
+.start-list li { display: flex; gap: 0.5rem; align-items: baseline; padding: 0.35rem 0; border-bottom: 1px solid var(--line); }
+.start-list button.link { background: none; border: 0; padding: 0; color: var(--brick); cursor: pointer; text-align: left; font: inherit; }
+.start-list button.link:hover { text-decoration: underline; }
+.start-list .meta { color: var(--muted); font-size: 0.85em; }
+.start-list .fresh { margin-left: auto; font-size: 0.8em; }
+.dialog { width: min(46rem, 94vw); max-height: 92vh; overflow: auto; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.2rem; }
+.dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+.dialog h2 { margin: 0 0 0.4rem; }
+.dialog .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; margin: 0.6rem 0; }
+.dialog label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.9em; }
+.dialog label.wide { margin: 0.6rem 0; }
+.dialog label.check { flex-direction: row; align-items: center; gap: 0.5rem; margin: 0.6rem 0; }
+.dialog input[type="text"], .dialog input[type="number"], .dialog select { padding: 0.35rem 0.5rem; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; font: inherit; width: 100%; }
+.dialog .pick-row { display: flex; gap: 0.4rem; }
+.dialog .fields { border: 1px solid var(--line); border-radius: 6px; margin: 0.6rem 0; padding: 0.4rem 0.8rem 0.8rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.6rem 0.8rem; }
+.dialog .fields .pair { display: flex; gap: 0.3rem; }
+.dialog .fields .help { color: var(--muted); font-size: 0.8em; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.8rem; }
+.dialog .result { border-top: 1px solid var(--line); margin-top: 0.8rem; padding-top: 0.5rem; }
+.dialog .result ul { margin: 0.2rem 0 0.6rem 1.1rem; padding: 0; }
+.dialog .result .bad { color: var(--err); }
+.dialog .result .good { color: var(--ok); }
