@@ -8,6 +8,11 @@
 //! - `verify-datasheets`: download every datasheet again into a temporary file
 //!   and report parts whose hash differs from the recorded one ("drift").
 //!
+//! - `fetch-pdfium`: download the pdfium library (BSD-3-Clause and Apache-2.0,
+//!   built by the pdfium-binaries project) for this platform into
+//!   `testdata/pdfium/` (ignored by git). Set `KIRPITCH_PDFIUM_LIB_DIR` to the
+//!   folder it prints to run the PDF tests.
+//!
 //! Datasheets are copyrighted and are never committed (CONTRIBUTING.md). A
 //! changed hash is drift, not a test failure (ADR 0013): exit code 3 tells
 //! scripts about it. Downloads use the system `curl` tool, which Windows 10 and
@@ -48,8 +53,9 @@ fn main() -> ExitCode {
     let result = match args.first().map(String::as_str) {
         Some("fetch-datasheets") => fetch(&root),
         Some("verify-datasheets") => verify(&root),
+        Some("fetch-pdfium") => fetch_pdfium(&root),
         _ => {
-            eprintln!("usage: cargo xtask <fetch-datasheets | verify-datasheets>");
+            eprintln!("usage: cargo xtask <fetch-datasheets | verify-datasheets | fetch-pdfium>");
             return ExitCode::from(EXIT_ERROR);
         }
     };
@@ -153,6 +159,88 @@ fn download(url: &str, target: &Path) -> Result<(), String> {
         return Err(format!("download of {url} failed ({status})"));
     }
     Ok(())
+}
+
+/// The pdfium-binaries release used by the tests and the SHA-256 of each archive.
+const PDFIUM_RELEASE: &str = "chromium/8138";
+
+struct PdfiumBuild {
+    platform: &'static str,
+    sha256: &'static str,
+    /// Folder inside the archive that holds the library.
+    library_dir: &'static str,
+}
+
+fn pdfium_build() -> Result<PdfiumBuild, String> {
+    let build = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+        PdfiumBuild {
+            platform: "win-x64",
+            sha256: "8d48973e3eb472dda0f5f2435e595ac043f9f2219dd71883392f549445afa8a5",
+            library_dir: "bin",
+        }
+    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+        PdfiumBuild {
+            platform: "linux-x64",
+            sha256: "d6b1e28950a0392590d79bbdbb7eb19686872b688f8a36f170acb19e41473113",
+            library_dir: "lib",
+        }
+    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        PdfiumBuild {
+            platform: "mac-arm64",
+            sha256: "21a1567b397b571f4f77f21ca91eac7b892774219c3c715a5127a20950ccb18b",
+            library_dir: "lib",
+        }
+    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+        PdfiumBuild {
+            platform: "mac-x64",
+            sha256: "72662ac8eff7bf5381ef82ceebd0a0ad5bddb051b303981115114e6972fd201c",
+            library_dir: "lib",
+        }
+    } else {
+        return Err("no pdfium build is pinned for this platform".to_string());
+    };
+    Ok(build)
+}
+
+/// Downloads and unpacks pdfium for this platform; the archive hash is checked
+/// before anything is unpacked. Returns the number of drifted files (always 0).
+fn fetch_pdfium(root: &Path) -> Result<usize, String> {
+    let build = pdfium_build()?;
+    let dir = root.join("testdata/pdfium").join(build.platform);
+    let archive = dir.join("pdfium.tgz");
+    if !archive.is_file() {
+        let url = format!(
+            "https://github.com/bblanchon/pdfium-binaries/releases/download/{PDFIUM_RELEASE}/pdfium-{}.tgz",
+            build.platform
+        );
+        println!("downloading {url}");
+        download(&url, &archive)?;
+    }
+    match check_hash(&archive, build.sha256)? {
+        Status::Match => {}
+        Status::Drift { actual } => {
+            let _ = fs::remove_file(&archive);
+            return Err(format!(
+                "the pdfium archive has the hash {actual}, expected {}; it was deleted",
+                build.sha256
+            ));
+        }
+    }
+    let status = Command::new("tar")
+        .arg("-xzf")
+        .arg(&archive)
+        .arg("-C")
+        .arg(&dir)
+        .status()
+        .map_err(|e| format!("cannot run tar ({e})"))?;
+    if !status.success() {
+        return Err(format!("tar failed ({status})"));
+    }
+    println!(
+        "pdfium ready. Set KIRPITCH_PDFIUM_LIB_DIR={}",
+        dir.join(build.library_dir).display()
+    );
+    Ok(0)
 }
 
 fn pdf_path(root: &Path, sheet: &Datasheet) -> PathBuf {

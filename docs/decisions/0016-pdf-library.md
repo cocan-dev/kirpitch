@@ -25,3 +25,25 @@ exist but render worse.
 
 - The release process must ship or download pdfium per platform.
 - Tests use synthetic PDFs created in the tests (ADR 0020).
+
+## Update (6 November 2026): dependency approved and added
+
+The maintainer approved the dependency after this check:
+
+- `pdfium-render` 0.9.5 (released 1 November 2026, 3.7 million downloads, regular
+  releases since March): licence MIT OR Apache-2.0. It is built with
+  `default-features = false` and the features `thread_safe` and
+  `pdfium_latest`, which keeps the dependency tree small; `cargo deny check`
+  passes.
+- The pdfium library itself is built by the pdfium-binaries project (PDFium is
+  licensed under Apache-2.0 and BSD-3-Clause). Kirpitch does not link it: the
+  crate loads it at run time from a folder given by the caller.
+- Tests and CI get it with `cargo xtask fetch-pdfium`, which downloads a pinned
+  release (`chromium/8138`) for the platform and checks the SHA-256 of the
+  archive before unpacking. The library goes to the ignored folder
+  `testdata/pdfium/`. Nothing of it is committed.
+- Tests run on Linux, macOS and Windows in the `PDF` workflow and need
+  `KIRPITCH_PDFIUM_LIB_DIR`; without it they are skipped, unless
+  `KIRPITCH_REQUIRE_PDFIUM=1`.
+- How a released Kirpitch ships pdfium (bundled next to the binary or fetched at
+  install) is still open and belongs to the release process.

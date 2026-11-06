@@ -1,0 +1,40 @@
+name: PDF
+
+# Runs the tests that read synthetic PDFs with pdfium (ADR 0016) on all three
+# systems. The pdfium library is downloaded with `cargo xtask fetch-pdfium`,
+# which checks the SHA-256 hash of the archive.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  KIRPITCH_REQUIRE_PDFIUM: "1"
+
+jobs:
+  pdfium:
+    name: pdfium (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            lib: testdata/pdfium/linux-x64/lib
+          - os: macos-latest
+            lib: testdata/pdfium/mac-arm64/lib
+          - os: windows-latest
+            lib: testdata/pdfium/win-x64/bin
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup show
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo xtask fetch-pdfium
+      - name: Test with pdfium
+        shell: bash
+        run: KIRPITCH_PDFIUM_LIB_DIR="$PWD/${{ matrix.lib }}" cargo test -p kirpitch-extract
