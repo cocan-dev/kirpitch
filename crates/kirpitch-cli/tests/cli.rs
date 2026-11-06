@@ -67,40 +67,42 @@ fn check_reports_errors_by_field_with_exit_code_3() {
 
 #[test]
 fn gen_writes_exactly_the_expected_golden_files() {
-    for part in ["lm358-soic8", "ne555-soic8", "24lc256-soic8"] {
-        let tmp = TempDir::new("cli-gen");
-        let out_dir = tmp.path().join("out");
-        let out = kirpitch(&[
-            "gen",
-            "all",
-            &spec(part),
-            "-o",
-            &out_dir.to_string_lossy(),
-            "--target",
-            "10",
-        ]);
-        assert!(out.status.success(), "{}", text(&out.stderr));
-        let stdout = text(&out.stdout);
-        assert_eq!(stdout.lines().count(), 2, "{stdout}");
+    for (target, folder) in [("10", "kicad10"), ("9", "kicad9")] {
+        for part in ["lm358-soic8", "ne555-soic8", "24lc256-soic8"] {
+            let tmp = TempDir::new("cli-gen");
+            let out_dir = tmp.path().join("out");
+            let out = kirpitch(&[
+                "gen",
+                "all",
+                &spec(part),
+                "-o",
+                &out_dir.to_string_lossy(),
+                "--target",
+                target,
+            ]);
+            assert!(out.status.success(), "{}", text(&out.stderr));
+            let stdout = text(&out.stdout);
+            assert_eq!(stdout.lines().count(), 2, "{stdout}");
 
-        let expected = golden(part).join("expected");
-        let mut checked = 0;
-        for entry in fs::read_dir(&expected).unwrap().flatten() {
-            let name = entry.file_name();
-            let generated = if name.to_string_lossy().ends_with(".kicad_mod") {
-                out_dir.join("kirpitch.pretty").join(&name)
-            } else {
-                out_dir.join(&name)
-            };
-            let got =
-                fs::read(&generated).unwrap_or_else(|e| panic!("{}: {e}", generated.display()));
-            let want = fs::read_to_string(entry.path())
-                .unwrap()
-                .replace("\r\n", "\n");
-            assert_eq!(String::from_utf8(got).unwrap(), want, "{part}/{name:?}");
-            checked += 1;
+            let expected = golden(part).join("expected").join(folder);
+            let mut checked = 0;
+            for entry in fs::read_dir(&expected).unwrap().flatten() {
+                let name = entry.file_name();
+                let generated = if name.to_string_lossy().ends_with(".kicad_mod") {
+                    out_dir.join("kirpitch.pretty").join(&name)
+                } else {
+                    out_dir.join(&name)
+                };
+                let got =
+                    fs::read(&generated).unwrap_or_else(|e| panic!("{}: {e}", generated.display()));
+                let want = fs::read_to_string(entry.path())
+                    .unwrap()
+                    .replace("\r\n", "\n");
+                assert_eq!(String::from_utf8(got).unwrap(), want, "{part}/{name:?}");
+                checked += 1;
+            }
+            assert_eq!(checked, 2);
         }
-        assert_eq!(checked, 2);
     }
 }
 

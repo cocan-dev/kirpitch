@@ -6,7 +6,7 @@
 //! the PartSpec, and the courtyard, fab outline, silkscreen and pin 1 marker are
 //! derived from the pads and the package body following the KiCad Library
 //! Conventions (KLC). No language model is involved. Milestone 1 writes the
-//! KiCad 10 format and surface-mount pads only.
+//! KiCad 10 and 9 formats and surface-mount pads only.
 //!
 //! Conventions covered (ADR 0008), with values taken from KiCad's own
 //! official footprints: courtyard 0.25 mm from the pads and body on a 0.01 mm
@@ -124,7 +124,12 @@ pub fn generate(spec: &PartSpec, options: &Options) -> Result<String, GenerateEr
         .child(text_property("Reference", "REF**", ref_y, "F.SilkS"))
         .child(text_property("Value", &spec.package.name, value_y, "F.Fab"))
         .child(list("attr").atom("smd"))
-        .child(list("duplicate_pad_numbers_are_jumpers").atom("no"));
+        .child_opt(
+            options
+                .target
+                .footprint_has_pad_jumper_setting()
+                .then(|| list("duplicate_pad_numbers_are_jumpers").atom("no")),
+        );
 
     for (a, b) in silk_segments(pads, body_half_x + SILK_OFFSET, body_half_y + SILK_OFFSET) {
         fp = fp.child(line(a, b, SILK_WIDTH, "F.SilkS"));
@@ -148,7 +153,9 @@ pub fn generate(spec: &PartSpec, options: &Options) -> Result<String, GenerateEr
     for pad in pads {
         fp = fp.child(pad_node(pad));
     }
-    fp = fp.child(list("embedded_fonts").atom("no"));
+    if options.target.has_embedded_fonts_setting() {
+        fp = fp.child(list("embedded_fonts").atom("no"));
+    }
     Ok(fp.write())
 }
 

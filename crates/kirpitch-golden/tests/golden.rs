@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use kirpitch_core::{FabProfile, PartSpec, has_errors, validate};
+use kirpitch_kicad::KicadTarget;
 use kirpitch_kicad::testing::{
     assert_footprint_loads, assert_snapshot, assert_symbol_loads, kicad_cli_or_skip,
 };
@@ -143,28 +144,70 @@ fn partspecs_have_no_findings() {
     }
 }
 
+fn footprint_for(spec: &PartSpec, target: KicadTarget) -> String {
+    let options = kirpitch_gen_footprint::Options {
+        target,
+        ..Default::default()
+    };
+    kirpitch_gen_footprint::generate(spec, &options).unwrap()
+}
+
+fn symbol_for(spec: &PartSpec, target: KicadTarget) -> String {
+    let options = kirpitch_gen_symbol::Options {
+        target,
+        ..Default::default()
+    };
+    kirpitch_gen_symbol::generate(spec, &options).unwrap()
+}
+
+/// `expected/kicad<major>` of a golden part.
+fn expected_dir(dir: &Path, target: KicadTarget) -> PathBuf {
+    dir.join("expected")
+        .join(format!("kicad{}", target.major()))
+}
+
 #[test]
 fn generated_files_match_the_expected_files() {
     for dir in parts() {
         let spec = load(&dir);
-        let start = Instant::now();
-        let footprint = kirpitch_gen_footprint::generate(&spec, &Default::default()).unwrap();
-        let symbol = kirpitch_gen_symbol::generate(&spec, &Default::default()).unwrap();
-        assert!(
-            start.elapsed().as_secs_f64() < 1.0,
-            "{}: generation took too long",
-            dir.display()
-        );
-        assert_snapshot(
-            &dir.join("expected")
-                .join(kirpitch_gen_footprint::file_name(&spec)),
-            &footprint,
-        );
-        assert_snapshot(
-            &dir.join("expected")
-                .join(kirpitch_gen_symbol::file_name(&spec)),
-            &symbol,
-        );
+        for &target in KicadTarget::ALL {
+            let start = Instant::now();
+            let footprint = footprint_for(&spec, target);
+            let symbol = symbol_for(&spec, target);
+            assert!(
+                start.elapsed().as_secs_f64() < 1.0,
+                "{}: generation took too long",
+                dir.display()
+            );
+            let expected = expected_dir(&dir, target);
+            assert_snapshot(
+                &expected.join(kirpitch_gen_footprint::file_name(&spec)),
+                &footprint,
+            );
+            assert_snapshot(
+                &expected.join(kirpitch_gen_symbol::file_name(&spec)),
+                &symbol,
+            );
+        }
+    }
+}
+
+#[test]
+fn there_are_no_expected_files_for_unsupported_versions() {
+    for dir in parts() {
+        let mut found: Vec<String> = fs::read_dir(dir.join("expected"))
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        found.sort();
+        let want: Vec<String> = KicadTarget::ALL
+            .iter()
+            .map(|t| format!("kicad{}", t.major()))
+            .collect();
+        let mut want_sorted = want.clone();
+        want_sorted.sort();
+        assert_eq!(found, want_sorted, "{}", dir.display());
     }
 }
 
@@ -173,14 +216,10 @@ fn generation_is_deterministic() {
     for dir in parts() {
         let spec = load(&dir);
         let again = load(&dir);
-        assert_eq!(
-            kirpitch_gen_footprint::generate(&spec, &Default::default()),
-            kirpitch_gen_footprint::generate(&again, &Default::default())
-        );
-        assert_eq!(
-            kirpitch_gen_symbol::generate(&spec, &Default::default()),
-            kirpitch_gen_symbol::generate(&again, &Default::default())
-        );
+        for &target in KicadTarget::ALL {
+            assert_eq!(footprint_for(&spec, target), footprint_for(&again, target));
+            assert_eq!(symbol_for(&spec, target), symbol_for(&again, target));
+        }
     }
 }
 
@@ -193,19 +232,22 @@ fn kicad_loads_every_golden_part() {
         let spec = load(&dir);
         assert!(!has_errors(&validate(&spec, &FabProfile::generic())));
         let label = dir.file_name().unwrap().to_string_lossy().into_owned();
-        let footprint = kirpitch_gen_footprint::generate(&spec, &Default::default()).unwrap();
-        assert_footprint_loads(
-            &cli,
-            &format!("{label}-fp"),
-            &footprint,
-            &kirpitch_gen_footprint::file_name(&spec),
-        );
-        let symbol = kirpitch_gen_symbol::generate(&spec, &Default::default()).unwrap();
-        assert_symbol_loads(
-            &cli,
-            &format!("{label}-sym"),
-            &symbol,
-            &kirpitch_gen_symbol::file_name(&spec),
-        );
+        // Each KiCad version can only check the files written for itself.
+        for &target in KicadTarget::ALL {
+            assert_footprint_loads(
+                &cli,
+                target,
+                &format!("{label}-fp"),
+                &footprint_for(&spec, target),
+                &kirpitch_gen_footprint::file_name(&spec),
+            );
+            assert_symbol_loads(
+                &cli,
+                target,
+                &format!("{label}-sym"),
+                &symbol_for(&spec, target),
+                &kirpitch_gen_symbol::file_name(&spec),
+            );
+        }
     }
 }

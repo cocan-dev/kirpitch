@@ -93,16 +93,26 @@ pub fn assert_snapshot(path: &Path, actual: &str) {
     );
 }
 
-/// Runs the load check of ADR 0012 on a generated symbol library (KiCad 10
-/// format) and panics with a readable message when it fails.
+/// Runs the load check of ADR 0012 on a generated symbol library for `target`
+/// and panics with a readable message when it fails. Nothing is checked, and a
+/// message is printed, when `cli` is not the KiCad version of `target`.
 ///
 /// 1. `kicad-cli sym export svg` succeeds and writes an SVG per unit.
 /// 2. The text parses and prints back unchanged, with the target's version.
 /// 3. `sym upgrade` leaves the file alone.
 /// 4. With an old version number, `sym upgrade` rewrites the file to exactly
 ///    the same text, except for the generator name `kirpitch`.
-pub fn assert_symbol_loads(cli: &KicadCli, label: &str, text: &str, file_name: &str) {
-    use crate::{KicadTarget, UpgradeOutcome};
+pub fn assert_symbol_loads(
+    cli: &KicadCli,
+    target: crate::KicadTarget,
+    label: &str,
+    text: &str,
+    file_name: &str,
+) {
+    use crate::UpgradeOutcome;
+    if !installed_is(cli, target) {
+        return;
+    }
     let tmp = TempDir::new(label);
     let file = tmp.path().join(file_name);
     std::fs::write(&file, text).expect("write symbol");
@@ -111,9 +121,9 @@ pub fn assert_symbol_loads(cli: &KicadCli, label: &str, text: &str, file_name: &
         .unwrap_or_else(|e| panic!("kicad-cli cannot load the symbol: {e}"));
     assert!(!svgs.is_empty(), "no SVG written");
     crate::sexpr::check_round_trip(text).expect("own parse and round trip");
-    let version = KicadTarget::LATEST.symbol_format_version();
+    let version = target.symbol_format_version();
     assert!(text.contains(&format!("(version {version})")));
-    if cli.version().expect("kicad-cli version").major >= KicadTarget::LATEST.major() {
+    {
         assert_eq!(
             cli.upgrade_symbols(&file).expect("upgrade"),
             UpgradeOutcome::Unchanged
@@ -142,15 +152,25 @@ pub fn assert_symbol_loads(cli: &KicadCli, label: &str, text: &str, file_name: &
     }
 }
 
-/// Runs the load check of ADR 0012 on a generated footprint and panics with a
+/// Runs the load check of ADR 0012 on a generated footprint for `target` and
+/// panics with a
 /// readable message when it fails.
 ///
 /// 1. `kicad-cli fp export svg` succeeds on a `.pretty` folder holding it.
 /// 2. The text parses and prints back unchanged, with the target's version.
 /// 3. `fp upgrade` leaves the file alone. (An old-version rewrite is not used
 ///    for footprints because KiCad adds random UUIDs, see ADR 0012.)
-pub fn assert_footprint_loads(cli: &KicadCli, label: &str, text: &str, file_name: &str) {
-    use crate::{KicadTarget, UpgradeOutcome};
+pub fn assert_footprint_loads(
+    cli: &KicadCli,
+    target: crate::KicadTarget,
+    label: &str,
+    text: &str,
+    file_name: &str,
+) {
+    use crate::UpgradeOutcome;
+    if !installed_is(cli, target) {
+        return;
+    }
     let tmp = TempDir::new(label);
     let lib = tmp.path().join("lib.pretty");
     std::fs::create_dir_all(&lib).expect("create library folder");
@@ -160,14 +180,29 @@ pub fn assert_footprint_loads(cli: &KicadCli, label: &str, text: &str, file_name
         .unwrap_or_else(|e| panic!("kicad-cli cannot load the footprint: {e}"));
     assert_eq!(svgs.len(), 1, "expected one SVG");
     crate::sexpr::check_round_trip(text).expect("own parse and round trip");
-    let version = KicadTarget::LATEST.footprint_format_version();
+    let version = target.footprint_format_version();
     assert!(text.contains(&format!("(version {version})")));
-    if cli.version().expect("kicad-cli version").major >= KicadTarget::LATEST.major() {
+    {
         assert_eq!(
             cli.upgrade_footprints(&lib).expect("upgrade"),
             UpgradeOutcome::Unchanged
         );
         let after = std::fs::read_to_string(lib.join(file_name)).expect("read footprint");
         assert_eq!(after.replace("\r\n", "\n"), text);
+    }
+}
+
+/// True when `cli` is the KiCad version that `target` is written for. Prints a
+/// message when it is not, so the skipped check is visible in the test output.
+pub fn installed_is(cli: &KicadCli, target: crate::KicadTarget) -> bool {
+    let installed = cli.version().expect("kicad-cli version");
+    if installed.major == target.major() {
+        true
+    } else {
+        eprintln!(
+            "SKIPPED: kicad-cli is KiCad {installed} but the files are for KiCad {}",
+            target.major()
+        );
+        false
     }
 }

@@ -6,7 +6,8 @@
 use std::fs;
 use std::path::Path;
 
-use kirpitch_kicad::testing::{TempDir, kicad_cli_or_skip};
+use kirpitch_kicad::KicadTarget;
+use kirpitch_kicad::testing::{TempDir, installed_is, kicad_cli_or_skip};
 use kirpitch_kicad::{UpgradeOutcome, cli::CliError};
 
 const TINY_MOD: &str = include_str!("fixtures/tiny.kicad_mod");
@@ -94,6 +95,10 @@ fn good_symbol_exports_to_svg() {
     let Some(cli) = kicad_cli_or_skip() else {
         return;
     };
+    // The fixture is written in the KiCad 10 format.
+    if !installed_is(&cli, KicadTarget::V10) {
+        return;
+    }
     let tmp = TempDir::new("sym-good");
     let file = tmp.path().join("tiny.kicad_sym");
     fs::write(&file, TINY_SYM).unwrap();
@@ -122,6 +127,9 @@ fn symbol_in_current_format_is_not_upgraded() {
     let Some(cli) = kicad_cli_or_skip() else {
         return;
     };
+    if !installed_is(&cli, KicadTarget::V10) {
+        return;
+    }
     let tmp = TempDir::new("sym-upgrade");
     let file = tmp.path().join("tiny.kicad_sym");
     fs::write(&file, TINY_SYM).unwrap();

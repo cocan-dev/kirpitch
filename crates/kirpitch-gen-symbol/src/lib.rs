@@ -8,7 +8,7 @@
 //! outputs and bidirectional pins on the right, positive supplies on top and grounds at the bottom.
 //! Pins that share a name and are power pins (for example several GND pins) are
 //! stacked on one position, with all but the first hidden. Milestone 1 writes
-//! the KiCad 10 format and single-unit symbols only; multi-unit symbols come
+//! the KiCad 10 and 9 formats and single-unit symbols only; multi-unit symbols come
 //! later.
 
 use kirpitch_core::partspec::Pin;
@@ -99,6 +99,7 @@ pub fn generate(spec: &PartSpec, options: &Options) -> Result<String, GenerateEr
     if has_errors(&findings) {
         return Err(GenerateError::Invalid(findings));
     }
+    let target = options.target;
     let layout = Layout::new(&spec.pins);
     let name = &spec.metadata.mpn;
 
@@ -121,62 +122,77 @@ pub fn generate(spec: &PartSpec, options: &Options) -> Result<String, GenerateEr
             )
             .child(list("fill").child(list("type").atom("background"))),
     );
-    // KiCad itself stores the pins of a unit sorted by pin number, so the file
-    // is written that way too (see the canonical-layout test).
+    // KiCad itself stores the pins of a unit in a fixed order, so the file is
+    // written that way too (see the canonical-layout test): by pin number, or,
+    // in KiCad 9, from left to right and then from top to bottom.
     let mut placed = layout.placed();
-    placed.sort_by(|a, b| natural_cmp(&a.pin.number, &b.pin.number));
+    if target.symbol_pins_sorted_by_position() {
+        placed.sort_by(|a, b| {
+            a.x.total_cmp(&b.x)
+                .then(b.y.total_cmp(&a.y))
+                .then_with(|| natural_cmp(&a.pin.number, &b.pin.number))
+        });
+    } else {
+        placed.sort_by(|a, b| natural_cmp(&a.pin.number, &b.pin.number));
+    }
     for p in &placed {
         body = body.child(pin_node(p));
     }
 
     // KiCad stores "no datasheet" as an empty string and rewrites "~" to it.
     let datasheet = spec.metadata.datasheet_url.as_deref().unwrap_or("");
+    let hidden = |name: &str, value: &str| property(target, name, value, (0.0, 0.0), true, false);
     let mut symbol = list("symbol")
         .string(name)
         .child(list("pin_names").child(list("offset").num(NAME_OFFSET)))
         .child(list("exclude_from_sim").atom("no"))
         .child(list("in_bom").atom("yes"))
         .child(list("on_board").atom("yes"))
-        .child(list("in_pos_files").atom("yes"))
-        .child(list("duplicate_pin_numbers_are_jumpers").atom("no"))
-        .child(property("Reference", "U", (x_left, ref_y), false, true))
-        .child(property("Value", name, (x_left, value_y), false, true))
-        .child(property("Footprint", "", (0.0, 0.0), true, false))
-        .child(property("Datasheet", datasheet, (0.0, 0.0), true, false))
+        .child_opt(
+            target
+                .symbol_has_pos_files_and_jumper_settings()
+                .then(|| list("in_pos_files").atom("yes")),
+        )
+        .child_opt(
+            target
+                .symbol_has_pos_files_and_jumper_settings()
+                .then(|| list("duplicate_pin_numbers_are_jumpers").atom("no")),
+        )
         .child(property(
-            "Description",
-            &spec.metadata.description,
-            (0.0, 0.0),
-            true,
+            target,
+            "Reference",
+            "U",
+            (x_left, ref_y),
             false,
+            true,
         ))
-        .child(property("MPN", name, (0.0, 0.0), true, false))
         .child(property(
-            "Manufacturer",
-            &spec.metadata.manufacturer,
-            (0.0, 0.0),
-            true,
+            target,
+            "Value",
+            name,
+            (x_left, value_y),
             false,
-        ));
+            true,
+        ))
+        .child(hidden("Footprint", ""))
+        .child(hidden("Datasheet", datasheet))
+        .child(hidden("Description", &spec.metadata.description))
+        .child(hidden("MPN", name))
+        .child(hidden("Manufacturer", &spec.metadata.manufacturer));
     if !spec.metadata.keywords.is_empty() {
-        symbol = symbol.child(property(
-            "ki_keywords",
-            &spec.metadata.keywords.join(" "),
-            (0.0, 0.0),
-            true,
-            false,
-        ));
+        symbol = symbol.child(hidden("ki_keywords", &spec.metadata.keywords.join(" ")));
     }
     symbol = symbol
-        .child(property(
+        .child(hidden(
             "ki_fp_filters",
             &format!("{}*", spec.package.family),
-            (0.0, 0.0),
-            true,
-            false,
         ))
         .child(body)
-        .child(list("embedded_fonts").atom("no"));
+        .child_opt(
+            target
+                .has_embedded_fonts_setting()
+                .then(|| list("embedded_fonts").atom("no")),
+        );
 
     Ok(list("kicad_symbol_lib")
         .child(list("version").atom(&options.target.symbol_format_version().to_string()))
@@ -186,25 +202,43 @@ pub fn generate(spec: &PartSpec, options: &Options) -> Result<String, GenerateEr
         .write())
 }
 
-fn effects(justify_left: bool) -> List {
+fn effects(justify_left: bool, hide: bool) -> List {
     let mut e = list("effects").child(list("font").child(list("size").num(FONT).num(FONT)));
     if justify_left {
         e = e.child(list("justify").atom("left"));
     }
+    if hide {
+        e = e.child(list("hide").atom("yes"));
+    }
     e
 }
 
-fn property(name: &str, value: &str, at: (f64, f64), hide: bool, justify_left: bool) -> List {
+/// A field of the symbol. Newer KiCad versions write `show_name`,
+/// `do_not_autoplace` and a `hide` setting on the property itself; older ones
+/// put `hide` inside the text effects.
+fn property(
+    target: KicadTarget,
+    name: &str,
+    value: &str,
+    at: (f64, f64),
+    hide: bool,
+    justify_left: bool,
+) -> List {
     let mut p = list("property")
         .string(name)
         .string(value)
-        .child(list("at").num(at.0).num(at.1).num(0.0))
-        .child(list("show_name").atom("no"))
-        .child(list("do_not_autoplace").atom("no"));
-    if hide {
-        p = p.child(list("hide").atom("yes"));
+        .child(list("at").num(at.0).num(at.1).num(0.0));
+    if target.symbol_property_has_show_name() {
+        p = p
+            .child(list("show_name").atom("no"))
+            .child(list("do_not_autoplace").atom("no"));
+        if hide {
+            p = p.child(list("hide").atom("yes"));
+        }
+        p.child(effects(justify_left, false))
+    } else {
+        p.child(effects(justify_left, hide))
     }
-    p.child(effects(justify_left))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -234,8 +268,16 @@ fn pin_node(p: &Placed<'_>) -> List {
     if p.hidden {
         pin = pin.child(list("hide").atom("yes"));
     }
-    pin.child(list("name").string(&p.pin.name).child(effects(false)))
-        .child(list("number").string(&p.pin.number).child(effects(false)))
+    pin.child(
+        list("name")
+            .string(&p.pin.name)
+            .child(effects(false, false)),
+    )
+    .child(
+        list("number")
+            .string(&p.pin.number)
+            .child(effects(false, false)),
+    )
 }
 
 /// Which side of the symbol a pin belongs on.
