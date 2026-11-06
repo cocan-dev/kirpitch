@@ -13,7 +13,7 @@ use kirpitch_core::templates::{
     DualRowGullWing, DualRowThroughHole, QuadFlatNoLead, Template, dual_row_gull_wing,
     dual_row_through_hole, quad_flat_no_lead, sot23,
 };
-use kirpitch_core::{BoundingBox, Confidence, Source};
+use kirpitch_core::{BoundingBox, Confidence, Mm, Source, Sourced, Tolerance};
 
 use crate::client::Client;
 use crate::config::{Config, Task};
@@ -181,6 +181,30 @@ pub fn assemble(
         ));
     }
 
+    // The body sizes keep the range of the drawing (the template only knows the
+    // rounded size it needs for the outline and the name).
+    for (key, range) in [
+        ("D", package.body_length_range),
+        ("E1", package.body_width_range),
+    ] {
+        if let Some(s) = range
+            && s.min < s.max
+            && let (Ok(min), Ok(max), Ok(nom)) = (
+                Mm::new(s.min),
+                Mm::new(s.max),
+                Mm::new((s.min + s.max) / 2.0),
+            )
+        {
+            template.package.dimensions.insert(
+                key.to_string(),
+                Sourced::unsourced(Tolerance {
+                    min: Some(min),
+                    nom,
+                    max: Some(max),
+                }),
+            );
+        }
+    }
     template.package.source = Some(package_source);
     for dimension in template.package.dimensions.values_mut() {
         dimension.source = Some(package_source);
@@ -311,7 +335,8 @@ pub struct Score {
     pub pins_expected: usize,
     /// Pins found that are not expected.
     pub pins_extra: usize,
-    /// Package dimensions that match within 0.05 mm, out of those compared.
+    /// Package dimensions whose minimum, nominal-or-maximum and maximum match
+    /// within 0.02 mm, out of those compared.
     pub dimensions_correct: usize,
     /// Dimensions compared.
     pub dimensions_expected: usize,
@@ -319,6 +344,8 @@ pub struct Score {
     pub pads_correct: usize,
     /// Pads expected.
     pub pads_expected: usize,
+    /// The dimensions that differ, one line each.
+    pub mismatches: Vec<String>,
 }
 
 impl Score {
@@ -327,12 +354,16 @@ impl Score {
         ratio(self.pins_correct, self.pins_expected)
     }
 
-    /// Share of the package dimensions and pads that are right, 0 to 1.
+    /// Share of the package dimensions that are right, 0 to 1. The pads are
+    /// not part of it: they follow from the dimensions by the IPC-7351
+    /// formulas, while a golden part may carry the maker's own land pattern.
     pub fn footprint(&self) -> f64 {
-        ratio(
-            self.dimensions_correct + self.pads_correct,
-            self.dimensions_expected + self.pads_expected,
-        )
+        ratio(self.dimensions_correct, self.dimensions_expected)
+    }
+
+    /// Share of the expected pads that are at the same place and size, 0 to 1.
+    pub fn pads(&self) -> f64 {
+        ratio(self.pads_correct, self.pads_expected)
     }
 }
 
@@ -358,12 +389,45 @@ pub fn score(built: &PartSpec, expected: &PartSpec) -> Score {
     let mut dimensions_correct = 0;
     let mut dimensions_expected = 0;
     let built_dims: &BTreeMap<_, _> = &built.package.dimensions;
+    let mut mismatches = Vec::new();
+    // Only the dimensions that both PartSpecs record are compared: the
+    // templates keep the letters they need (A, D, E, E1, L, b, e), a maker may
+    // list more (A1, c, ...).
     for (key, e) in &expected.package.dimensions {
-        dimensions_expected += 1;
-        if let Some(b) = built_dims.get(key)
-            && (b.value.nom.get() - e.value.nom.get()).abs() <= 0.05
-        {
-            dimensions_correct += 1;
+        if let Some(b) = built_dims.get(key) {
+            dimensions_expected += 1;
+            let close = |x: Option<kirpitch_core::Mm>, y: Option<kirpitch_core::Mm>| match (x, y) {
+                (Some(x), Some(y)) => (x.get() - y.get()).abs() <= 0.02,
+                (None, None) => true,
+                _ => false,
+            };
+            // A maker that prints only a nominal or a maximum: the built
+            // range is a single value too, or its nominal is compared.
+            let same = if e.value.min.is_none() && e.value.max.is_none() {
+                (b.value.nom.get() - e.value.nom.get()).abs() <= 0.02
+            } else if e.value.min.is_none() {
+                close(b.value.max, e.value.max)
+                    || (b.value.nom.get() - e.value.nom.get()).abs() <= 0.02
+            } else {
+                close(b.value.min, e.value.min) && close(b.value.max, e.value.max)
+            };
+            if same {
+                dimensions_correct += 1;
+            } else {
+                let show = |t: &kirpitch_core::Tolerance| {
+                    format!(
+                        "{} / {} / {}",
+                        t.min.map_or("-".into(), |v| v.format()),
+                        t.nom.format(),
+                        t.max.map_or("-".into(), |v| v.format())
+                    )
+                };
+                mismatches.push(format!(
+                    "{key}: built (min / nom / max) {}, expected {}",
+                    show(&b.value),
+                    show(&e.value)
+                ));
+            }
         }
     }
     let mut pads_correct = 0;
@@ -386,5 +450,6 @@ pub fn score(built: &PartSpec, expected: &PartSpec) -> Score {
         dimensions_expected,
         pads_correct,
         pads_expected: expected.land_pattern.pads.len(),
+        mismatches,
     }
 }

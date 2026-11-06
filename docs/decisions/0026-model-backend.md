@@ -43,6 +43,30 @@ downloads (ADR 0013).
   work on page text), OCR, and prices for known models (give `price_in` and
   `price_out`).
 
+## Lessons from the first real runs (November 2026)
+
+The first runs against a real model (an Ollama `:cloud` model) showed what
+recorded answers cannot:
+
+- Not every server enforces the schema, so the prompt always carries it too.
+- The answer may have sentences around the JSON, or JSON in a code fence: the
+  first parseable object is taken.
+- A model that thinks can spend its whole budget before it writes the answer.
+  Kirpitch reads the stop reason; when an answer was cut at the length limit,
+  the retry allows four times more tokens.
+- Pages are chosen by weighted keywords. Words from `--hint` count more the fewer
+  pages have them (a drawing code is on one page, the maker's name on all).
+- PDFs print the minus sign as U+2212 and similar dashes; names are written with
+  the plain hyphen, in the pin names and when they are looked up in the text.
+- The package is asked for with the JEDEC letters of the drawing (`e`, `A`, `D`,
+  `E`, `E1`, `L`, `b`, `D2`, `E2`); a free-form schema was filled in wrongly.
+- A local Ollama server forwards models with a `cloud` tag to ollama.com, so
+  those count as leaving the machine even though the address is local.
+- `KIRPITCH_DEBUG_MODELS=1` prints the raw answers and the pages chosen.
+
+[Measured results](../model-recommendations.md) are in a table that grows with
+each release.
+
 ## Consequences
 
 No async runtime or TLS library is added. Vision-only datasheets (scanned or

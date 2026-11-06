@@ -65,6 +65,11 @@ pub struct ModelConfig {
     /// `kirpitch models test` finds out).
     #[serde(default)]
     pub vision: Option<bool>,
+    /// Ollama only: whether the model may think before it answers. Models
+    /// that think can use all of their answer budget on it and answer
+    /// nothing; set this to `false` for them. Not sent when left out.
+    #[serde(default)]
+    pub think: Option<bool>,
     /// Price of one million input tokens, for the cost estimate.
     #[serde(default)]
     pub price_in: Option<f64>,
@@ -247,7 +252,7 @@ impl Config {
     /// Refuses a non-local server when `local_only` is on.
     pub fn allowed(&self, name: &str, model: &ModelConfig) -> Result<(), ConfigError> {
         let url = base_url(model);
-        if self.privacy.local_only && !is_local_url(&url) {
+        if self.privacy.local_only && !model_is_local(model) {
             return Err(ConfigError::NotLocal {
                 model: name.to_string(),
                 url,
@@ -259,7 +264,7 @@ impl Config {
     /// True when the data of `task` stays on this machine or the local network.
     pub fn stays_local(&self, task: Task) -> bool {
         self.model_for(task)
-            .map(|(_, m)| is_local_url(&base_url(m)))
+            .map(|(_, m)| model_is_local(m))
             .unwrap_or(true)
     }
 }
@@ -273,6 +278,16 @@ pub fn base_url(model: &ModelConfig) -> String {
         .unwrap_or_default()
         .trim_end_matches('/')
         .to_string()
+}
+
+/// True when the data sent to the model stays on this machine or the local
+/// network. The address alone is not enough: a local Ollama server forwards
+/// models with a `cloud` tag (for example `name:cloud` or `name-cloud`) to
+/// ollama.com.
+pub fn model_is_local(model: &ModelConfig) -> bool {
+    let forwarded = model.provider == Provider::Ollama
+        && (model.model.ends_with(":cloud") || model.model.ends_with("-cloud"));
+    !forwarded && is_local_url(&base_url(model))
 }
 
 /// The model name sent to the server: the short Claude names are resolved to
@@ -396,6 +411,30 @@ local_only = false
         let two = format!("{text}[models.b]\nprovider = \"ollama\"\nmodel = \"n\"\n");
         let c = Config::from_toml_str(&two).unwrap();
         assert!(c.model_for(Task::Metadata).is_err());
+    }
+
+    #[test]
+    fn ollama_cloud_models_are_not_local_even_on_a_local_server() {
+        let text = "[models.c]
+provider = \"ollama\"
+model = \"glm-5.3-flash:cloud\"
+[privacy]
+local_only = true
+";
+        let c = Config::from_toml_str(text).unwrap();
+        assert!(matches!(
+            c.model_for(Task::PinTables),
+            Err(ConfigError::NotLocal { .. })
+        ));
+        let open = text.replace("local_only = true", "local_only = false");
+        let c = Config::from_toml_str(&open).unwrap();
+        assert!(!c.stays_local(Task::PinTables));
+        let local = open.replace(":cloud", ":7b");
+        assert!(
+            Config::from_toml_str(&local)
+                .unwrap()
+                .stays_local(Task::PinTables)
+        );
     }
 
     #[test]

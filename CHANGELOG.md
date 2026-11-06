@@ -8,6 +8,7 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- First measured model results (`docs/model-recommendations.md`): on the three golden SOIC-8 datasheets a real model read the pinout and the package dimensions 100% right. Fixes found by the real runs: schema always in the prompt, JSON taken from prose, retry with more tokens when an answer is cut off, hint words and weighted page choice, plain hyphens in names, JEDEC letters for the package, `ollama` `:cloud` models count as not local, `KIRPITCH_DEBUG_MODELS`, `think` option.
 - CI: the app is split into `kirpitch-review` (logic and tests) and `kirpitch-app` (the Tauri window). Only a separate `Window` job installs the web view libraries; all other jobs run with `--exclude kirpitch-app`.
 - Symbol checks against the KiCad library conventions (`klc_symbol::check_symbol`): fields, grid, pin length, pins touching the body, text sizes, overlapping pins. Tested on the golden symbols and on symbols of SOIC, DIP and QFN parts for KiCad 8, 9 and 10. Rule numbers are still not cited (the KLC site refuses automated access).
 - Language model backend (`kirpitch-models`): `kirpitch.toml` with per-task routing and `local_only`, adapters for Anthropic, OpenAI-compatible servers and Ollama over the system `curl`, schema-checked answers with one repair step, cache. Commands `kirpitch build`, `kirpitch models test` and `kirpitch bench` (ADR 0026, `kirpitch.example.toml`).

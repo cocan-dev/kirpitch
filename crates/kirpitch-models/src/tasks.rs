@@ -55,27 +55,90 @@ impl PageLines {
         out
     }
 
-    fn score(&self, keywords: &[&str]) -> usize {
+    /// Weighted count of the keywords. Each keyword counts at most five times,
+    /// so one repeated word cannot outweigh a page with many different ones.
+    fn score(&self, keywords: &[(&str, i32)]) -> i32 {
         let text = self.as_text().to_ascii_lowercase();
-        keywords.iter().map(|k| text.matches(k).count()).sum()
+        keywords
+            .iter()
+            .map(|(k, weight)| weight * text.matches(k).count().min(5) as i32)
+            .sum()
     }
+}
+
+/// Words of a hint that help to find pages: package names and drawing codes.
+fn hint_words(hint: Option<&str>) -> Vec<String> {
+    const SKIP: [&str; 10] = [
+        "pins", "package", "with", "page", "the", "this", "that", "from", "type", "drawing",
+    ];
+    hint.unwrap_or("")
+        .to_ascii_lowercase()
+        .split(|c: char| !c.is_alphanumeric() && c != '-')
+        .filter(|w| {
+            w.len() >= 3
+                && !SKIP.contains(w)
+                && (w.len() >= 4 || w.chars().any(|c| c.is_ascii_digit()))
+        })
+        .map(str::to_string)
+        .collect()
+}
+
+/// Like [`select_pages`], with the words of a hint counting extra.
+fn select_with_hint<'a>(
+    pages: &'a [PageLines],
+    keywords: &[(&str, i32)],
+    hint: Option<&str>,
+    hint_weight: i32,
+    max_pages: usize,
+    max_chars: usize,
+) -> Vec<&'a PageLines> {
+    // A word of the hint is worth more the fewer pages have it: the name of
+    // the maker is on every page and tells nothing, a drawing code is on one.
+    let n = pages.len().max(1);
+    let texts: Vec<String> = pages
+        .iter()
+        .map(|p| p.as_text().to_ascii_lowercase())
+        .collect();
+    let words: Vec<(String, i32)> = hint_words(hint)
+        .into_iter()
+        .filter_map(|w| {
+            let df = texts.iter().filter(|t| t.contains(&w)).count();
+            if df == 0 || df * 4 > n {
+                return None;
+            }
+            Some((w, (hint_weight * (n - df) as i32 / n as i32).max(1)))
+        })
+        .collect();
+    let mut all: Vec<(&str, i32)> = keywords.to_vec();
+    all.extend(words.iter().map(|(w, weight)| (w.as_str(), *weight)));
+    let chosen = select_pages(pages, &all, max_pages, max_chars);
+    if std::env::var_os(crate::client::ENV_DEBUG).is_some() {
+        let numbers: Vec<u32> = chosen.iter().map(|p| p.page).collect();
+        let scores: Vec<(u32, i32)> = pages.iter().map(|p| (p.page, p.score(&all))).collect();
+        let mut best = scores.clone();
+        best.sort_by_key(|(_, s)| std::cmp::Reverse(*s));
+        best.truncate(6);
+        eprintln!(
+            "[kirpitch debug] pages chosen {numbers:?}; best scores {best:?}; hint words {words:?}"
+        );
+    }
+    chosen
 }
 
 /// Picks the pages most likely to hold what a task needs, best first by score
 /// but returned in page order, within a size limit.
 pub fn select_pages<'a>(
     pages: &'a [PageLines],
-    keywords: &[&str],
+    keywords: &[(&str, i32)],
     max_pages: usize,
     max_chars: usize,
 ) -> Vec<&'a PageLines> {
-    let mut scored: Vec<(usize, &PageLines)> =
-        pages.iter().map(|p| (p.score(keywords), p)).collect();
+    let mut scored: Vec<(i32, &PageLines)> = pages.iter().map(|p| (p.score(keywords), p)).collect();
     scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.page.cmp(&b.1.page)));
     let mut chosen: Vec<&PageLines> = Vec::new();
     let mut size = 0usize;
     for (score, page) in scored {
-        if score == 0 || chosen.len() >= max_pages {
+        if score <= 0 || chosen.len() >= max_pages {
             break;
         }
         let len = page.as_text().len();
@@ -198,16 +261,18 @@ pub fn json_from_text(text: &str) -> Result<Value, String> {
     if let Ok(v) = serde_json::from_str::<Value>(trimmed) {
         return Ok(v);
     }
-    let start = trimmed
-        .find('{')
-        .ok_or("there is no JSON object in the answer")?;
-    let end = trimmed
-        .rfind('}')
-        .ok_or("there is no JSON object in the answer")?;
-    if end < start {
-        return Err("there is no JSON object in the answer".into());
+    // Models sometimes write sentences before and after the JSON: take the
+    // first object that parses, wherever it starts.
+    let mut problem = "there is no JSON object in the answer".to_string();
+    for (start, _) in trimmed.match_indices('{') {
+        let mut values = serde_json::Deserializer::from_str(&trimmed[start..]).into_iter::<Value>();
+        match values.next() {
+            Some(Ok(v)) if v.is_object() => return Ok(v),
+            Some(Err(e)) => problem = format!("the JSON is not valid: {e}"),
+            _ => {}
+        }
     }
-    serde_json::from_str(&trimmed[start..=end]).map_err(|e| format!("the JSON is not valid: {e}"))
+    Err(problem)
 }
 
 /// Asks, checks the answer with `check`, and asks again once with the problem
@@ -219,25 +284,32 @@ fn ask_json<T>(
     mut request: ChatRequest,
     check: impl Fn(&Value) -> Result<T, String>,
 ) -> Result<T, TaskError> {
+    // Not every server enforces the schema (Ollama models that run in the
+    // cloud do not), so the prompt always carries it as well.
+    if let Some(schema) = &request.schema {
+        request.user.push_str(&format!(
+            "
+
+Answer with only a JSON object that follows this JSON schema, with these exact field names:
+{schema}"
+        ));
+    }
+    let mut truncated = false;
     let mut last = String::new();
+    let mut began = String::new();
     for attempt in 0..2 {
         let key = Cache::key(client, &request);
         let (text, from_cache) = match cache.get(&key) {
             Some(t) => (t, true),
             None => {
                 let r = match client.chat(&request) {
-                    // A server that does not know JSON schemas: put the schema
-                    // in the prompt and rely on the repair step.
+                    // A server that does not know JSON schemas: the schema is
+                    // in the prompt already, so ask again without it and rely
+                    // on the repair step.
                     Err(ModelError::Http {
                         status: 400 | 422, ..
                     }) if request.schema.is_some() => {
-                        let schema = request.schema.take().unwrap_or_default();
-                        request.user.push_str(&format!(
-                            "
-
-Answer with only a JSON object that follows this JSON schema:
-{schema}"
-                        ));
+                        request.schema = None;
                         client.chat(&request)?
                     }
                     other => other?,
@@ -246,6 +318,7 @@ Answer with only a JSON object that follows this JSON schema:
                 stats.usage.input_tokens += r.usage.input_tokens;
                 stats.usage.output_tokens += r.usage.output_tokens;
                 stats.seconds += r.seconds;
+                truncated = r.truncated;
                 (r.text, false)
             }
         };
@@ -260,19 +333,30 @@ Answer with only a JSON object that follows this JSON schema:
             }
             Err(problem) => {
                 last = problem.clone();
+                began = text
+                    .chars()
+                    .take(160)
+                    .map(|c| if c.is_control() { ' ' } else { c })
+                    .collect();
                 if attempt == 0 {
+                    if truncated {
+                        // The answer was cut off at the limit: allow much more.
+                        request.max_tokens = (request.max_tokens * 4).min(32_000);
+                    }
                     request.user.push_str(&format!(
-                        "\n\nYour previous answer was not usable: {problem}. Answer again with only the JSON object, following the schema."
+                        "\n\nYour previous answer was not usable: {problem}. Answer again with only the JSON object, following the schema, and do not write your reasoning."
                     ));
                 }
             }
         }
     }
-    Err(TaskError::Unusable(last))
+    Err(TaskError::Unusable(format!(
+        "{last} (the answer began: {began})"
+    )))
 }
 
 const SYSTEM: &str = "You read electronic component datasheets and report what they say. \
-Answer only with a JSON object that follows the schema. Use only what is written in the \
+Answer only with a JSON object that follows the schema, without any explanation or reasoning. Use only what is written in the \
 text; never guess and never use what you remember about the part. Leave a value out (null) \
 when the text does not give it. The text shows page numbers as [page N].";
 
@@ -321,7 +405,7 @@ pub fn extract_metadata(
         ),
         images: vec![],
         schema: Some(schema),
-        max_tokens: 400,
+        max_tokens: 2000,
     };
     ask_json(client, cache, stats, request, |v| {
         let get = |k: &str| text_field(v, k).ok_or_else(|| format!("`{k}` is missing"));
@@ -352,9 +436,20 @@ pub struct PinAnswer {
 
 const TYPE_HELP: &str = "input, output, bidirectional, tri_state, passive, power_in (supply and ground inputs), power_out, open_collector, open_emitter, no_connect, free, unspecified";
 
+/// Replaces the minus signs and dashes that PDFs use by the plain hyphen, so
+/// that `IN1−` and `IN1-` are the same name.
+pub fn plain_dashes(text: &str) -> String {
+    text.chars()
+        .map(|c| match c {
+            '‐' | '‑' | '‒' | '–' | '—' | '−' => '-',
+            c => c,
+        })
+        .collect()
+}
+
 fn string_or_number(v: &Value) -> Option<String> {
     match v {
-        Value::String(s) => Some(s.trim().to_string()).filter(|s| !s.is_empty()),
+        Value::String(s) => Some(plain_dashes(s.trim())).filter(|s| !s.is_empty()),
         Value::Number(n) => Some(n.to_string()),
         _ => None,
     }
@@ -461,7 +556,8 @@ fn ground(pages: &[PageLines], pin: &PinAnswer) -> Option<(u32, [f64; 4])> {
     let name = pin.name.replace("~{", "").replace('}', "");
     for page in pages {
         for l in &page.lines {
-            if contains_token(&l.text, &pin.number) && contains_token(&l.text, &name) {
+            let text = plain_dashes(&l.text);
+            if contains_token(&text, &pin.number) && contains_token(&text, &name) {
                 return Some((
                     page.page,
                     [
@@ -493,13 +589,16 @@ pub fn extract_pins(
     second_read: bool,
 ) -> Result<PinsResult, TaskError> {
     let keywords = [
-        "pin",
-        "pinout",
-        "pin configuration",
-        "pin description",
-        "terminal",
+        ("pin functions", 8),
+        ("pin configuration", 8),
+        ("pin description", 8),
+        ("pinout", 4),
+        ("pin", 1),
+        ("terminal", 1),
+        ("tape and reel", -6),
+        ("orderable", -3),
     ];
-    let chosen = select_pages(pages, &keywords, 4, 24_000);
+    let chosen = select_with_hint(pages, &keywords, hint, 3, 4, 24_000);
     if chosen.is_empty() {
         return Err(TaskError::Unusable(
             "no page of the datasheet text mentions pins".into(),
@@ -542,7 +641,7 @@ pub fn extract_pins(
         },
         images: vec![],
         schema: Some(schema.clone()),
-        max_tokens: 4000,
+        max_tokens: 8000,
     };
     let first = ask_json(client, cache, stats, ask(0), pins_from_json)?;
     let mut notes = Vec::new();
@@ -641,6 +740,10 @@ pub struct PackageAnswer {
     pub body_length: Option<f64>,
     /// Body width (across the pin rows).
     pub body_width: Option<f64>,
+    /// The range that `body_length` was taken from (`D`).
+    pub body_length_range: Option<Span>,
+    /// The range that `body_width` was taken from (`E1`).
+    pub body_width_range: Option<Span>,
     /// Largest height.
     pub height_max: f64,
     /// Lead span, tip to tip (gull-wing packages).
@@ -692,7 +795,22 @@ fn count(v: &Value, key: &str) -> Option<u32> {
         .filter(|n| *n > 0)
 }
 
-/// Reads the package answer, checking that the family has what it needs.
+fn nominal(s: Span) -> f64 {
+    (s.min + s.max) / 2.0
+}
+
+/// The body size for the package name and outline: the middle of the range,
+/// rounded to 0.05 mm like the names in the KiCad libraries (a range of
+/// 3.81 to 3.98 gives 3.9).
+fn body_size(s: Span) -> f64 {
+    (nominal(s) / 0.05).round() * 0.05
+}
+
+/// Reads the package answer, which uses the JEDEC letters of the drawing:
+/// `e` pitch, `A` height, `D` and `E` body sizes (QFN) or `D` body length,
+/// `E1` body width and `E` lead span (dual-row packages), `L` and `b` lead
+/// length and width, `D2`/`E2` exposed pad. It checks that the family has what
+/// it needs.
 pub fn package_from_json(v: &Value) -> Result<PackageAnswer, String> {
     let family = text_field(v, "family")
         .ok_or("`family` is missing")?
@@ -703,37 +821,32 @@ pub fn package_from_json(v: &Value) -> Result<PackageAnswer, String> {
             "`family` `{family}` is not one of soic, ssop, tssop, msop, sot23, dip, qfn"
         ));
     }
-    let pitch = number(v, "pitch")
+    let pitch = number(v, "e")
         .filter(|p| *p > 0.0)
-        .ok_or("`pitch` is missing")?;
-    let height_max = number(v, "height_max")
+        .ok_or("`e` (the pitch in mm) is missing")?;
+    let height_max = number(v, "A")
         .filter(|p| *p > 0.0)
-        .ok_or("`height_max` is missing")?;
-    let answer = PackageAnswer {
-        pin_count: count(v, "pin_count"),
+        .ok_or("`A` (the largest height in mm) is missing")?;
+    let (d, e, e1) = (span(v, "D")?, span(v, "E")?, span(v, "E1")?);
+    let (l, b) = (span(v, "L")?, span(v, "b")?);
+    let pin_count = count(v, "pin_count");
+    let mut answer = PackageAnswer {
+        family: family.clone(),
+        pin_count,
         pins_x: count(v, "pins_x"),
         pins_y: count(v, "pins_y"),
         pitch,
-        body_length: number(v, "body_length").filter(|n| *n > 0.0),
-        body_width: number(v, "body_width").filter(|n| *n > 0.0),
+        body_length: None,
+        body_width: None,
+        body_length_range: None,
+        body_width_range: None,
         height_max,
-        lead_span: span(v, "lead_span")?,
-        lead_length: span(v, "lead_length")?,
-        lead_width: span(v, "lead_width")?,
-        body_x: span(v, "body_x")?,
-        body_y: span(v, "body_y")?,
-        exposed_pad: match v.get("exposed_pad") {
-            Some(Value::Object(_)) => {
-                let p = &v["exposed_pad"];
-                let w = number(p, "width").filter(|n| *n > 0.0);
-                let h = number(p, "height").filter(|n| *n > 0.0);
-                match (w, h) {
-                    (Some(w), Some(h)) => Some((w, h)),
-                    _ => return Err("`exposed_pad` needs `width` and `height`".into()),
-                }
-            }
-            _ => None,
-        },
+        lead_span: None,
+        lead_length: l,
+        lead_width: b,
+        body_x: None,
+        body_y: None,
+        exposed_pad: None,
         row_spacing: number(v, "row_spacing").filter(|n| *n > 0.0),
         drill: number(v, "drill").filter(|n| *n > 0.0),
         pad_diameter: number(v, "pad_diameter").filter(|n| *n > 0.0),
@@ -743,40 +856,60 @@ pub fn package_from_json(v: &Value) -> Result<PackageAnswer, String> {
             .and_then(|p| u32::try_from(p).ok())
             .filter(|p| *p >= 1),
         confidence: number(v, "confidence").unwrap_or(0.7).clamp(0.0, 1.0),
-        family,
     };
     let need = |ok: bool, what: &str| -> Result<(), String> {
         if ok {
             Ok(())
         } else {
-            Err(format!(
-                "`{what}` is missing for a {} package",
-                answer.family
-            ))
+            Err(format!("`{what}` is missing for a {family} package"))
         }
     };
-    match answer.family.as_str() {
+    match family.as_str() {
         "qfn" => {
-            need(answer.pins_x.is_some(), "pins_x")?;
-            need(answer.pins_y.is_some(), "pins_y")?;
-            need(answer.body_x.is_some(), "body_x")?;
-            need(answer.body_y.is_some(), "body_y")?;
-            need(answer.lead_length.is_some(), "lead_length")?;
-            need(answer.lead_width.is_some(), "lead_width")?;
+            answer.body_x = d;
+            answer.body_y = e;
+            if answer.pins_x.is_none() && answer.pins_y.is_none() {
+                // A square package has the same number on every side.
+                if let Some(n) = pin_count.filter(|n| n % 4 == 0) {
+                    answer.pins_x = Some(n / 4);
+                    answer.pins_y = Some(n / 4);
+                }
+            }
+            if let (Some(w), Some(h)) = (number(v, "D2"), number(v, "E2"))
+                && w > 0.0
+                && h > 0.0
+            {
+                answer.exposed_pad = Some((w, h));
+            }
+            need(answer.pins_x.is_some(), "pin_count (or pins_x and pins_y)")?;
+            need(answer.pins_y.is_some(), "pin_count (or pins_x and pins_y)")?;
+            need(answer.body_x.is_some(), "D")?;
+            need(answer.body_y.is_some(), "E")?;
+            need(answer.lead_length.is_some(), "L")?;
+            need(answer.lead_width.is_some(), "b")?;
         }
         "dip" => {
-            need(answer.pin_count.is_some(), "pin_count")?;
-            need(answer.body_length.is_some(), "body_length")?;
-            need(answer.body_width.is_some(), "body_width")?;
+            answer.body_length = d.map(body_size);
+            answer.body_width = e1.map(body_size);
+            answer.body_length_range = d;
+            answer.body_width_range = e1;
+            need(pin_count.is_some(), "pin_count")?;
+            need(answer.body_length.is_some(), "D")?;
+            need(answer.body_width.is_some(), "E1")?;
             need(answer.row_spacing.is_some(), "row_spacing")?;
         }
         _ => {
-            need(answer.pin_count.is_some(), "pin_count")?;
-            need(answer.body_length.is_some(), "body_length")?;
-            need(answer.body_width.is_some(), "body_width")?;
-            need(answer.lead_span.is_some(), "lead_span")?;
-            need(answer.lead_length.is_some(), "lead_length")?;
-            need(answer.lead_width.is_some(), "lead_width")?;
+            answer.body_length = d.map(body_size);
+            answer.body_width = e1.map(body_size);
+            answer.body_length_range = d;
+            answer.body_width_range = e1;
+            answer.lead_span = e;
+            need(pin_count.is_some(), "pin_count")?;
+            need(answer.body_length.is_some(), "D")?;
+            need(answer.body_width.is_some(), "E1")?;
+            need(answer.lead_span.is_some(), "E")?;
+            need(answer.lead_length.is_some(), "L")?;
+            need(answer.lead_width.is_some(), "b")?;
         }
     }
     Ok(answer)
@@ -791,60 +924,71 @@ pub fn extract_package(
     hint: Option<&str>,
 ) -> Result<PackageAnswer, TaskError> {
     let keywords = [
-        "package",
-        "dimension",
-        "outline",
-        "millimeter",
-        "mm",
-        "pitch",
-        "soic",
-        "tssop",
-        "qfn",
-        "sot",
-        "dip",
+        ("package outline", 6),
+        ("mechanical data", 4),
+        ("seating plane", 6),
+        ("dimensions are in millimeters", 8),
+        ("dimensions are in", 3),
+        ("typ", 1),
+        ("bsc", 2),
+        ("max", 1),
+        ("min", 1),
+        ("pitch", 2),
+        ("tape", -4),
+        ("reel", -4),
+        ("dimension limits", 6),
+        ("millimeters", 2),
+        ("product identification", -10),
+        ("revision history", -10),
+        ("ordering information", -5),
+        ("orderable", -5),
     ];
-    let chosen = select_pages(pages, &keywords, 4, 24_000);
+    let chosen = select_with_hint(pages, &keywords, hint, 8, 3, 16_000);
     if chosen.is_empty() {
         return Err(TaskError::Unusable(
             "no page of the datasheet text describes the package".into(),
         ));
     }
-    let range = json!({"type": "object", "properties": {"min": {"type": "number"}, "max": {"type": "number"}}, "required": ["min", "max"]});
+    let range = json!({
+        "type": "object",
+        "properties": {"min": {"type": "number"}, "max": {"type": "number"}},
+        "required": ["min", "max"]
+    });
     let schema = json!({
         "type": "object",
         "properties": {
             "family": {"type": "string", "enum": ["soic", "ssop", "tssop", "msop", "sot23", "dip", "qfn"]},
-            "pin_count": {"type": "integer", "description": "terminals, not counting an exposed pad"},
-            "pins_x": {"type": "integer", "description": "QFN: terminals on each of top and bottom"},
-            "pins_y": {"type": "integer", "description": "QFN: terminals on each of left and right"},
-            "pitch": {"type": "number", "description": "mm, e"},
-            "body_length": {"type": "number", "description": "mm, D, along the pin rows (dual-row packages)"},
-            "body_width": {"type": "number", "description": "mm, E1, across the pin rows (dual-row packages)"},
-            "height_max": {"type": "number", "description": "mm, A, largest"},
-            "lead_span": range,
-            "lead_length": range,
-            "lead_width": range,
-            "body_x": range,
-            "body_y": range,
-            "exposed_pad": {"type": ["object", "null"], "properties": {"width": {"type": "number"}, "height": {"type": "number"}}},
-            "row_spacing": {"type": "number", "description": "mm, distance between the rows of a DIP"},
-            "drill": {"type": "number"},
-            "pad_diameter": {"type": "number"},
+            "pin_count": {"type": "integer", "description": "number of terminals, not counting an exposed pad"},
+            "e": {"type": "number", "description": "pitch in mm"},
+            "A": {"type": "number", "description": "largest height in mm"},
+            "D": range.clone(),
+            "E": range.clone(),
+            "E1": range.clone(),
+            "L": range.clone(),
+            "b": range,
+            "D2": {"type": "number", "description": "QFN exposed pad width in mm, if any"},
+            "E2": {"type": "number", "description": "QFN exposed pad height in mm, if any"},
+            "row_spacing": {"type": "number", "description": "DIP: distance between the two rows of pins in mm"},
             "page": {"type": "integer"},
-            "confidence": {"type": "number"}
+            "confidence": {"type": "number", "description": "0 to 1"}
         },
-        "required": ["family", "pitch", "height_max"]
+        "required": ["family", "pin_count", "e", "A"]
     });
     let hint_text = hint.map(|h| format!("Hint: {h}\n")).unwrap_or_default();
     let request = ChatRequest {
         system: SYSTEM.into(),
         user: format!(
-            "Read the package outline dimensions in millimetres (convert inches). Use the JEDEC letters: A height, b lead width, D and E body sizes, E1 body width of dual-row packages, e pitch, L lead length, and the lead span (E) tip to tip for gull-wing packages. Give ranges as min and max; if only a nominal is printed, use it for both. Choose the family that fits the package name.\n{hint_text}\n{}",
+            "Read the outline dimensions of the package in millimetres (convert inches; datasheets often print both). Use the JEDEC letters of the drawing and give each range as min and max (if only one value is printed, use it for both):\n\
+- e: pitch; A: largest height\n\
+- D: body length (along the pin rows) and E1: body width (across the rows), E: lead span tip to tip. These are for SOIC, SSOP, TSSOP, MSOP, SOT-23.\n\
+- QFN: D and E are the two body sizes, D2 and E2 the exposed pad.\n\
+- L: lead or terminal length; b: lead or terminal width.\n\
+Leave out what the text does not give. Choose the family that fits the package name.\n{hint_text}\n{}",
             pages_text(&chosen)
         ),
         images: vec![],
         schema: Some(schema),
-        max_tokens: 1500,
+        max_tokens: 4000,
     };
     ask_json(client, cache, stats, request, package_from_json)
 }
