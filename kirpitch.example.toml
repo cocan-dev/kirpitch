@@ -1,0 +1,38 @@
+# Example configuration. Copy this file to `kirpitch.toml` (in the folder where
+# you run kirpitch) and change it. API keys never go in this file: a model names
+# the environment variable that holds its key.
+
+# A model on this machine (Ollama).
+[models.local]
+provider = "ollama"                 # anthropic | openai | openai-compatible | ollama
+base_url = "http://localhost:11434"
+model = "qwen3-vl:7b"
+
+# A cloud model. "claude-sonnet" is resolved to the current version.
+[models.cloud]
+provider = "anthropic"
+model = "claude-sonnet"
+api_key_env = "ANTHROPIC_API_KEY"
+# Optional prices per million tokens, for the cost estimate:
+# price_in = 3.0
+# price_out = 15.0
+
+# Any server that speaks the OpenAI chat API (LM Studio, llama.cpp server,
+# vLLM, LocalAI, OpenRouter, Mistral, Gemini's compatible endpoint, Azure OpenAI):
+# [models.lmstudio]
+# provider = "openai-compatible"
+# base_url = "http://localhost:1234/v1"
+# model = "my-model"
+# api_key_env = "MY_KEY"            # leave out if the server needs none
+# api_key_header = "api-key"        # only when the key is not sent as a Bearer token
+
+# Which model does which task. A task left out uses the pin_tables model, or the
+# only model when there is just one.
+[tasks]
+pin_tables = "local"
+drawings   = "cloud"
+metadata   = "local"
+
+[privacy]
+# true: refuse every server that is not on this machine or the local network.
+local_only = false

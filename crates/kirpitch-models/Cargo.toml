@@ -1,0 +1,22 @@
+[package]
+name = "kirpitch-models"
+description = "Language model backends and datasheet extraction tasks for Kirpitch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+kirpitch-core = { path = "../kirpitch-core" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+thiserror = "2.0.21"
+toml = "0.9"
+
+[dev-dependencies]
+kirpitch-kicad = { path = "../kirpitch-kicad" }

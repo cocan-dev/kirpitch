@@ -1,0 +1,390 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+//! From a datasheet's text to a PartSpec: runs the tasks with the configured
+//! models and assembles the result.
+
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
+use kirpitch_core::ElectricalType;
+use kirpitch_core::ipc::{Density, Range};
+use kirpitch_core::partspec::{Approvals, Metadata, Origin, PartSpec, Pin, SCHEMA_VERSION};
+use kirpitch_core::templates::{
+    DualRowGullWing, DualRowThroughHole, QuadFlatNoLead, Template, dual_row_gull_wing,
+    dual_row_through_hole, quad_flat_no_lead, sot23,
+};
+use kirpitch_core::{BoundingBox, Confidence, Source};
+
+use crate::client::Client;
+use crate::config::{Config, Task};
+use crate::tasks::{
+    Cache, MetadataAnswer, PackageAnswer, PageLines, PinsResult, Span, Stats, TaskError,
+    extract_metadata, extract_package, extract_pins,
+};
+use crate::transport::Transport;
+
+/// Options of a build.
+#[derive(Debug, Clone, Default)]
+pub struct BuildOptions {
+    /// Part number to use instead of reading it.
+    pub mpn: Option<String>,
+    /// Manufacturer to use instead of reading it.
+    pub manufacturer: Option<String>,
+    /// Description to use instead of reading it.
+    pub description: Option<String>,
+    /// A hint for the models, for example "the pinout is on page 4".
+    pub hint: Option<String>,
+    /// Read the pin table twice and flag differences.
+    pub second_read: bool,
+    /// SHA-256 of the datasheet PDF.
+    pub pdf_sha256: Option<String>,
+    /// Where the datasheet came from.
+    pub datasheet_url: Option<String>,
+}
+
+/// What a build produced.
+#[derive(Debug, Clone)]
+pub struct BuildReport {
+    /// The PartSpec, when pins and package could both be read.
+    pub spec: Option<PartSpec>,
+    /// The pins, when they could be read (also when the package could not).
+    pub pins: Option<PinsResult>,
+    /// Things to look at in review, one line each.
+    pub notes: Vec<String>,
+    /// Stages that failed, with the reason; the manual flow can finish them.
+    pub failures: Vec<String>,
+    /// Totals over all calls.
+    pub stats: Stats,
+    /// For each task, the model that did it and whether data stayed local.
+    pub models: Vec<(Task, String, bool)>,
+}
+
+/// Turns a package answer into a template.
+pub fn template_from_answer(a: &PackageAnswer) -> Result<Template, String> {
+    let range = |s: Option<Span>, name: &str| {
+        s.map(|s| Range::new(s.min, s.max))
+            .ok_or_else(|| format!("`{name}` is missing"))
+    };
+    let made = match a.family.as_str() {
+        "qfn" => quad_flat_no_lead(
+            &QuadFlatNoLead {
+                family: "QFN".into(),
+                pins_x: a.pins_x.ok_or("`pins_x` is missing")?,
+                pins_y: a.pins_y.ok_or("`pins_y` is missing")?,
+                pitch: a.pitch,
+                body_x: range(a.body_x, "body_x")?,
+                body_y: range(a.body_y, "body_y")?,
+                height_max: a.height_max,
+                lead_length: range(a.lead_length, "lead_length")?,
+                lead_width: range(a.lead_width, "lead_width")?,
+                exposed_pad: a.exposed_pad,
+            },
+            Density::Nominal,
+        ),
+        "dip" => dual_row_through_hole(&DualRowThroughHole {
+            family: "DIP".into(),
+            pin_count: a.pin_count.ok_or("`pin_count` is missing")?,
+            pitch: a.pitch,
+            row_spacing: a.row_spacing.ok_or("`row_spacing` is missing")?,
+            body_length: a.body_length.ok_or("`body_length` is missing")?,
+            body_width: a.body_width.ok_or("`body_width` is missing")?,
+            height_max: a.height_max,
+            pad_diameter: a.pad_diameter.unwrap_or(1.6),
+            drill: a.drill.unwrap_or(0.8),
+        }),
+        family => {
+            let input = DualRowGullWing {
+                family: if family == "sot23" {
+                    "SOT-23".to_string()
+                } else {
+                    family.to_ascii_uppercase()
+                },
+                pin_count: a.pin_count.ok_or("`pin_count` is missing")?,
+                pitch: a.pitch,
+                body_length: a.body_length.ok_or("`body_length` is missing")?,
+                body_width: a.body_width.ok_or("`body_width` is missing")?,
+                height_max: a.height_max,
+                lead_span: range(a.lead_span, "lead_span")?,
+                lead_length: range(a.lead_length, "lead_length")?,
+                lead_width: range(a.lead_width, "lead_width")?,
+            };
+            if family == "sot23" {
+                sot23(&input, Density::Nominal)
+            } else {
+                dual_row_gull_wing(&input, Density::Nominal)
+            }
+        }
+    };
+    made.map_err(|e| e.to_string())
+}
+
+fn source(page: u32, bbox: [f64; 4], confidence: f64) -> Source {
+    Source {
+        page,
+        bbox: Some(BoundingBox(bbox)),
+        confidence: Confidence::new(confidence.clamp(0.0, 1.0)).ok(),
+    }
+}
+
+/// Assembles the PartSpec from what was read. Every value gets a source: the
+/// pins the line they were found on, the package values the page of the
+/// package drawing (the whole page, since no smaller region was found).
+pub fn assemble(
+    metadata: &MetadataAnswer,
+    pins: &PinsResult,
+    package: &PackageAnswer,
+    default_page: u32,
+    options: &BuildOptions,
+) -> Result<(PartSpec, Vec<String>), String> {
+    let mut template = template_from_answer(package)?;
+    let mut notes = Vec::new();
+    let page = package.page.unwrap_or(default_page);
+    let package_source = source(page, [0.0, 0.0, 1.0, 1.0], package.confidence);
+
+    let mut list: Vec<Pin> = pins
+        .pins
+        .iter()
+        .map(|p| Pin {
+            number: p.pin.number.clone(),
+            name: p.pin.name.clone(),
+            electrical_type: p.pin.electrical_type,
+            group: None,
+            alt_functions: vec![],
+            source: Some(source(p.page, p.bbox, p.confidence)),
+        })
+        .collect();
+    let want = template.package.pin_count as usize;
+    if list.len() + 1 == want
+        && template
+            .land_pattern
+            .pads
+            .iter()
+            .any(|p| p.number == want.to_string())
+    {
+        // The table does not list the exposed pad.
+        list.push(Pin {
+            number: want.to_string(),
+            name: "EP".into(),
+            electrical_type: ElectricalType::Passive,
+            group: None,
+            alt_functions: vec![],
+            source: Some(package_source),
+        });
+        notes.push(format!(
+            "the exposed pad (pin {want}, `EP`) is not in the pin table; it was added as passive (check what it connects to)"
+        ));
+    }
+    if list.len() != want {
+        return Err(format!(
+            "the pin table has {} pins but the package has {want}",
+            list.len()
+        ));
+    }
+
+    template.package.source = Some(package_source);
+    for dimension in template.package.dimensions.values_mut() {
+        dimension.source = Some(package_source);
+    }
+    template.land_pattern.source = Some(package_source);
+    for pad in &mut template.land_pattern.pads {
+        pad.source = Some(package_source);
+    }
+    let pick =
+        |given: &Option<String>, read: &str| given.clone().unwrap_or_else(|| read.to_string());
+    let spec = PartSpec {
+        schema_version: SCHEMA_VERSION,
+        origin: Origin::Llm,
+        metadata: Metadata {
+            mpn: pick(&options.mpn, &metadata.mpn),
+            manufacturer: pick(&options.manufacturer, &metadata.manufacturer),
+            description: pick(&options.description, &metadata.description),
+            keywords: vec![],
+            datasheet_url: options.datasheet_url.clone(),
+            datasheet_sha256: options.pdf_sha256.clone(),
+        },
+        package: template.package,
+        pins: list,
+        land_pattern: template.land_pattern,
+        approvals: Approvals::default(),
+        overrides: vec![],
+    };
+    Ok((spec, notes))
+}
+
+fn model_client(
+    config: &Config,
+    task: Task,
+    transport: &Arc<dyn Transport>,
+    report: &mut BuildReport,
+) -> Result<Client, String> {
+    let (name, model) = config.model_for(task).map_err(|e| e.to_string())?;
+    let client = Client::from_env(model, transport.clone()).map_err(|e| e.to_string())?;
+    report
+        .models
+        .push((task, name.to_string(), config.stays_local(task)));
+    Ok(client)
+}
+
+/// Runs the whole extraction: metadata, pins and package. A stage that fails
+/// is listed in `failures` and does not stop the others, so the review flow
+/// can finish it by hand.
+pub fn build(
+    config: &Config,
+    transport: Arc<dyn Transport>,
+    cache: &Cache,
+    pages: &[PageLines],
+    options: &BuildOptions,
+) -> BuildReport {
+    let mut report = BuildReport {
+        spec: None,
+        pins: None,
+        notes: vec![],
+        failures: vec![],
+        stats: Stats::default(),
+        models: vec![],
+    };
+    let mut stats = Stats::default();
+    let hint = options.hint.as_deref();
+
+    let metadata =
+        if options.mpn.is_some() && options.manufacturer.is_some() && options.description.is_some()
+        {
+            Some(MetadataAnswer {
+                mpn: options.mpn.clone().unwrap_or_default(),
+                manufacturer: options.manufacturer.clone().unwrap_or_default(),
+                description: options.description.clone().unwrap_or_default(),
+            })
+        } else {
+            match model_client(config, Task::Metadata, &transport, &mut report).and_then(|c| {
+                extract_metadata(&c, cache, &mut stats, pages).map_err(|e: TaskError| e.to_string())
+            }) {
+                Ok(m) => Some(m),
+                Err(e) => {
+                    report.failures.push(format!("metadata: {e}"));
+                    None
+                }
+            }
+        };
+
+    match model_client(config, Task::PinTables, &transport, &mut report).and_then(|c| {
+        extract_pins(&c, cache, &mut stats, pages, hint, options.second_read)
+            .map_err(|e| e.to_string())
+    }) {
+        Ok(p) => {
+            report.notes.extend(p.notes.iter().cloned());
+            report.pins = Some(p);
+        }
+        Err(e) => report.failures.push(format!("pins: {e}")),
+    }
+
+    let package =
+        match model_client(config, Task::Drawings, &transport, &mut report).and_then(|c| {
+            extract_package(&c, cache, &mut stats, pages, hint).map_err(|e| e.to_string())
+        }) {
+            Ok(p) => Some(p),
+            Err(e) => {
+                report.failures.push(format!("package: {e}"));
+                None
+            }
+        };
+
+    if let (Some(m), Some(p), Some(k)) = (&metadata, &report.pins, &package) {
+        let default_page = pages.first().map_or(1, |p| p.page);
+        match assemble(m, p, k, default_page, options) {
+            Ok((spec, notes)) => {
+                report.notes.extend(notes);
+                report.spec = Some(spec);
+            }
+            Err(e) => report.failures.push(format!("assembly: {e}")),
+        }
+    }
+    report.stats = stats;
+    report
+}
+
+/// How well a build agrees with a known-good PartSpec, per review stage.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Score {
+    /// Pins whose number, name and type all match, out of the expected pins.
+    pub pins_correct: usize,
+    /// Pins expected.
+    pub pins_expected: usize,
+    /// Pins found that are not expected.
+    pub pins_extra: usize,
+    /// Package dimensions that match within 0.05 mm, out of those compared.
+    pub dimensions_correct: usize,
+    /// Dimensions compared.
+    pub dimensions_expected: usize,
+    /// Pads that match in place and size (0.01 mm), out of the expected pads.
+    pub pads_correct: usize,
+    /// Pads expected.
+    pub pads_expected: usize,
+}
+
+impl Score {
+    /// Share of the expected pins that are right, 0 to 1.
+    pub fn pinout(&self) -> f64 {
+        ratio(self.pins_correct, self.pins_expected)
+    }
+
+    /// Share of the package dimensions and pads that are right, 0 to 1.
+    pub fn footprint(&self) -> f64 {
+        ratio(
+            self.dimensions_correct + self.pads_correct,
+            self.dimensions_expected + self.pads_expected,
+        )
+    }
+}
+
+fn ratio(a: usize, b: usize) -> f64 {
+    if b == 0 { 1.0 } else { a as f64 / b as f64 }
+}
+
+/// Compares a built PartSpec with the expected one.
+pub fn score(built: &PartSpec, expected: &PartSpec) -> Score {
+    let mut pins_correct = 0;
+    for e in &expected.pins {
+        if built.pins.iter().any(|b| {
+            b.number == e.number && b.name == e.name && b.electrical_type == e.electrical_type
+        }) {
+            pins_correct += 1;
+        }
+    }
+    let pins_extra = built
+        .pins
+        .iter()
+        .filter(|b| !expected.pins.iter().any(|e| e.number == b.number))
+        .count();
+    let mut dimensions_correct = 0;
+    let mut dimensions_expected = 0;
+    let built_dims: &BTreeMap<_, _> = &built.package.dimensions;
+    for (key, e) in &expected.package.dimensions {
+        dimensions_expected += 1;
+        if let Some(b) = built_dims.get(key)
+            && (b.value.nom.get() - e.value.nom.get()).abs() <= 0.05
+        {
+            dimensions_correct += 1;
+        }
+    }
+    let mut pads_correct = 0;
+    for e in &expected.land_pattern.pads {
+        if built.land_pattern.pads.iter().any(|b| {
+            b.number == e.number
+                && (b.x.get() - e.x.get()).abs() <= 0.01
+                && (b.y.get() - e.y.get()).abs() <= 0.01
+                && (b.size_x.get() - e.size_x.get()).abs() <= 0.01
+                && (b.size_y.get() - e.size_y.get()).abs() <= 0.01
+        }) {
+            pads_correct += 1;
+        }
+    }
+    Score {
+        pins_correct,
+        pins_expected: expected.pins.len(),
+        pins_extra,
+        dimensions_correct,
+        dimensions_expected,
+        pads_correct,
+        pads_expected: expected.land_pattern.pads.len(),
+    }
+}
