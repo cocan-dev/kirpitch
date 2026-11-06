@@ -128,6 +128,12 @@ pub struct SpecView {
     pub symbol_svg: String,
 }
 
+/// The fab profile of this run: the file named in `KIRPITCH_FAB_PROFILE`, or
+/// the generic profile (also when the file cannot be read).
+fn fab() -> FabProfile {
+    FabProfile::from_env().unwrap_or_default()
+}
+
 /// Loads a PartSpec file.
 pub fn load_spec(path: &Path) -> Result<PartSpec, String> {
     let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -159,7 +165,7 @@ fn status_name(s: GateStatus) -> &'static str {
 
 /// Builds the view of a PartSpec.
 pub fn view(path: &str, spec: &PartSpec) -> SpecView {
-    let findings = validate(spec, &FabProfile::generic());
+    let findings = validate(spec, &fab());
     let gates = Gate::ALL
         .iter()
         .map(|&gate| {
@@ -266,7 +272,7 @@ pub fn approve_stage(
 ) -> Result<SpecView, String> {
     let gate = Gate::parse(stage).ok_or_else(|| format!("there is no stage called `{stage}`"))?;
     let mut spec = load_spec(Path::new(path))?;
-    let findings = validate(&spec, &FabProfile::generic());
+    let findings = validate(&spec, &fab());
     let note = note.filter(|n| !n.trim().is_empty());
     match approve(&mut spec, gate, &findings, note, at) {
         Ok(()) => {}
@@ -413,20 +419,12 @@ pub fn export_files(path: &str, out_dir: &str, target: Option<u32>) -> Result<Ve
     };
     let dir = Path::new(out_dir);
     fs::create_dir_all(dir).map_err(|e| format!("{out_dir}: {e}"))?;
-    let symbol = kirpitch_gen_symbol::generate(
-        &spec,
-        &kirpitch_gen_symbol::Options {
-            target,
-            ..Default::default()
-        },
-    )
-    .map_err(|e| e.to_string())?;
+    let symbol =
+        kirpitch_gen_symbol::generate(&spec, &kirpitch_gen_symbol::Options { target, fab: fab() })
+            .map_err(|e| e.to_string())?;
     let footprint = kirpitch_gen_footprint::generate(
         &spec,
-        &kirpitch_gen_footprint::Options {
-            target,
-            ..Default::default()
-        },
+        &kirpitch_gen_footprint::Options { target, fab: fab() },
     )
     .map_err(|e| e.to_string())?;
     let sym_path = dir.join(kirpitch_gen_symbol::file_name(&spec));

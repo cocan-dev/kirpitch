@@ -28,9 +28,10 @@ use kirpitch_core::partspec::{
 };
 use kirpitch_core::pintable::{ImportOptions, parse_pin_table};
 use kirpitch_core::templates::{
-    DualRowGullWing, DualRowThroughHole, Template, dual_row_gull_wing, dual_row_through_hole, sot23,
+    DualRowGullWing, DualRowThroughHole, QuadFlatNoLead, Template, dual_row_gull_wing,
+    dual_row_through_hole, quad_flat_no_lead, sot23,
 };
-use kirpitch_core::{BoundingBox, FabProfile, Source, validate};
+use kirpitch_core::{BoundingBox, Source, validate};
 use kirpitch_extract::{DEFAULT_COLUMN_GAP, PdfReader, table_from_lines};
 use serde::{Deserialize, Serialize};
 
@@ -186,6 +187,56 @@ pub struct DipArgs {
     drill: f64,
 }
 
+/// Dimensions of a QFN (JEDEC letters in brackets).
+#[derive(Args)]
+pub struct QfnArgs {
+    /// Family name used in the footprint name
+    #[arg(long, default_value = "QFN")]
+    family: String,
+    /// Terminals on each of the top and bottom sides
+    #[arg(long)]
+    pins_x: u32,
+    /// Terminals on each of the left and right sides
+    #[arg(long)]
+    pins_y: u32,
+    /// Pitch (e)
+    #[arg(long)]
+    pitch: f64,
+    /// Body size along x (D), as `min..max` or one value
+    #[arg(long, value_parser = parse_range)]
+    body_x: RangeArg,
+    /// Body size along y (E), as `min..max` or one value
+    #[arg(long, value_parser = parse_range)]
+    body_y: RangeArg,
+    /// Largest height (A)
+    #[arg(long)]
+    height: f64,
+    /// Terminal length (L), as `min..max`
+    #[arg(long, value_parser = parse_range)]
+    lead_length: RangeArg,
+    /// Terminal width (b), as `min..max`
+    #[arg(long, value_parser = parse_range)]
+    lead_width: RangeArg,
+    /// Exposed pad size as `width,height` in millimetres; leave out when there is none
+    #[arg(long, value_parser = parse_pair)]
+    exposed_pad: Option<(f64, f64)>,
+    /// IPC-7351 density level
+    #[arg(long, value_enum, default_value = "nominal")]
+    density: DensityArg,
+}
+
+fn parse_pair(text: &str) -> Result<(f64, f64), String> {
+    let (a, b) = text
+        .split_once(',')
+        .ok_or_else(|| format!("`{text}` is not `width,height`"))?;
+    let n = |s: &str| {
+        s.trim()
+            .parse::<f64>()
+            .map_err(|_| format!("`{s}` is not a number"))
+    };
+    Ok((n(a)?, n(b)?))
+}
+
 /// The package kinds with a template.
 #[derive(Subcommand)]
 pub enum TemplateKind {
@@ -195,6 +246,8 @@ pub enum TemplateKind {
     Sot23(GullWingArgs),
     /// Through-hole dual in-line package
     Dip(DipArgs),
+    /// Quad flat no-lead package (QFN) with an optional exposed pad
+    Qfn(QfnArgs),
 }
 
 /// `kirpitch template`
@@ -302,6 +355,22 @@ pub fn template(args: TemplateArgs, out: &mut dyn Write) -> Result<(), Failure> 
             dual_row_gull_wing(&gull_wing_input(a), a.density.into()).map_err(flow_err)?
         }
         TemplateKind::Sot23(a) => sot23(&gull_wing_input(a), a.density.into()).map_err(flow_err)?,
+        TemplateKind::Qfn(a) => quad_flat_no_lead(
+            &QuadFlatNoLead {
+                family: a.family.clone(),
+                pins_x: a.pins_x,
+                pins_y: a.pins_y,
+                pitch: a.pitch,
+                body_x: a.body_x.0,
+                body_y: a.body_y.0,
+                height_max: a.height,
+                lead_length: a.lead_length.0,
+                lead_width: a.lead_width.0,
+                exposed_pad: a.exposed_pad,
+            },
+            a.density.into(),
+        )
+        .map_err(flow_err)?,
         TemplateKind::Dip(a) => dual_row_through_hole(&DualRowThroughHole {
             family: a.family.clone(),
             pin_count: a.pins,
@@ -450,7 +519,7 @@ fn status_word(s: GateStatus) -> &'static str {
 
 pub fn status(args: StatusArgs, out: &mut dyn Write) -> Result<(), Failure> {
     let spec = load(&args.spec)?;
-    let findings = validate(&spec, &FabProfile::generic());
+    let findings = validate(&spec, &crate::fab());
     for gate in Gate::ALL {
         let mine = stage_findings(gate, &findings);
         let errors = mine
@@ -490,7 +559,7 @@ pub fn review(args: ReviewArgs, out: &mut dyn Write) -> Result<(), Failure> {
         Gate::Footprint => print_footprint(&spec, out),
     }
     .map_err(flow_err)?;
-    let findings = validate(&spec, &FabProfile::generic());
+    let findings = validate(&spec, &crate::fab());
     let mine: Vec<_> = stage_findings(gate, &findings)
         .into_iter()
         .cloned()
@@ -672,7 +741,7 @@ pub fn approve_cmd(
 ) -> Result<(), Failure> {
     let gate = args.stage.gate();
     let mut spec = load(&args.spec)?;
-    let findings = validate(&spec, &FabProfile::generic());
+    let findings = validate(&spec, &crate::fab());
     match approve(&mut spec, gate, &findings, args.note, now_rfc3339()) {
         Ok(()) => {
             save(&args.spec, &spec)?;

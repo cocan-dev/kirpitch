@@ -8,6 +8,8 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- QFN support: `ipc::flat_no_lead`, `quad_flat_no_lead`, `kirpitch template ... qfn`, checked against KiCad's QFN-32 footprint.
+- Fab profiles from a JSON file (`--fab FILE`, `KIRPITCH_FAB_PROFILE`); see ADR 0024.
 - Cargo workspace with the `kirpitch-core` crate (stub).
 - GitHub Actions CI (format, clippy and tests on Linux, macOS and Windows) and
   `cargo deny` licence and security checks.

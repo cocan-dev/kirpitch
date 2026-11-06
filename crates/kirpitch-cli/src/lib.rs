@@ -37,6 +37,10 @@ const EXIT_INVALID: u8 = 3;
     about = "Turn datasheets into reviewed KiCad parts"
 )]
 struct Cli {
+    /// JSON file with the limits of your PCB maker (default: the built-in
+    /// generic profile, or the file in KIRPITCH_FAB_PROFILE)
+    #[arg(long, global = true)]
+    fab: Option<PathBuf>,
     #[command(subcommand)]
     command: Command,
 }
@@ -89,6 +93,17 @@ enum What {
     All,
 }
 
+/// The fab profile of this run: the one given with `--fab` or in
+/// `KIRPITCH_FAB_PROFILE`, else the generic one.
+static FAB: std::sync::Mutex<Option<FabProfile>> = std::sync::Mutex::new(None);
+
+pub(crate) fn fab() -> FabProfile {
+    FAB.lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+        .unwrap_or_else(FabProfile::generic)
+}
+
 /// Runs the tool with `args` (the first one is the program name), writing
 /// normal output to `out` and messages to `err`.
 pub fn run<I, T>(args: I, out: &mut dyn Write, err: &mut dyn Write) -> ExitCode
@@ -109,6 +124,21 @@ where
             return ExitCode::from(if e.use_stderr() { 2 } else { 0 });
         }
     };
+    let fab_path = cli
+        .fab
+        .clone()
+        .or_else(|| std::env::var_os(kirpitch_core::fab::ENV_FAB_PROFILE).map(PathBuf::from));
+    let profile = match &fab_path {
+        Some(path) => match FabProfile::from_file(path) {
+            Ok(p) => p,
+            Err(e) => {
+                let _ = writeln!(err, "error: fab profile: {e}");
+                return ExitCode::from(EXIT_FAILURE);
+            }
+        },
+        None => FabProfile::generic(),
+    };
+    *FAB.lock().unwrap_or_else(|e| e.into_inner()) = Some(profile);
     match execute(cli.command, out, err) {
         Ok(()) => ExitCode::SUCCESS,
         Err(Failure::Message(m)) => {
@@ -144,7 +174,7 @@ fn execute(command: Command, out: &mut dyn Write, err: &mut dyn Write) -> Result
         Command::Approve(args) => flow::approve_cmd(args, out, err),
         Command::Check { spec } => {
             let spec = load(&spec)?;
-            let findings = validate(&spec, &FabProfile::generic());
+            let findings = validate(&spec, &fab());
             print_findings(&findings, out).map_err(|e| e.to_string())?;
             if has_errors(&findings) {
                 Err(Failure::Invalid)
@@ -159,7 +189,7 @@ fn execute(command: Command, out: &mut dyn Write, err: &mut dyn Write) -> Result
             target,
         } => {
             let spec = load(&spec)?;
-            let findings = validate(&spec, &FabProfile::generic());
+            let findings = validate(&spec, &fab());
             if has_errors(&findings) {
                 print_findings(&findings, err).map_err(|e| e.to_string())?;
                 return Err(Failure::Invalid);
@@ -228,20 +258,14 @@ fn generate(
     fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let mut written: Vec<PathBuf> = Vec::new();
     if matches!(what, What::Symbol | What::All) {
-        let options = kirpitch_gen_symbol::Options {
-            target,
-            ..Default::default()
-        };
+        let options = kirpitch_gen_symbol::Options { target, fab: fab() };
         let text = kirpitch_gen_symbol::generate(spec, &options).map_err(|e| e.to_string())?;
         let path = dir.join(kirpitch_gen_symbol::file_name(spec));
         write_file(&path, &text)?;
         written.push(path);
     }
     if matches!(what, What::Footprint | What::All) {
-        let options = kirpitch_gen_footprint::Options {
-            target,
-            ..Default::default()
-        };
+        let options = kirpitch_gen_footprint::Options { target, fab: fab() };
         let text = kirpitch_gen_footprint::generate(spec, &options).map_err(|e| e.to_string())?;
         let folder = dir.join("kirpitch.pretty");
         fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;

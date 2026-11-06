@@ -345,6 +345,200 @@ pub fn dual_row_through_hole(p: &DualRowThroughHole) -> Result<Template, Templat
     })
 }
 
+/// A quad flat no-lead package (QFN, with terminals on all four sides and
+/// usually an exposed pad in the middle).
+#[derive(Debug, Clone, PartialEq)]
+pub struct QuadFlatNoLead {
+    /// Family name used in the footprint name, for example `QFN`.
+    pub family: String,
+    /// Terminals on each of the top and bottom sides.
+    pub pins_x: u32,
+    /// Terminals on each of the left and right sides.
+    pub pins_y: u32,
+    /// Distance between terminal centres (`e`).
+    pub pitch: f64,
+    /// Body size across (`D`, along x).
+    pub body_x: Range,
+    /// Body size along y (`E`).
+    pub body_y: Range,
+    /// Largest height (`A`).
+    pub height_max: f64,
+    /// Terminal length (`L`).
+    pub lead_length: Range,
+    /// Terminal width (`b`).
+    pub lead_width: Range,
+    /// Size of the exposed pad (`D2`, `E2`), if the package has one.
+    pub exposed_pad: Option<(f64, f64)>,
+}
+
+/// Fills the template of a QFN.
+///
+/// Pad numbers follow the JEDEC convention that KiCad uses: pin 1 at the top of
+/// the left side, down the left side, along the bottom from left to right, up
+/// the right side and along the top from right to left. The exposed pad gets
+/// the number after the last terminal.
+pub fn quad_flat_no_lead(p: &QuadFlatNoLead, density: Density) -> Result<Template, TemplateError> {
+    if p.pins_x == 0 || p.pins_y == 0 {
+        return Err(TemplateError::PinCount(2 * (p.pins_x + p.pins_y)));
+    }
+    let pitch = mm(p.pitch, "pitch")?;
+    let nominal = |r: Range| (r.min + r.max) / 2.0;
+    let (bx, by) = (nominal(p.body_x), nominal(p.body_y));
+    let body = Body {
+        length: mm(by, "body_y")?,
+        width: mm(bx, "body_x")?,
+        height_max: mm(p.height_max, "height_max")?,
+        center: None,
+    };
+    let row = |span: Range| {
+        ipc::flat_no_lead(
+            &ipc::GullWingInput {
+                lead_span: span,
+                lead_length: p.lead_length,
+                lead_width: p.lead_width,
+                pitch: p.pitch,
+            },
+            density,
+            &Tolerances::default(),
+        )
+    };
+    let cx = row(p.body_x)?; // left and right sides
+    let cy = row(p.body_y)?; // top and bottom sides
+    let ratio = CORNER_RATIO.min(MAX_CORNER_RADIUS / cx.x_max.min(cx.pad_length));
+    let num = |v: f64| Mm::new(v).map_err(|_| TemplateError::BadValue("pad"));
+    let pad = |number: usize,
+               x: f64,
+               y: f64,
+               w: f64,
+               h: f64,
+               shape: PadShape,
+               corner: Option<f64>|
+     -> Result<Pad, TemplateError> {
+        Ok(Pad {
+            number: number.to_string(),
+            shape,
+            x: num(x)?,
+            y: num(y)?,
+            size_x: num(w)?,
+            size_y: num(h)?,
+            rotation_deg: 0.0,
+            corner_ratio: corner,
+            paste: true,
+            role: PadRole::Signal,
+            kind: PadKind::Smd,
+            drill: None,
+            source: None,
+        })
+    };
+    let (nx, ny) = (p.pins_x as usize, p.pins_y as usize);
+    let mut pads = Vec::new();
+    let mut n = 0usize;
+    let first_y = -(ny as f64 - 1.0) / 2.0 * p.pitch;
+    let first_x = -(nx as f64 - 1.0) / 2.0 * p.pitch;
+    // Left side, top to bottom.
+    for i in 0..ny {
+        n += 1;
+        pads.push(pad(
+            n,
+            -cx.pad_center,
+            first_y + i as f64 * p.pitch,
+            cx.pad_length,
+            cx.x_max,
+            PadShape::RoundRect,
+            Some(ratio),
+        )?);
+    }
+    // Bottom side, left to right.
+    for i in 0..nx {
+        n += 1;
+        pads.push(pad(
+            n,
+            first_x + i as f64 * p.pitch,
+            cy.pad_center,
+            cy.x_max,
+            cy.pad_length,
+            PadShape::RoundRect,
+            Some(ratio),
+        )?);
+    }
+    // Right side, bottom to top.
+    for i in 0..ny {
+        n += 1;
+        pads.push(pad(
+            n,
+            cx.pad_center,
+            -first_y - i as f64 * p.pitch,
+            cx.pad_length,
+            cx.x_max,
+            PadShape::RoundRect,
+            Some(ratio),
+        )?);
+    }
+    // Top side, right to left.
+    for i in 0..nx {
+        n += 1;
+        pads.push(pad(
+            n,
+            -first_x - i as f64 * p.pitch,
+            -cy.pad_center,
+            cy.x_max,
+            cy.pad_length,
+            PadShape::RoundRect,
+            Some(ratio),
+        )?);
+    }
+    let terminals = n;
+    if let Some((w, h)) = p.exposed_pad {
+        mm(w, "exposed_pad")?;
+        mm(h, "exposed_pad")?;
+        pads.push(pad(terminals + 1, 0.0, 0.0, w, h, PadShape::Rect, None)?);
+    }
+
+    let mut dimensions: BTreeMap<String, Sourced<Tolerance>> = BTreeMap::new();
+    dimensions.insert("A".into(), dimension(Range::exact(p.height_max))?);
+    dimensions.insert("D".into(), dimension(p.body_x)?);
+    dimensions.insert("E".into(), dimension(p.body_y)?);
+    dimensions.insert("L".into(), dimension(p.lead_length)?);
+    dimensions.insert("b".into(), dimension(p.lead_width)?);
+    dimensions.insert("e".into(), dimension(Range::exact(p.pitch))?);
+    let name = match p.exposed_pad {
+        Some((w, h)) => format!(
+            "{}-{}-1EP_{}x{}mm_P{}mm_EP{}x{}mm",
+            p.family,
+            terminals,
+            format_number(bx),
+            format_number(by),
+            format_number(p.pitch),
+            format_number(w),
+            format_number(h)
+        ),
+        None => format!(
+            "{}-{}_{}x{}mm_P{}mm",
+            p.family,
+            terminals,
+            format_number(bx),
+            format_number(by),
+            format_number(p.pitch)
+        ),
+    };
+    Ok(Template {
+        package: Package {
+            family: p.family.clone(),
+            name,
+            pin_count: (terminals + usize::from(p.exposed_pad.is_some())) as u32,
+            pitch,
+            body,
+            dimensions,
+            source: None,
+        },
+        land_pattern: LandPattern {
+            pads,
+            courtyard: None,
+            source: None,
+        },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

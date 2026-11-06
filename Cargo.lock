@@ -1837,6 +1837,7 @@ name = "kirpitch-app"
 version = "0.0.1"
 dependencies = [
  "kirpitch-core",
+ "kirpitch-extract",
  "kirpitch-gen-footprint",
  "kirpitch-gen-symbol",
  "kirpitch-kicad",
