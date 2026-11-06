@@ -52,5 +52,7 @@ follows [Semantic Versioning](https://semver.org/).
 - More checks: `power_pins`, `pitch_fit`, `exposed_pad` (ADR 0019) and `override_unknown`.
 - IPC-7351B land pattern calculator for gull-wing leads (`kirpitch_core::ipc`),
   checked against KiCad's official SOIC and TSSOP footprints (ADR 0021).
+- `two_sources` check: the datasheet land pattern is compared with the IPC-7351
+  result when the package dimensions E, L and b are given.
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.
