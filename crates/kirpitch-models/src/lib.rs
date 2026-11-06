@@ -16,6 +16,7 @@ pub mod discover;
 pub mod keys;
 pub mod png;
 pub mod probe;
+pub mod prompts;
 pub mod tasks;
 pub mod transport;
 
@@ -31,5 +32,6 @@ pub use config::{
 pub use discover::{FoundModel, ListRequest, list_models};
 pub use keys::{KeyError, KeyStore, MemoryKeyStore, OsKeyStore};
 pub use probe::{ProbeResult, probe};
+pub use prompts::{PROMPT_LIST, PromptInfo, Prompts};
 pub use tasks::{Cache, PageLines, Stats, TaskError, TextLine};
 pub use transport::{CurlTransport, MockTransport, Reply, Request, Transport, TransportError};

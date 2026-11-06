@@ -11,6 +11,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::prompts::Prompts;
+
 /// Name of the configuration file looked for in the current folder.
 pub const CONFIG_FILE: &str = "kirpitch.toml";
 
@@ -151,6 +153,9 @@ pub struct Config {
     /// Folders and defaults of the app.
     #[serde(default)]
     pub folders: Folders,
+    /// The prompts that were changed; the others are the defaults.
+    #[serde(default, skip_serializing_if = "Prompts::is_default")]
+    pub prompts: Prompts,
 }
 
 /// The kinds of work a model is asked to do.
@@ -263,6 +268,15 @@ impl Config {
     }
 
     fn check(&self) -> Result<(), ConfigError> {
+        for p in &crate::prompts::PROMPT_LIST {
+            if self.prompts.get(p.key).chars().count() > crate::prompts::MAX_PROMPT_CHARS {
+                return Err(ConfigError::Parse(format!(
+                    "the prompt `{}` is longer than {} characters",
+                    p.key,
+                    crate::prompts::MAX_PROMPT_CHARS
+                )));
+            }
+        }
         for (name, m) in &self.models {
             if m.base_url.is_none() && m.provider.default_base_url().is_none() {
                 return Err(ConfigError::NoBaseUrl(name.clone()));

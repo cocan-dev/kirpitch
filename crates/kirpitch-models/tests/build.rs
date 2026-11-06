@@ -366,3 +366,70 @@ fn an_empty_answer_is_asked_again_without_thinking() {
         report.failures
     );
 }
+
+#[test]
+fn a_changed_prompt_is_what_the_model_is_asked_and_the_defaults_are_unchanged() {
+    // The default prompts, filled in, carry the instructions and the page text.
+    let m = mock(&[metadata_answer(), pins_answer(), package_answer()]);
+    run(&m, &BuildOptions::default());
+    let first = m.requests();
+    let user = |r: &kirpitch_models::Request| {
+        let b: Value = serde_json::from_str(&r.body).unwrap();
+        b["messages"][1]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    assert!(user(&first[1]).contains("List every pin of the package"));
+    assert!(user(&first[1]).contains("input, output, bidirectional"));
+
+    // A changed pin prompt (without a place for the pages) is used, and the
+    // pages are added at its end.
+    let mut config = config();
+    config
+        .prompts
+        .set("pins", "My own words: list the pins. {types}")
+        .unwrap();
+    config.prompts.set("system", "My system rules.").unwrap();
+    let m = mock(&[metadata_answer(), pins_answer(), package_answer()]);
+    build(
+        &config,
+        m.clone(),
+        &Cache::none(),
+        &pages(),
+        &BuildOptions::default(),
+    );
+    let second = m.requests();
+    let pins = user(&second[1]);
+    assert!(
+        pins.starts_with("My own words: list the pins. input, output"),
+        "{pins}"
+    );
+    assert!(
+        pins.contains("Pin Configuration and Functions"),
+        "the pages are added: {pins}"
+    );
+    let body: Value = serde_json::from_str(&second[1].body).unwrap();
+    assert_eq!(body["messages"][0]["content"], "My system rules.");
+    // The other tasks keep their defaults.
+    assert!(user(&second[0]).contains("part number, the manufacturer"));
+    assert_ne!(
+        config.prompts.fingerprint(),
+        Config::default().prompts.fingerprint()
+    );
+}
+
+#[test]
+fn prompts_are_saved_in_the_file_only_when_changed() {
+    let mut config = Config::default();
+    assert!(!config.to_toml_string().unwrap().contains("[prompts]"));
+    config
+        .prompts
+        .set("package", "Read the package.\n{pages}")
+        .unwrap();
+    let text = config.to_toml_string().unwrap();
+    assert!(text.contains("[prompts]"), "{text}");
+    assert!(!text.contains("system"), "{text}");
+    let back = Config::from_toml_str(&text).unwrap();
+    assert_eq!(back.prompts, config.prompts);
+}

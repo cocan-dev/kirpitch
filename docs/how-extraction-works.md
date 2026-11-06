@@ -63,3 +63,27 @@ a constraint; servers that cannot simply rely on the example.
 
 For Ollama (local or cloud) choose the **Ollama** kind, not "OpenAI-compatible":
 the native API lets Kirpitch turn thinking off and enforce the answer's shape.
+
+## Changing the prompts
+
+Every prompt above can be edited: in the app under **Settings, Extraction
+prompts**, or in the `[prompts]` section of `kirpitch.toml` (`system`,
+`metadata`, `pins`, `pins_second`, `package`). A prompt that is left out, or
+equal to the default, is the default. In the instructions, `{pages}` marks where
+the page text goes (it is added at the end if missing), `{hint}` your hint and
+`{types}` the electrical types.
+
+The settings screen shows a short **prompt set code**. It changes whenever any
+prompt changes, so a score can be tied to the prompts that produced it.
+
+## Measuring changes
+
+**Settings, Evaluate** runs the saved models and prompts on *cases*: a datasheet
+PDF plus the part it should produce. A case is either a golden part of the
+repository (point to its PDF once; the PDFs are not shipped) or a part you have
+reviewed, with its datasheet. For each case the run counts the pins, package
+dimensions and pads that come out right, with the tokens and time used, and
+keeps the run (prompts, models, scores) in the `evals` folder next to your
+settings file. The History shows each run against the one before it, and
+**Use these prompts** puts the prompts of any run back. The command line has the
+same measurement for the golden parts: `kirpitch models bench`.

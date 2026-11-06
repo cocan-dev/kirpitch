@@ -210,11 +210,15 @@
       <nav id="settings-tabs" class="settings-tabs" aria-label="Settings sections" role="tablist">
         <button type="button" data-pane="models" role="tab">Models and keys</button>
         <button type="button" data-pane="tasks" role="tab">Tasks and privacy</button>
+        <button type="button" data-pane="prompts" role="tab">Extraction prompts</button>
+        <button type="button" data-pane="evaluate" role="tab">Evaluate</button>
         <button type="button" data-pane="folders" role="tab">Folders and defaults</button>
       </nav>
       <div class="settings-panes">
         <section id="pane-models" class="pane" role="tabpanel"></section>
         <section id="pane-tasks" class="pane" role="tabpanel" hidden></section>
+        <section id="pane-prompts" class="pane" role="tabpanel" hidden></section>
+        <section id="pane-evaluate" class="pane" role="tabpanel" hidden></section>
         <section id="pane-folders" class="pane" role="tabpanel" hidden></section>
       </div>
     </div>
@@ -297,5 +301,6 @@
   <script src="fun.js"></script>
   <script src="progress.js"></script>
   <script src="settings.js"></script>
+  <script src="evaluate.js"></script>
 </body>
 </html>

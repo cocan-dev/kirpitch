@@ -47,6 +47,7 @@ function toDraft(view) {
     drawings: view.drawings,
     metadata: view.metadata,
     local_only: view.local_only,
+    prompts: Object.fromEntries((view.prompts || []).map((p) => [p.key, p.text])),
     parts: view.parts,
     output: view.output,
     datasheets: view.datasheets,
@@ -698,6 +699,86 @@ function renderTasks() {
   pane.replaceChildren(el("p", { class: "muted", text: "Choose which model does which job. A task without its own model uses the first model." }), ...rows, el("hr"), privacy);
 }
 
+// ---- The prompts of the extraction ----------------------------------------------------------
+
+const PLACEHOLDER_HELP = {
+  "{pages}": "the text of the chosen pages",
+  "{hint}": "your hint, as a line that starts with Hint:",
+  "{types}": "the list of electrical types",
+};
+
+function promptProblems(view, text) {
+  const allowed = (view.placeholders || "").split(/\s+/).filter(Boolean);
+  const used = [...new Set(text.match(/\{\w+\}/g) || [])];
+  const out = [];
+  const unknown = used.filter((u) => !allowed.includes(u));
+  if (unknown.length) out.push("Not a placeholder here: " + unknown.join(" ") + ". It will be sent as it is.");
+  if (allowed.includes("{pages}") && !used.includes("{pages}")) out.push("There is no {pages}: the text of the pages is added at the end.");
+  return out;
+}
+
+function promptCard(view) {
+  const text = draft.prompts[view.key];
+  const changed = text.trim() !== view.default.trim();
+  const card = el("section", { class: "prompt-card panel" });
+  const head = el("div", { class: "prompt-head" });
+  head.append(el("h4", { text: view.title }), el("span", { class: "pill " + (changed ? "warn" : "good"), text: changed ? "changed" : "default" }));
+  const reset = el("button", { type: "button", class: "ghost small-btn", text: "Reset to default" });
+  reset.disabled = !changed;
+  reset.addEventListener("click", () => {
+    draft.prompts[view.key] = view.default;
+    renderSettings();
+  });
+  head.append(reset);
+  card.append(head, el("p", { class: "muted small", text: view.about }));
+  const area = el("textarea", { class: "prompt-text", spellcheck: "false", rows: String(Math.min(14, Math.max(4, view.default.split("\n").length + 1))) });
+  area.value = text;
+  const notes = el("div", { class: "prompt-notes" });
+  const paint = () => {
+    const t = area.value;
+    const problems = promptProblems(view, t);
+    notes.replaceChildren(...problems.map((p) => el("p", { class: "warn-text small", text: p })));
+    count.textContent = t.length + " characters";
+    const nowChanged = t.trim() !== view.default.trim();
+    head.querySelector(".pill").className = "pill " + (nowChanged ? "warn" : "good");
+    head.querySelector(".pill").textContent = nowChanged ? "changed" : "default";
+    reset.disabled = !nowChanged;
+  };
+  const count = el("span", { class: "muted small" });
+  area.addEventListener("input", () => {
+    draft.prompts[view.key] = area.value;
+    paint();
+    updateDirty();
+  });
+  card.append(area);
+  const foot = el("div", { class: "prompt-foot" });
+  if (view.placeholders) {
+    const legend = view.placeholders.split(/\s+/).filter(Boolean).map((p) => p + " = " + (PLACEHOLDER_HELP[p] || ""));
+    foot.append(el("span", { class: "muted small", text: "You can use: " + legend.join("; ") }));
+  }
+  foot.append(count);
+  card.append(foot, notes);
+  if (changed || true) {
+    const details = el("details", { class: "advanced" }, el("summary", { text: "Show the default text" }));
+    details.append(el("pre", { class: "prompt-default", text: view.default }));
+    card.append(details);
+  }
+  paint();
+  return card;
+}
+
+function renderPrompts() {
+  const pane = $("pane-prompts");
+  const views = appSettings.prompts || [];
+  const changedCount = views.filter((v) => (draft.prompts[v.key] || "").trim() !== v.default.trim()).length;
+  const intro = el("div", { class: "prompt-intro" });
+  intro.append(
+    el("p", { class: "muted", text: "Every request to a model has a system prompt and, for each step, an instruction followed by the text of the pages. Change the words here to make a step read better. The prompts are saved in the same settings file and apply to the next build. The example answer and the page text are added by Kirpitch." }),
+    el("p", { class: "muted small", text: (changedCount ? changedCount + " prompt(s) changed. " : "All prompts are the defaults. ") + "Saved prompt set: " + (appSettings.prompts_fingerprint || "") + ". The code changes whenever a prompt does, so a score can be tied to the prompts that earned it." })
+  );
+  pane.replaceChildren(intro, ...views.map(promptCard));
+}
+
 function folderRow(key, label, help, kind) {
   const input = textInput(draft[key], (v) => (draft[key] = v.trim()), { placeholder: "Not set" });
   const browse = el("button", { type: "button", text: "Browse…" });
@@ -759,9 +840,11 @@ function renderSettingsNow() {
     b.classList.toggle("current", b.dataset.pane === activePane);
     b.setAttribute("aria-selected", String(b.dataset.pane === activePane));
   });
-  for (const p of ["models", "tasks", "folders"]) $("pane-" + p).hidden = p !== activePane;
+  for (const p of ["models", "tasks", "prompts", "evaluate", "folders"]) $("pane-" + p).hidden = p !== activePane;
   renderModels();
   renderTasks();
+  renderPrompts();
+  if (typeof renderEvaluate === "function") renderEvaluate();
   renderFolders();
   updateDirty();
 }
@@ -787,6 +870,7 @@ function toInput() {
     drawings: draft.drawings,
     metadata: draft.metadata,
     local_only: draft.local_only,
+    prompts: draft.prompts,
     parts: draft.parts,
     output: draft.output,
     datasheets: draft.datasheets,
@@ -855,6 +939,7 @@ $("settings-back").addEventListener("click", leaveSettings);
 document.querySelectorAll("#settings-tabs button").forEach((b) =>
   b.addEventListener("click", () => {
     activePane = b.dataset.pane;
+    if (activePane === "evaluate" && typeof ev !== "undefined" && !ev.running) ev.cases = null;
     renderSettings();
     window.scrollTo({ top: 0, behavior: "auto" });
   })
