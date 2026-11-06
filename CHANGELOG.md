@@ -77,5 +77,8 @@ follows [Semantic Versioning](https://semver.org/).
 - Desktop app (`kirpitch-app`, Tauri 2): open a PartSpec, see both review gates, pin and pad
   tables with source pages, findings and a footprint drawing, approve stages and
   write KiCad files. Start it with `cargo run -p kirpitch-app` (ADR 0023).
+- App: the datasheet page next to the pin table. Click a pin or pad row to jump to the
+  page it was read from, with a box around the region when the source has one;
+  pages are rendered with pdfium.
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.

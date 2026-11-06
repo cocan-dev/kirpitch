@@ -34,7 +34,7 @@ There is a first desktop window (Tauri). Start it with
 cargo run -p kirpitch-app
 ```
 
-Type the path of a PartSpec file (for example `testdatagoldenlm358-soic8partspec.json`) and press Open. It shows the review stages, the pins and pads with their datasheet pages, the findings and a drawing of the footprint, lets you approve each stage and writes the KiCad files. On Linux it needs the WebKitGTK development packages; on Windows the WebView2 runtime that comes with Windows 11.
+Type the path of a PartSpec file (for example `testdatagoldenm358-soic8partspec.json`) and press Open. To see the datasheet beside the pin table, run `cargo xtask fetch-pdfium` once, type the path of the datasheet PDF (for example `testdatapdfsm358.pdf`) and click a row. It shows the review stages, the pins and pads with their datasheet pages, the findings and a drawing of the footprint, lets you approve each stage and writes the KiCad files. On Linux it needs the WebKitGTK development packages; on Windows the WebView2 runtime that comes with Windows 11.
 
 ## Documentation
 

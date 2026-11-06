@@ -5,7 +5,9 @@
 // Do not open a console window on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use kirpitch_app::{SpecView, approve_stage, export_files, now_rfc3339, open_spec};
+use kirpitch_app::{
+    PageImage, SpecView, approve_stage, export_files, now_rfc3339, open_spec, render_datasheet_page,
+};
 
 #[tauri::command]
 fn open(path: String) -> Result<SpecView, String> {
@@ -22,9 +24,14 @@ fn export(path: String, out_dir: String, target: Option<u32>) -> Result<Vec<Stri
     export_files(path.trim(), out_dir.trim(), target)
 }
 
+#[tauri::command]
+fn page_image(pdf: String, page: u32, width: u32) -> Result<PageImage, String> {
+    render_datasheet_page(pdf.trim(), page, width)
+}
+
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![open, approve, export])
+        .invoke_handler(tauri::generate_handler![open, approve, export, page_image])
         .run(tauri::generate_context!())
         .expect("error while running the Kirpitch app");
 }

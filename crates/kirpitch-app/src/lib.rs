@@ -47,6 +47,11 @@ pub struct PinView {
     pub source: String,
     /// True when the confidence is below 80 percent.
     pub low_confidence: bool,
+    /// Datasheet page of the source, counting from 1.
+    pub page: Option<u32>,
+    /// Region of the source on the page as fractions `[left, top, right,
+    /// bottom]` from the top-left corner.
+    pub region: Option<[f64; 4]>,
 }
 
 /// One pad as shown in the table (lengths in millimetres, canonical text).
@@ -68,6 +73,10 @@ pub struct PadView {
     pub drill: Option<String>,
     /// Source text as for pins.
     pub source: String,
+    /// Datasheet page of the source, counting from 1.
+    pub page: Option<u32>,
+    /// Region of the source on the page, as for pins.
+    pub region: Option<[f64; 4]>,
 }
 
 /// A finding of the checks.
@@ -185,6 +194,8 @@ pub fn view(path: &str, spec: &PartSpec) -> SpecView {
                     group: p.group.clone(),
                     source,
                     low_confidence,
+                    page: p.source.map(|s| s.page),
+                    region: p.source.and_then(|s| s.bbox).map(|b| b.0),
                 }
             })
             .collect(),
@@ -201,6 +212,8 @@ pub fn view(path: &str, spec: &PartSpec) -> SpecView {
                 size_y: p.size_y.format(),
                 drill: p.drill.map(|d| d.format()),
                 source: source_text(&p.source).0,
+                page: p.source.map(|s| s.page),
+                region: p.source.and_then(|s| s.bbox).map(|b| b.0),
             })
             .collect(),
         findings: findings.iter().map(finding_view).collect(),
@@ -442,4 +455,85 @@ pub fn now_rfc3339() -> String {
         rest % 3600 / 60,
         rest % 60
     )
+}
+
+/// A rendered datasheet page for the window.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PageImage {
+    /// Width in pixels.
+    pub width: u32,
+    /// Height in pixels.
+    pub height: u32,
+    /// The pixels as RGBA, row by row, encoded as base64 text.
+    pub rgba_base64: String,
+    /// Number of pages of the document.
+    pub page_count: u32,
+}
+
+/// Looks for the pdfium library: the folder in `KIRPITCH_PDFIUM_LIB_DIR`, else
+/// the folder that `cargo xtask fetch-pdfium` fills in the current directory.
+pub fn find_pdfium_dir() -> Option<std::path::PathBuf> {
+    if let Some(dir) = std::env::var_os("KIRPITCH_PDFIUM_LIB_DIR") {
+        return Some(dir.into());
+    }
+    let (platform, lib) = if cfg!(windows) {
+        ("win-x64", "bin")
+    } else if cfg!(target_os = "macos") {
+        (
+            if cfg!(target_arch = "aarch64") {
+                "mac-arm64"
+            } else {
+                "mac-x64"
+            },
+            "lib",
+        )
+    } else {
+        ("linux-x64", "lib")
+    };
+    let dir = Path::new("testdata/pdfium").join(platform).join(lib);
+    dir.is_dir().then_some(dir)
+}
+
+/// Renders one page of a datasheet PDF, `width_px` pixels wide.
+pub fn render_datasheet_page(pdf: &str, page: u32, width_px: u32) -> Result<PageImage, String> {
+    let bytes = fs::read(pdf).map_err(|e| format!("{pdf}: {e}"))?;
+    let dir = find_pdfium_dir();
+    let reader = kirpitch_extract::PdfReader::new(dir.as_deref()).map_err(|e| {
+        format!("{e}. Run `cargo xtask fetch-pdfium` and set KIRPITCH_PDFIUM_LIB_DIR to the folder it prints.")
+    })?;
+    let count = reader.page_count(&bytes).map_err(|e| e.to_string())?;
+    let page = page.clamp(1, count.max(1));
+    let image = reader
+        .render_page(&bytes, page, width_px.clamp(200, 2400))
+        .map_err(|e| e.to_string())?;
+    Ok(PageImage {
+        width: image.width,
+        height: image.height,
+        rgba_base64: base64(&image.rgba),
+        page_count: count,
+    })
+}
+
+/// Standard base64 with padding.
+pub fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let n = (u32::from(chunk[0]) << 16)
+            | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
+            | u32::from(*chunk.get(2).unwrap_or(&0));
+        out.push(ALPHABET[(n >> 18) as usize & 63] as char);
+        out.push(ALPHABET[(n >> 12) as usize & 63] as char);
+        out.push(if chunk.len() > 1 {
+            ALPHABET[(n >> 6) as usize & 63] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            ALPHABET[n as usize & 63] as char
+        } else {
+            '='
+        });
+    }
+    out
 }

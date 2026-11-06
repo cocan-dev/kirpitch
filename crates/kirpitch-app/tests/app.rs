@@ -190,3 +190,53 @@ fn the_time_looks_like_a_utc_timestamp() {
     assert_eq!(t.len(), 20, "{t}");
     assert!(t.ends_with('Z') && t.as_bytes()[10] == b'T');
 }
+
+#[test]
+fn base64_matches_the_standard_vectors() {
+    use kirpitch_app::base64;
+    assert_eq!(base64(b""), "");
+    assert_eq!(base64(b"f"), "Zg==");
+    assert_eq!(base64(b"fo"), "Zm8=");
+    assert_eq!(base64(b"foo"), "Zm9v");
+    assert_eq!(base64(b"foob"), "Zm9vYg==");
+    assert_eq!(base64(b"fooba"), "Zm9vYmE=");
+    assert_eq!(base64(b"foobar"), "Zm9vYmFy");
+}
+
+#[test]
+fn rows_know_their_datasheet_page() {
+    let view = open_spec(&golden("lm358-soic8").to_string_lossy()).unwrap();
+    assert_eq!(view.pins[0].page, Some(3));
+    assert_eq!(view.pads[0].page, Some(64));
+    assert_eq!(view.pins[0].region, None);
+}
+
+#[test]
+fn a_datasheet_page_is_rendered_when_pdfium_is_available() {
+    if std::env::var_os("KIRPITCH_PDFIUM_LIB_DIR").is_none() {
+        eprintln!("SKIPPED: set KIRPITCH_PDFIUM_LIB_DIR to run this test");
+        return;
+    }
+    let tmp = TempDir::new("app-page");
+    let pdf = tmp.path().join("d.pdf");
+    let pages = vec![
+        vec![(72.0, 700.0, 14.0, "Page one")],
+        vec![(72.0, 700.0, 14.0, "Page two")],
+    ];
+    fs::write(&pdf, kirpitch_extract::testing::make_pdf(&pages)).unwrap();
+    let path = pdf.to_string_lossy().into_owned();
+    let image = kirpitch_app::render_datasheet_page(&path, 2, 400).unwrap();
+    assert_eq!((image.width, image.height, image.page_count), (400, 518, 2));
+    assert_eq!(
+        image.rgba_base64.len(),
+        (image.width as usize * image.height as usize * 4).div_ceil(3) * 4
+    );
+    // A page after the last one is clamped, a missing file is an error.
+    assert_eq!(
+        kirpitch_app::render_datasheet_page(&path, 9, 400)
+            .unwrap()
+            .page_count,
+        2
+    );
+    assert!(kirpitch_app::render_datasheet_page("nope.pdf", 1, 400).is_err());
+}
