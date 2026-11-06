@@ -240,3 +240,55 @@ fn a_datasheet_page_is_rendered_when_pdfium_is_available() {
     );
     assert!(kirpitch_app::render_datasheet_page("nope.pdf", 1, 400).is_err());
 }
+
+#[test]
+fn the_symbol_drawing_has_every_visible_pin_and_selection_marks() {
+    let view = open_spec(&golden("lm358-soic8").to_string_lossy()).unwrap();
+    let svg = &view.symbol_svg;
+    assert!(svg.starts_with("<svg "), "{svg}");
+    assert_eq!(svg.matches("class=\"spin\"").count(), 8);
+    assert!(svg.contains("class=\"sbody\""));
+    for n in 1..=8 {
+        assert!(svg.contains(&format!("data-pin=\"{n}\"")), "pin {n}");
+    }
+    // Names are drawn, with their text escaped.
+    assert!(svg.contains(">OUT1</text>"));
+    // The footprint pads use the same pin numbers.
+    for n in 1..=8 {
+        assert!(
+            view.footprint_svg.contains(&format!("data-pin=\"{n}\"")),
+            "pad {n}"
+        );
+    }
+}
+
+#[test]
+fn stacked_power_pins_are_drawn_once() {
+    let mut spec = load_spec(&golden("lm358-soic8")).unwrap();
+    let mut second = spec.pins[3].clone();
+    second.number = "9".into();
+    spec.pins.push(second);
+    let mut pad = spec.land_pattern.pads[3].clone();
+    pad.number = "9".into();
+    pad.x = kirpitch_core::Mm::new(0.0).unwrap();
+    pad.y = kirpitch_core::Mm::new(0.0).unwrap();
+    spec.land_pattern.pads.push(pad);
+    spec.package.pin_count = 9;
+    let svg = kirpitch_app::symbol_svg(&spec).unwrap();
+    assert_eq!(svg.matches("class=\"spin\"").count(), 8);
+    assert!(!svg.contains("data-pin=\"9\""));
+}
+
+#[test]
+fn an_invalid_partspec_has_no_symbol_drawing() {
+    let tmp = TempDir::new("app-nosymbol");
+    let path = copy_of("lm358-soic8", &tmp);
+    let text =
+        fs::read_to_string(&path)
+            .unwrap()
+            .replacen("\"number\": \"2\"", "\"number\": \"1\"", 1);
+    fs::write(&path, text).unwrap();
+    let view = open_spec(&path).unwrap();
+    assert_eq!(view.symbol_svg, "");
+    assert!(!view.footprint_svg.is_empty());
+}

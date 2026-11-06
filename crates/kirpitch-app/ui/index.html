@@ -25,53 +25,55 @@
   </main>
 
   <main id="work" hidden>
-    <section class="part" aria-label="Part">
-      <h2 id="mpn"></h2>
-      <p id="part-line" class="muted"></p>
-    </section>
+    <div class="head">
+      <section class="part" aria-label="Part">
+        <h2 id="mpn"></h2>
+        <p id="part-line" class="muted"></p>
+      </section>
+      <section class="gates" id="gates" aria-label="Review stages"></section>
+    </div>
 
-    <section class="gates" id="gates" aria-label="Review stages"></section>
-
-    <div class="columns">
-      <section class="panel">
-        <div class="tabs" role="tablist">
-          <button role="tab" id="tab-pinout" aria-selected="true" data-tab="pinout">Pinout</button>
-          <button role="tab" id="tab-footprint" aria-selected="false" data-tab="footprint">Footprint</button>
-          <button role="tab" id="tab-findings" aria-selected="false" data-tab="findings">Findings <span id="findings-count" class="count"></span></button>
-        </div>
-        <div id="view-pinout" class="view"></div>
-        <div id="view-footprint" class="view" hidden></div>
-        <div id="view-findings" class="view" hidden></div>
+    <div class="triple">
+      <section class="panel col-pins" aria-label="Pin table">
+        <h3>Pinout <span class="muted small">click a pin to see it everywhere</span></h3>
+        <div id="view-pinout"></div>
+        <details class="more">
+          <summary>Pads <span id="pads-count" class="count"></span></summary>
+          <div id="view-footprint"></div>
+        </details>
+        <details class="more" id="findings-box" open>
+          <summary>Findings <span id="findings-count" class="count"></span></summary>
+          <div id="view-findings"></div>
+        </details>
       </section>
 
-      <aside class="panel preview">
-        <div class="tabs" role="tablist">
-          <button role="tab" id="side-datasheet" aria-selected="true" data-side="datasheet">Datasheet</button>
-          <button role="tab" id="side-footprint" aria-selected="false" data-side="footprint">Footprint <span id="package-name" class="muted"></span></button>
+      <section class="panel col-drawings" aria-label="Symbol and footprint">
+        <h3>Symbol</h3>
+        <div id="symbol" class="drawing"></div>
+        <h3>Footprint <span id="package-name" class="muted"></span></h3>
+        <div id="svg" class="drawing"></div>
+        <p class="muted small">Millimetres, y points down. Pin 1 has a bold outline.</p>
+      </section>
+
+      <section class="panel col-sheet" aria-label="Datasheet">
+        <h3>Datasheet</h3>
+        <form id="pdf-form" class="pdf-form">
+          <label class="sr" for="pdf-path">Datasheet PDF</label>
+          <input id="pdf-path" type="text" spellcheck="false" placeholder="Path of the datasheet PDF, for example testdata\pdfs\lm358.pdf">
+          <button type="submit">Show</button>
+        </form>
+        <div class="pager">
+          <button type="button" id="prev-page" aria-label="Previous page">&lt;</button>
+          <label>Page <input id="page-no" type="number" min="1" value="1"></label>
+          <span id="page-count" class="muted"></span>
+          <button type="button" id="next-page" aria-label="Next page">&gt;</button>
         </div>
-        <div id="pane-datasheet">
-          <form id="pdf-form" class="pdf-form">
-            <label class="sr" for="pdf-path">Datasheet PDF</label>
-            <input id="pdf-path" type="text" spellcheck="false" placeholder="Path of the datasheet PDF, for example testdata\pdfs\lm358.pdf">
-            <button type="submit">Show</button>
-          </form>
-          <div class="pager">
-            <button type="button" id="prev-page" aria-label="Previous page">&lt;</button>
-            <label>Page <input id="page-no" type="number" min="1" value="1"></label>
-            <span id="page-count" class="muted"></span>
-            <button type="button" id="next-page" aria-label="Next page">&gt;</button>
-          </div>
-          <div id="page-wrap" class="page-wrap" hidden>
-            <canvas id="page-canvas"></canvas>
-            <div id="region" class="region" hidden></div>
-          </div>
-          <p id="pdf-hint" class="muted small">Click a row of the pin or pad table to jump to the page it was read from. A box marks the region when the source has one.</p>
+        <div id="page-wrap" class="page-wrap" hidden>
+          <canvas id="page-canvas"></canvas>
+          <div id="region" class="region" hidden></div>
         </div>
-        <div id="pane-footprint" hidden>
-          <div id="svg" class="svg"></div>
-          <p class="muted small">Millimetres, y points down. Pin 1 has a bold outline.</p>
-        </div>
-      </aside>
+        <p id="pdf-hint" class="muted small">The page of the selected pin is shown here, with a box around the region it was read from when the source has one.</p>
+      </section>
     </div>
 
     <section class="panel export">

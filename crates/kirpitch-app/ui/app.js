@@ -61,19 +61,16 @@ function sourceCell(text, low) {
   return el("td", { class: cls, text: low ? text + " (low confidence)" : text });
 }
 
-function table(headers, rows, onRow) {
+function table(headers, rows, pinNumbers) {
   const head = el("tr");
   headers.forEach((h) => head.append(el("th", { scope: "col", text: h })));
   const body = rows.map((cells, i) => {
     const tr = el("tr");
     cells.forEach((c) => tr.append(c instanceof Node ? c : el("td", { text: c })));
-    if (onRow) {
+    if (pinNumbers) {
       tr.className = "clickable";
-      tr.addEventListener("click", () => {
-        document.querySelectorAll("tr.selected").forEach((r) => r.classList.remove("selected"));
-        tr.classList.add("selected");
-        onRow(i);
-      });
+      tr.dataset.pin = pinNumbers[i];
+      tr.addEventListener("click", () => selectPin(pinNumbers[i], true));
     }
     return tr;
   });
@@ -122,7 +119,7 @@ function renderPinout(view) {
     table(
       ["Pin", "Name", "Type", "Group", "Source"],
       view.pins.map((p) => [p.number, p.name, p.electrical_type, p.group || "–", sourceCell(p.source, p.low_confidence)]),
-      (i) => showSource(view.pins[i])
+      view.pins.map((p) => p.number)
     )
   );
 }
@@ -141,7 +138,7 @@ function renderFootprint(view) {
         el("td", { class: "num", text: p.drill || "–" }),
         sourceCell(p.source, false),
       ]),
-      (i) => showSource(view.pads[i])
+      view.pads.map((p) => p.number)
     )
   );
 }
@@ -180,21 +177,15 @@ function render(view) {
   renderPinout(view);
   renderFootprint(view);
   renderFindings(view);
-  // The SVG is made by our own Rust code from numbers and escaped text.
+  // The drawings are made by our own Rust code from numbers and escaped text.
   $("svg").innerHTML = view.footprint_svg;
+  $("symbol").innerHTML = view.symbol_svg || '<p class="empty-note">Fix the errors of the pinout to see the symbol.</p>';
+  $("pads-count").textContent = "(" + view.pads.length + ")";
+  selected = null;
   const saved = savedPdf(view.path);
   $("pdf-path").value = saved;
   if (saved) showPage(1).catch((e) => show(String(e), "error"));
 }
-
-function selectTab(name) {
-  for (const t of ["pinout", "footprint", "findings"]) {
-    $("tab-" + t).setAttribute("aria-selected", String(t === name));
-    $("view-" + t).hidden = t !== name;
-  }
-}
-
-document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => selectTab(b.dataset.tab)));
 
 $("open-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
@@ -290,28 +281,6 @@ async function showPage(page, region) {
   show("", "");
 }
 
-async function showSource(row) {
-  selectSide("datasheet");
-  if (!row.page) {
-    show("This value has no source page.", "error");
-    return;
-  }
-  try {
-    await showPage(row.page, row.region);
-  } catch (e) {
-    show(String(e), "error");
-  }
-}
-
-function selectSide(name) {
-  for (const t of ["datasheet", "footprint"]) {
-    $("side-" + t).setAttribute("aria-selected", String(t === name));
-    $("pane-" + t).hidden = t !== name;
-  }
-}
-
-document.querySelectorAll("[data-side]").forEach((b) => b.addEventListener("click", () => selectSide(b.dataset.side)));
-
 const showError = (e) => show(String(e), "error");
 $("pdf-form").addEventListener("submit", (ev) => {
   ev.preventDefault();
@@ -320,3 +289,35 @@ $("pdf-form").addEventListener("submit", (ev) => {
 $("prev-page").addEventListener("click", () => showPage(pageState.page - 1).catch(showError));
 $("next-page").addEventListener("click", () => showPage(pageState.page + 1).catch(showError));
 $("page-no").addEventListener("change", () => showPage(Number($("page-no").value) || 1).catch(showError));
+
+// ---- Selecting a pin: highlighted in every view ----------------------------
+
+let selected = null; // pin number
+
+const esc = (s) => (window.CSS && CSS.escape ? CSS.escape(s) : s.replace(/["\\]/g, "\\$&"));
+
+function selectPin(number, jump) {
+  selected = selected === number && !jump ? null : number;
+  document.querySelectorAll(".sel").forEach((n) => n.classList.remove("sel"));
+  if (selected === null) return;
+  document.querySelectorAll('[data-pin="' + esc(selected) + '"]').forEach((n) => n.classList.add("sel"));
+  if (!jump || !current) return;
+  // The datasheet follows: the page of the pin, else of its pad.
+  const row = current.pins.find((p) => p.number === selected && p.page) || current.pads.find((p) => p.number === selected && p.page);
+  if (row) {
+    showPage(row.page, row.region).catch(showError);
+  } else {
+    $("pdf-hint").textContent = "Pin " + selected + " has no source page.";
+  }
+}
+
+// Clicking a pin in a drawing selects it too.
+for (const id of ["symbol", "svg"]) {
+  $(id).addEventListener("click", (ev) => {
+    const target = ev.target.closest("[data-pin]");
+    if (target) selectPin(target.dataset.pin, true);
+  });
+}
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") selectPin(selected, false);
+});

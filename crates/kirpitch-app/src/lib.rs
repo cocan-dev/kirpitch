@@ -121,6 +121,9 @@ pub struct SpecView {
     pub findings: Vec<FindingView>,
     /// A drawing of the footprint as SVG.
     pub footprint_svg: String,
+    /// A drawing of the symbol as SVG; empty when the PartSpec has errors, so
+    /// that no symbol can be made.
+    pub symbol_svg: String,
 }
 
 /// Loads a PartSpec file.
@@ -218,6 +221,7 @@ pub fn view(path: &str, spec: &PartSpec) -> SpecView {
             .collect(),
         findings: findings.iter().map(finding_view).collect(),
         footprint_svg: footprint_svg(spec),
+        symbol_svg: symbol_svg(spec).unwrap_or_default(),
     }
 }
 
@@ -351,7 +355,8 @@ fn pad_svg(pad: &Pad, pin_one: bool) -> String {
         )
     };
     let mut out = format!(
-        "<g{transform}><rect class=\"{class}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\"/>",
+        "<g data-pin=\"{}\"{transform}><rect class=\"{class}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\"/>",
+        escape(&pad.number),
         num(x - w / 2.0),
         num(y - h / 2.0),
         num(w),
@@ -536,4 +541,134 @@ pub fn base64(bytes: &[u8]) -> String {
         });
     }
     out
+}
+
+/// Draws the symbol that the generator makes for a PartSpec: body, pins with
+/// their names and numbers. Pins carry `data-pin` so the window can highlight
+/// them. Returns an error when the symbol cannot be generated.
+pub fn symbol_svg(spec: &PartSpec) -> Result<String, String> {
+    use kirpitch_kicad::{List, Node};
+    let text = kirpitch_gen_symbol::generate(spec, &kirpitch_gen_symbol::Options::default())
+        .map_err(|e| e.to_string())?;
+    let tree = kirpitch_kicad::sexpr::parse(&text).map_err(|e| e.to_string())?;
+    fn child<'a>(l: &'a List, name: &str) -> Option<&'a List> {
+        l.items.iter().find_map(|n| match n {
+            Node::List(c) if c.name() == Some(name) => Some(c),
+            _ => None,
+        })
+    }
+    fn word(l: &List, i: usize) -> Option<&str> {
+        match l.items.get(i) {
+            Some(Node::Atom(s)) | Some(Node::Str(s)) => Some(s),
+            _ => None,
+        }
+    }
+    fn nums(l: &List) -> Vec<f64> {
+        (1..l.items.len())
+            .filter_map(|i| word(l, i)?.parse().ok())
+            .collect()
+    }
+    let symbol = child(&tree, "symbol").ok_or("no symbol")?;
+    let unit = symbol
+        .items
+        .iter()
+        .find_map(|n| match n {
+            Node::List(c) if c.name() == Some("symbol") => Some(c),
+            _ => None,
+        })
+        .ok_or("no symbol unit")?;
+    let rect = child(unit, "rectangle").ok_or("no body")?;
+    let start = nums(child(rect, "start").ok_or("no start")?);
+    let end = nums(child(rect, "end").ok_or("no end")?);
+    let (x0, x1) = (start[0].min(end[0]), start[0].max(end[0]));
+    let (y0, y1) = (start[1].min(end[1]), start[1].max(end[1]));
+    let mut min = (x0, -y1);
+    let mut max = (x1, -y0);
+    let mut pins = String::new();
+    let mut seen: Vec<String> = Vec::new();
+    for n in &unit.items {
+        let Node::List(pin) = n else { continue };
+        if pin.name() != Some("pin") {
+            continue;
+        }
+        let at = nums(child(pin, "at").ok_or("no pin position")?);
+        let length = nums(child(pin, "length").ok_or("no pin length")?)[0];
+        let name = child(pin, "name").and_then(|l| word(l, 1)).unwrap_or("");
+        let number = child(pin, "number").and_then(|l| word(l, 1)).unwrap_or("");
+        // Stacked power pins share a place; draw the visible one only.
+        let hidden = child(pin, "hide").is_some()
+            || pin
+                .items
+                .iter()
+                .any(|n| matches!(n, Node::Atom(a) if a == "hide"));
+        if hidden {
+            continue;
+        }
+        let (dx, dy) = match at[2] as i32 {
+            0 => (1.0, 0.0),
+            90 => (0.0, 1.0),
+            180 => (-1.0, 0.0),
+            _ => (0.0, -1.0),
+        };
+        // KiCad symbols have y pointing up; the drawing has y pointing down.
+        let (ax, ay) = (at[0], -at[1]);
+        let (bx, by) = (ax + dx * length, ay - dy * length);
+        for (px, py) in [(ax, ay), (bx, by)] {
+            min = (min.0.min(px), min.1.min(py));
+            max = (max.0.max(px), max.1.max(py));
+        }
+        let (nx, ny) = (bx + dx * 1.016, by - dy * 1.016);
+        let (anchor, rotate) = match (dx as i32, dy as i32) {
+            (1, 0) => ("start", false),
+            (-1, 0) => ("end", false),
+            (0, 1) => ("start", true),
+            _ => ("end", true),
+        };
+        // Names are centred on the pin line: a little below it for horizontal pins,
+        // beside it for vertical ones.
+        let (nx, ny) = if rotate {
+            (nx + 0.4, ny)
+        } else {
+            (nx, ny + 0.4)
+        };
+        let name_transform = if rotate {
+            format!(" transform=\"rotate(-90 {} {})\"", num(nx), num(ny))
+        } else {
+            String::new()
+        };
+        let (mx, my) = ((ax + bx) / 2.0, (ay + by) / 2.0);
+        let (tx, ty) = if rotate {
+            (mx - 0.5, my)
+        } else {
+            (mx, my - 0.5)
+        };
+        let num_transform = if rotate {
+            format!(" transform=\"rotate(-90 {} {})\"", num(tx), num(ty))
+        } else {
+            String::new()
+        };
+        seen.push(number.to_string());
+        pins.push_str(&format!(
+            "<g class=\"spin\" data-pin=\"{num_e}\"><line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\"/><rect class=\"hit\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/><text class=\"pname\" x=\"{}\" y=\"{}\" text-anchor=\"{anchor}\"{name_transform}>{}</text><text class=\"pnum\" x=\"{}\" y=\"{}\" text-anchor=\"middle\"{num_transform}>{}</text></g>",
+            num(ax), num(ay), num(bx), num(by),
+            num(ax.min(bx) - 0.4), num(ay.min(by) - 0.8),
+            num((ax - bx).abs() + 0.8), num((ay - by).abs() + 1.6),
+            num(nx), num(ny), escape(name),
+            num(tx), num(ty), escape(number),
+            num_e = escape(number),
+        ));
+    }
+    let margin = 2.0;
+    Ok(format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{} {} {} {}\" role=\"img\" aria-label=\"Symbol {}\"><rect class=\"sbody\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>{pins}</svg>",
+        num(min.0 - margin),
+        num(min.1 - margin),
+        num(max.0 - min.0 + 2.0 * margin),
+        num(max.1 - min.1 + 2.0 * margin),
+        escape(&spec.metadata.mpn),
+        num(x0),
+        num(-y1),
+        num(x1 - x0),
+        num(y1 - y0),
+    ))
 }
