@@ -252,6 +252,47 @@ fn model_client(
     Ok(client)
 }
 
+/// How far a stage of a build is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StageState {
+    /// Started; the model is working on it.
+    Started,
+    /// Finished.
+    Done,
+    /// Did not work; the others go on.
+    Failed,
+    /// Not needed.
+    Skipped,
+}
+
+/// A report on the progress of a build, for a screen that shows it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct Progress {
+    /// `metadata`, `pins`, `package` or `assemble`.
+    pub stage: &'static str,
+    /// How far it is.
+    pub state: StageState,
+    /// A line for the person: which model is asked, what was found, why it
+    /// failed.
+    pub detail: String,
+}
+
+fn note(on: &dyn Fn(&Progress), stage: &'static str, state: StageState, detail: impl Into<String>) {
+    on(&Progress {
+        stage,
+        state,
+        detail: detail.into(),
+    });
+}
+
+fn asking(config: &Config, task: Task) -> String {
+    match config.model_for(task) {
+        Ok((name, _)) => format!("asking {name}"),
+        Err(_) => "no model".to_string(),
+    }
+}
+
 /// Runs the whole extraction: metadata, pins and package. A stage that fails
 /// is listed in `failures` and does not stop the others, so the review flow
 /// can finish it by hand.
@@ -275,6 +316,19 @@ pub fn build_with_keys(
     options: &BuildOptions,
     keys: &dyn KeyStore,
 ) -> BuildReport {
+    build_with_progress(config, transport, cache, pages, options, keys, &|_| {})
+}
+
+/// Like [`build_with_keys`], and tells `on` when each stage starts and ends.
+pub fn build_with_progress(
+    config: &Config,
+    transport: Arc<dyn Transport>,
+    cache: &Cache,
+    pages: &[PageLines],
+    options: &BuildOptions,
+    keys: &dyn KeyStore,
+    on: &dyn Fn(&Progress),
+) -> BuildReport {
     let mut report = BuildReport {
         spec: None,
         pins: None,
@@ -290,54 +344,117 @@ pub fn build_with_keys(
         && options.manufacturer.is_some()
         && options.description.is_some()
     {
+        note(on, "metadata", StageState::Skipped, "given");
         Some(MetadataAnswer {
             mpn: options.mpn.clone().unwrap_or_default(),
             manufacturer: options.manufacturer.clone().unwrap_or_default(),
             description: options.description.clone().unwrap_or_default(),
         })
     } else {
+        note(
+            on,
+            "metadata",
+            StageState::Started,
+            asking(config, Task::Metadata),
+        );
         match model_client(config, Task::Metadata, &transport, keys, &mut report).and_then(|c| {
             extract_metadata(&c, cache, &mut stats, pages).map_err(|e: TaskError| e.to_string())
         }) {
-            Ok(m) => Some(m),
+            Ok(m) => {
+                note(
+                    on,
+                    "metadata",
+                    StageState::Done,
+                    format!("{}, {}", m.mpn, m.manufacturer),
+                );
+                Some(m)
+            }
             Err(e) => {
+                note(on, "metadata", StageState::Failed, e.clone());
                 report.failures.push(format!("metadata: {e}"));
                 None
             }
         }
     };
 
+    note(
+        on,
+        "pins",
+        StageState::Started,
+        format!(
+            "{}{}",
+            asking(config, Task::PinTables),
+            if options.second_read { ", twice" } else { "" }
+        ),
+    );
     match model_client(config, Task::PinTables, &transport, keys, &mut report).and_then(|c| {
         extract_pins(&c, cache, &mut stats, pages, hint, options.second_read)
             .map_err(|e| e.to_string())
     }) {
         Ok(p) => {
+            note(
+                on,
+                "pins",
+                StageState::Done,
+                format!("{} pins", p.pins.len()),
+            );
             report.notes.extend(p.notes.iter().cloned());
             report.pins = Some(p);
         }
-        Err(e) => report.failures.push(format!("pins: {e}")),
+        Err(e) => {
+            note(on, "pins", StageState::Failed, e.clone());
+            report.failures.push(format!("pins: {e}"));
+        }
     }
+
+    note(
+        on,
+        "package",
+        StageState::Started,
+        asking(config, Task::Drawings),
+    );
 
     let package = match model_client(config, Task::Drawings, &transport, keys, &mut report)
         .and_then(|c| {
             extract_package(&c, cache, &mut stats, pages, hint).map_err(|e| e.to_string())
         }) {
-        Ok(p) => Some(p),
+        Ok(p) => {
+            note(on, "package", StageState::Done, "dimensions read");
+            Some(p)
+        }
         Err(e) => {
+            note(on, "package", StageState::Failed, e.clone());
             report.failures.push(format!("package: {e}"));
             None
         }
     };
 
     if let (Some(m), Some(p), Some(k)) = (&metadata, &report.pins, &package) {
+        note(
+            on,
+            "assemble",
+            StageState::Started,
+            "checking the pieces fit",
+        );
         let default_page = pages.first().map_or(1, |p| p.page);
         match assemble(m, p, k, default_page, options) {
             Ok((spec, notes)) => {
+                note(on, "assemble", StageState::Done, "pins and package agree");
                 report.notes.extend(notes);
                 report.spec = Some(spec);
             }
-            Err(e) => report.failures.push(format!("assembly: {e}")),
+            Err(e) => {
+                note(on, "assemble", StageState::Failed, e.to_string());
+                report.failures.push(format!("assembly: {e}"));
+            }
         }
+    } else {
+        note(
+            on,
+            "assemble",
+            StageState::Skipped,
+            "a stage before it failed",
+        );
     }
     report.stats = stats;
     report

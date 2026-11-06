@@ -167,29 +167,3 @@ render = function (view, keepSheet) {
 
 // ---- Words ----------------------------------------------------------------------------
 
-// Messages while a datasheet is read.
-(() => {
-  const lines = [
-    "Reading the datasheet…",
-    "Squinting at the pin table…",
-    "Checking every pin against the page…",
-    "Measuring the package outline…",
-    "Asking the model nicely…",
-    "Almost there, probably…",
-  ];
-  let timer = null;
-  const busy = $("ds-busy");
-  new MutationObserver(() => {
-    if (busy.hidden) {
-      clearInterval(timer);
-      timer = null;
-      return;
-    }
-    let i = 0;
-    busy.textContent = lines[0];
-    timer = setInterval(() => {
-      i = (i + 1) % lines.length;
-      busy.textContent = lines[i];
-    }, 2600);
-  }).observe(busy, { attributes: true, attributeFilter: ["hidden"] });
-})();

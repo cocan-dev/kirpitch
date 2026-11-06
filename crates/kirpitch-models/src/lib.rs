@@ -20,7 +20,8 @@ pub mod tasks;
 pub mod transport;
 
 pub use build::{
-    BuildOptions, BuildReport, Score, assemble, build, build_with_keys, score, template_from_answer,
+    BuildOptions, BuildReport, Progress, Score, StageState, assemble, build, build_with_keys,
+    build_with_progress, score, template_from_answer,
 };
 pub use client::{ChatRequest, ChatResponse, Client, ModelError, Usage};
 pub use config::{

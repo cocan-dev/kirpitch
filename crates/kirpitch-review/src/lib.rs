@@ -18,8 +18,8 @@ pub use settings::{
 
 pub use parts::{
     DatasheetInput, DatasheetOutcome, Example, NewPartInput, build_from_datasheet,
-    build_with_transport, find_testdata, list_examples, new_part, open_example, read_pages,
-    save_copy,
+    build_from_datasheet_with_progress, build_with_transport, build_with_transport_progress,
+    find_testdata, list_examples, new_part, open_example, read_pages, save_copy,
 };
 
 use std::fs;
