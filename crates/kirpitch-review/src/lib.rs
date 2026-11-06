@@ -7,6 +7,7 @@
 //! computed here as plain data ([`SpecView`]) so that it can be tested without
 //! a window; `main.rs` only connects these functions to the web view.
 
+mod eval;
 mod parts;
 mod settings;
 
@@ -14,6 +15,12 @@ pub use settings::{
     FindInput, ModelInput, ModelTest, ModelView, PromptView, ProviderInfo, SettingsInput,
     SettingsView, config_from_input, current_settings, delete_api_key, find_models, save_settings,
     set_api_key, settings_view, test_model, user_folders,
+};
+
+pub use eval::{
+    CaseResult, CaseView, EvalEvent, EvalInput, EvalRun, EvalStatus, EvalTools, MyCase,
+    ResolvedCase, Totals, UsedModel, add_case, delete_run, eval_dir, list_cases, list_cases_in,
+    list_runs, remove_case, resolve_cases, run_eval, set_case_pdf,
 };
 
 pub use parts::{

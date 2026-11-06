@@ -7,8 +7,9 @@
 
 use kirpitch_models::{CurlTransport, FoundModel, OsKeyStore, active_config_path};
 use kirpitch_review::{
-    DatasheetInput, DatasheetOutcome, Example, FindInput, ImportOutcome, ModelTest, NewPartInput,
-    PageImage, PinInput, RegionTable, SettingsInput, SettingsView, SpecView, approve_stage,
+    CaseView, DatasheetInput, DatasheetOutcome, EvalEvent, EvalInput, EvalRun, EvalStatus,
+    EvalTools, Example, FindInput, ImportOutcome, ModelTest, NewPartInput, PageImage, PinInput,
+    RegionTable, SettingsInput, SettingsView, SpecView, approve_stage,
     build_from_datasheet_with_progress, export_files, import_pins, list_examples, new_part,
     now_rfc3339, open_example, open_spec, read_region, render_datasheet_page, save_copy, set_pins,
 };
@@ -193,6 +194,132 @@ async fn find_models(input: FindInput) -> Result<Vec<FoundModel>, String> {
     .map_err(|e| e.to_string())?
 }
 
+// ---- Evaluating prompts and models ------------------------------------------------------
+
+/// What a running (or finished) evaluation has reported.
+#[derive(Default)]
+struct EvalState {
+    running: bool,
+    log: Vec<EvalEvent>,
+    error: Option<String>,
+    run_id: Option<String>,
+}
+
+static EVAL: std::sync::Mutex<EvalState> = std::sync::Mutex::new(EvalState {
+    running: false,
+    log: Vec::new(),
+    error: None,
+    run_id: None,
+});
+static EVAL_STOP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[tauri::command]
+fn eval_cases() -> Vec<CaseView> {
+    kirpitch_review::list_cases()
+}
+
+#[tauri::command]
+fn eval_add_case(
+    name: String,
+    spec: String,
+    pdf: String,
+    hint: String,
+) -> Result<Vec<CaseView>, String> {
+    kirpitch_review::add_case(&kirpitch_review::eval_dir(), &name, &spec, &pdf, &hint)?;
+    Ok(kirpitch_review::list_cases())
+}
+
+#[tauri::command]
+fn eval_set_pdf(name: String, pdf: String) -> Result<Vec<CaseView>, String> {
+    kirpitch_review::set_case_pdf(&kirpitch_review::eval_dir(), &name, &pdf)?;
+    Ok(kirpitch_review::list_cases())
+}
+
+#[tauri::command]
+fn eval_remove_case(name: String) -> Result<Vec<CaseView>, String> {
+    kirpitch_review::remove_case(&kirpitch_review::eval_dir(), &name)?;
+    Ok(kirpitch_review::list_cases())
+}
+
+#[tauri::command]
+fn eval_runs() -> Vec<EvalRun> {
+    kirpitch_review::list_runs(&kirpitch_review::eval_dir())
+}
+
+#[tauri::command]
+fn eval_delete(id: String) -> Result<Vec<EvalRun>, String> {
+    kirpitch_review::delete_run(&kirpitch_review::eval_dir(), &id)?;
+    Ok(kirpitch_review::list_runs(&kirpitch_review::eval_dir()))
+}
+
+/// Starts an evaluation in the background; the window asks `eval_status` how it
+/// goes.
+#[tauri::command]
+fn eval_start(input: EvalInput) -> Result<(), String> {
+    let dir = kirpitch_review::eval_dir();
+    let config = kirpitch_models::Config::discover()
+        .map_err(|e| e.to_string())?
+        .ok_or("no language model is configured: add one in Settings first")?;
+    let cases = kirpitch_review::resolve_cases(&dir, &input.cases)?;
+    {
+        let mut state = EVAL.lock().map_err(|e| e.to_string())?;
+        if state.running {
+            return Err("an evaluation is already running".into());
+        }
+        *state = EvalState {
+            running: true,
+            ..EvalState::default()
+        };
+    }
+    EVAL_STOP.store(false, std::sync::atomic::Ordering::SeqCst);
+    std::thread::spawn(move || {
+        let on = |event: &EvalEvent| {
+            if let Ok(mut state) = EVAL.lock() {
+                state.log.push(event.clone());
+            }
+        };
+        let tools = EvalTools {
+            transport: std::sync::Arc::new(CurlTransport),
+            keys: &OsKeyStore,
+            on: &on,
+            stop: &|| EVAL_STOP.load(std::sync::atomic::Ordering::SeqCst),
+        };
+        let result = kirpitch_review::run_eval(&dir, &config, &cases, &input, &tools);
+        if let Ok(mut state) = EVAL.lock() {
+            state.running = false;
+            match result {
+                Ok(run) => state.run_id = Some(run.id),
+                Err(e) => state.error = Some(e),
+            }
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
+fn eval_stop() {
+    EVAL_STOP.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// The reports of the evaluation since `since` (how many the window has).
+#[tauri::command]
+fn eval_status(since: usize) -> EvalStatus {
+    match EVAL.lock() {
+        Ok(state) => EvalStatus {
+            running: state.running,
+            events: state.log.iter().skip(since).cloned().collect(),
+            error: state.error.clone(),
+            run_id: state.run_id.clone(),
+        },
+        Err(_) => EvalStatus {
+            running: false,
+            events: vec![],
+            error: Some("the evaluation state is not available".into()),
+            run_id: None,
+        },
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -217,7 +344,16 @@ fn main() {
             put_api_key,
             remove_api_key,
             check_model,
-            find_models
+            find_models,
+            eval_cases,
+            eval_add_case,
+            eval_set_pdf,
+            eval_remove_case,
+            eval_runs,
+            eval_delete,
+            eval_start,
+            eval_stop,
+            eval_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Kirpitch app");

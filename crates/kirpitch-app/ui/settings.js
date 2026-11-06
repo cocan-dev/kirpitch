@@ -840,10 +840,11 @@ function renderSettingsNow() {
     b.classList.toggle("current", b.dataset.pane === activePane);
     b.setAttribute("aria-selected", String(b.dataset.pane === activePane));
   });
-  for (const p of ["models", "tasks", "prompts", "folders"]) $("pane-" + p).hidden = p !== activePane;
+  for (const p of ["models", "tasks", "prompts", "evaluate", "folders"]) $("pane-" + p).hidden = p !== activePane;
   renderModels();
   renderTasks();
   renderPrompts();
+  if (typeof renderEvaluate === "function") renderEvaluate();
   renderFolders();
   updateDirty();
 }
@@ -938,6 +939,7 @@ $("settings-back").addEventListener("click", leaveSettings);
 document.querySelectorAll("#settings-tabs button").forEach((b) =>
   b.addEventListener("click", () => {
     activePane = b.dataset.pane;
+    if (activePane === "evaluate" && typeof ev !== "undefined" && !ev.running) ev.cases = null;
     renderSettings();
     window.scrollTo({ top: 0, behavior: "auto" });
   })
