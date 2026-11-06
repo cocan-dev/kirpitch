@@ -194,14 +194,18 @@ pub fn assert_footprint_loads(
 
 /// Builds a one-footprint board around the text of a footprint, places it at
 /// the middle of a square board outline and writes it to `dir/board.kicad_pcb`.
-/// Model paths of the footprint that start with `${KIPRJMOD}` are relative to
-/// `dir`.
+/// Model paths of the footprint that start with `${KIPRJMOD}` are taken relative
+/// to `dir`.
 pub fn write_board_with_footprint(
     target: crate::KicadTarget,
     dir: &Path,
     footprint: &str,
 ) -> std::path::PathBuf {
     let version = target.footprint_format_version();
+    // KiCad 8 and 9 only know ${KIPRJMOD} for boards inside a project, so the
+    // folder is written out.
+    let folder = dir.to_string_lossy().replace('\\', "/");
+    let footprint = footprint.replace("${KIPRJMOD}", &folder);
     let mut fp = String::new();
     for line in footprint.lines() {
         let t = line.trim();
