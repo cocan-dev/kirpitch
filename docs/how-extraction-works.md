@@ -75,3 +75,15 @@ the page text goes (it is added at the end if missing), `{hint}` your hint and
 
 The settings screen shows a short **prompt set code**. It changes whenever any
 prompt changes, so a score can be tied to the prompts that produced it.
+
+## Measuring changes
+
+**Settings, Evaluate** runs the saved models and prompts on *cases*: a datasheet
+PDF plus the part it should produce. A case is either a golden part of the
+repository (point to its PDF once; the PDFs are not shipped) or a part you have
+reviewed, with its datasheet. For each case the run counts the pins, package
+dimensions and pads that come out right, with the tokens and time used, and
+keeps the run (prompts, models, scores) in the `evals` folder next to your
+settings file. The History shows each run against the one before it, and
+**Use these prompts** puts the prompts of any run back. The command line has the
+same measurement for the golden parts: `kirpitch models bench`.

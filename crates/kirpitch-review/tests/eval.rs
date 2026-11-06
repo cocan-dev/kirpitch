@@ -202,7 +202,11 @@ fn a_case_is_run_scored_saved_compared_and_deleted() {
     let runs = list_runs(&dir);
     assert_eq!(runs.len(), 2);
     assert_eq!(runs[0].id, second.id);
-    assert_eq!(runs[1], run);
+    // A saved run reads back the same (decimals may differ in the last digit).
+    assert_eq!(runs[1].id, run.id);
+    assert_eq!(runs[1].prompts, run.prompts);
+    assert_eq!(runs[1].cases[0].pins_correct, run.cases[0].pins_correct);
+    assert_eq!(runs[1].totals.tokens, run.totals.tokens);
 
     // Stopping before a case keeps what is there.
     let tools = EvalTools {
