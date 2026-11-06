@@ -36,5 +36,7 @@ follows [Semantic Versioning](https://semver.org/).
   datasheets into the ignored `testdata/pdfs/` and report changed hashes (drift).
 - `kirpitch` command-line tool with `schema`, `check` and `gen symbol|footprint|all`
   (KiCad target from `--target`, the installed KiCad, or the newest supported).
+- CI job that runs the `kicad-cli` tests in the official KiCad 10 container, with
+  `scripts/kicad-cli-docker.sh` as the wrapper.
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.
