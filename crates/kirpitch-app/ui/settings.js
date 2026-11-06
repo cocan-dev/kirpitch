@@ -73,7 +73,7 @@ function updateDirty() {
 async function loadSettings() {
   try {
     appSettings = await invoke("get_settings", {});
-    draft = toDraft(appSettings);
+    rebuildDraft(draft ? draft.models : []);
   } catch (e) {
     // Outside the app there are no settings.
   }
@@ -175,6 +175,20 @@ function foundLine(f) {
 const listCache = new Map(); // "provider|address|name" -> { at, models }
 const LIST_TTL_MS = 10 * 60 * 1000;
 const triedAuto = new WeakSet(); // models whose list was asked for without a click
+const pickers = new WeakMap(); // draft model -> the Model field now on the screen
+
+// Redraws only the Model field of one card, so nothing else on the screen moves.
+function refreshPicker(m) {
+  const old = pickers.get(m);
+  if (!old || !old.isConnected) return;
+  const hadFocus = old.contains(document.activeElement);
+  const fresh = modelPicker(m);
+  old.replaceWith(fresh);
+  if (hadFocus) {
+    const input = fresh.querySelector("input");
+    if (input) input.focus();
+  }
+}
 
 function listKey(m) {
   return [m.provider, m.base_url, m.old_name || m.name].join("|");
@@ -190,11 +204,11 @@ async function discoverModels(m, force) {
   const cached = listCache.get(key);
   if (!force && cached && Date.now() - cached.at < LIST_TTL_MS) {
     discovered.set(m, { state: "done", models: cached.models, error: "" });
-    renderSettings();
+    refreshPicker(m);
     return;
   }
   discovered.set(m, { state: "loading", models: [], error: "" });
-  renderSettings();
+  refreshPicker(m);
   try {
     const models = await invoke("find_models", {
       input: {
@@ -210,11 +224,15 @@ async function discoverModels(m, force) {
     });
     listCache.set(key, { at: Date.now(), models });
     discovered.set(m, { state: "done", models, error: "" });
-    if (!m.model && models.length === 1) applyFound(m, models[0]);
+    if (!m.model && models.length === 1) {
+      applyFound(m, models[0]);
+      renderSettings();
+      return;
+    }
   } catch (e) {
     discovered.set(m, { state: "error", models: [], error: String(e) });
   }
-  renderSettings();
+  refreshPicker(m);
 }
 
 function applyFound(m, f) {
@@ -237,7 +255,7 @@ function combo(m, found) {
   const wrap = el("div", { class: "combo" });
   const id = "combo-" + Math.random().toString(36).slice(2);
   const input = el("input", { type: "text", spellcheck: "false", autocomplete: "off", role: "combobox", "aria-autocomplete": "list", "aria-expanded": "false", "aria-controls": id });
-  input.placeholder = models.length ? "Click to see " + models.length + " models, or type to search" : "Model name";
+  input.placeholder = models.length ? "Search " + models.length + " models" : "Model name";
   input.value = m.model || "";
   const list = el("ul", { class: "combo-list", id, role: "listbox" });
   list.hidden = true;
@@ -345,13 +363,18 @@ function modelPicker(m) {
   refresh.disabled = loading;
   refresh.addEventListener("click", () => discoverModels(m, true));
   row.append(combo(m, found), refresh);
-  const wrap = field("Model", row, found && found.state === "done" ? "" : "Press Find models to see what this server offers.");
-  const note = el("span", { class: "help" });
-  if (found && found.state === "error") {
-    note.className = "help err-text";
+  const wrap = field("Model", row);
+  pickers.set(m, wrap);
+  const note = el("span", { class: "help note" });
+  wrap.append(note);
+  if (!found) {
+    note.textContent = canAsk(m) ? "Press Find models to see what this server offers." : m.keychain ? "Save the key first; then the list of models appears here." : "Press Find models to see what this server offers.";
+  } else if (loading) {
+    note.textContent = "Asking the server…";
+  } else if (found.state === "error") {
+    note.className = "help note err-text";
     note.textContent = found.error;
-    wrap.append(note);
-  } else if (found && found.state === "done") {
+  } else if (found.state === "done") {
     const f = found.models.find((x) => x.id === m.model);
     let text = found.models.length + " models on this server.";
     if (f) {
@@ -359,10 +382,9 @@ function modelPicker(m) {
       text = (line || "This model is on the server.") + (f.price_source === "OpenRouter list" ? " (price from the OpenRouter list; check your plan)" : "");
     } else if (m.model) {
       text = "This name is not in the server's list. It will be used as typed.";
-      note.className = "help warn-text";
+      note.className = "help note warn-text";
     }
     note.textContent = text;
-    wrap.append(note);
   }
   return wrap;
 }
@@ -383,6 +405,19 @@ function keyPlace(m) {
 }
 
 const expanded = new WeakSet(); // models whose card is open
+const removing = new WeakSet(); // models waiting for "Remove it?"
+
+function priceInput(m, key, placeholder) {
+  const input = textInput(m[key] == null ? "" : String(m[key]), (v) => {
+    const text = v.trim().replace(",", ".");
+    const n = Number(text);
+    const bad = text !== "" && (!Number.isFinite(n) || n < 0);
+    input.classList.toggle("invalid", bad);
+    m[key] = text === "" || bad ? null : n;
+  }, { placeholder });
+  input.inputMode = "decimal";
+  return input;
+}
 
 function nameProblem(m) {
   if (!m.name) return "Give the model a name.";
@@ -416,14 +451,28 @@ function modelCard(m, index) {
   const chip1 = statusChip(m);
   head.append(el("span", { class: "pill " + (m.local ? "good" : "warn"), text: m.local ? "stays on this computer or network" : "data leaves this computer" }));
   if (chip1) head.append(chip1);
-  const remove = el("button", { type: "button", class: "ghost small-btn", text: "Remove" });
-  remove.addEventListener("click", () => {
-    if (!confirm('Remove the model "' + (m.name || "New model") + '"? Its stored key is deleted when you save.')) return;
-    draft.models.splice(index, 1);
-    for (const k of ["pin_tables", "drawings", "metadata"]) if (draft[k] === m.name) draft[k] = "";
-    renderSettings();
-  });
-  head.append(remove);
+  if (removing.has(m)) {
+    const yes = el("button", { type: "button", class: "danger small-btn", text: "Remove it" });
+    yes.addEventListener("click", () => {
+      removing.delete(m);
+      draft.models.splice(index, 1);
+      for (const k of ["pin_tables", "drawings", "metadata"]) if (draft[k] === m.name) draft[k] = "";
+      renderSettings();
+    });
+    const no = el("button", { type: "button", class: "ghost small-btn", text: "Keep" });
+    no.addEventListener("click", () => {
+      removing.delete(m);
+      renderSettings();
+    });
+    head.append(el("span", { class: "muted small", text: "Remove this model? Its stored key is deleted when you save." }), yes, no);
+  } else {
+    const remove = el("button", { type: "button", class: "ghost small-btn", text: "Remove" });
+    remove.addEventListener("click", () => {
+      removing.add(m);
+      renderSettings();
+    });
+    head.append(remove);
+  }
   card.append(head);
   if (!open) return card;
 
@@ -510,8 +559,8 @@ function modelCard(m, index) {
   advGrid.append(
     field("Environment variable with the key", textInput(m.api_key_env, (v) => (m.api_key_env = v.trim()), { placeholder: "ANTHROPIC_API_KEY" }), "Optional. When it is set it is used instead of the keychain."),
     field("Header for the key", textInput(m.api_key_header, (v) => (m.api_key_header = v.trim()), { placeholder: "api-key" }), "Only if the server does not use the usual one (Azure OpenAI uses api-key)."),
-    field("Price per million input tokens", textInput(m.price_in == null ? "" : String(m.price_in), (v) => (m.price_in = v.trim() === "" ? null : Number(v)), { placeholder: "3.0" }), "For the cost estimate. Filled in when you pick a model that has a known price."),
-    field("Price per million output tokens", textInput(m.price_out == null ? "" : String(m.price_out), (v) => (m.price_out = v.trim() === "" ? null : Number(v)), { placeholder: "15.0" }))
+    field("Price per million input tokens (US dollars)", priceInput(m, "price_in", "3.0"), "For the cost estimate. Filled in when you pick a model that has a known price."),
+    field("Price per million output tokens (US dollars)", priceInput(m, "price_out", "15.0"), "Leave empty when unknown.")
   );
   if (m.provider === "ollama") {
     advGrid.append(field("Let the model think first", selectInput([["", "Server default"], ["false", "No (faster)"], ["true", "Yes"]], m.think == null ? "" : String(m.think), (v) => (m.think = v === "" ? null : v === "true")), "Models that think can use their whole answer on it and answer nothing."));
@@ -566,6 +615,8 @@ function addPreset(p) {
   adding = false;
   renderSettings();
   updateDirty();
+  const cards = document.querySelectorAll("#pane-models .model-card");
+  if (cards.length) cards[cards.length - 1].scrollIntoView({ block: "nearest", behavior: "smooth" });
   if (canAsk(m)) discoverModels(m);
 }
 
@@ -689,6 +740,12 @@ function renderFolders() {
 }
 
 function renderSettings() {
+  const scroll = window.scrollY;
+  renderSettingsNow();
+  window.scrollTo(0, scroll);
+}
+
+function renderSettingsNow() {
   if (!draft || !appSettings) {
     $("pane-models").replaceChildren(el("p", { class: "muted", text: "The settings are only available in the Kirpitch app." }));
     return;
@@ -798,6 +855,7 @@ document.querySelectorAll("#settings-tabs button").forEach((b) =>
   b.addEventListener("click", () => {
     activePane = b.dataset.pane;
     renderSettings();
+    window.scrollTo({ top: 0, behavior: "auto" });
   })
 );
 $("btn-settings").addEventListener("click", showSettings);
@@ -837,6 +895,21 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key !== "Escape" || $("settings").hidden) return;
   if (document.querySelector("dialog[open]") || ev.target.closest("input, select, textarea")) return;
   leaveSettings();
+});
+
+// Coming back to the window (after setting a variable, fetching pdfium, ...)
+// re-reads the saved settings, unless there are unsaved changes.
+window.addEventListener("focus", async () => {
+  if ($("settings").hidden || !draft || dirty()) return;
+  try {
+    const fresh = await invoke("get_settings", {});
+    if (JSON.stringify(fresh) === JSON.stringify(appSettings)) return;
+    appSettings = fresh;
+    rebuildDraft(draft.models);
+    renderSettings();
+  } catch (e) {
+    // Leave the screen as it is.
+  }
 });
 
 loadSettings().then(() => {
