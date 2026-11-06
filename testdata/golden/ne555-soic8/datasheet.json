@@ -14,5 +14,5 @@
     "land_pattern": 31
   },
   "notes": "Same TI package drawing as the LM358; the datasheet covers several packages. The land pattern is the example board layout of the TI drawing.",
-  "partspec_review": "Drafted by an AI assistant from the pages listed above; needs review by a maintainer before it is relied on."
+  "partspec_review": "Second pass by an AI assistant on 2026-11-06 against pages 3 (pinout and pin functions), 30 (D0008A outline) and 31 (example board layout): pins, types, dimensions and pad data agree. Not yet reviewed by a human. Doubts: CONT is listed as input/output and is stored as bidirectional; DISCH is listed as output with an open-collector function and is stored as open_collector; the datasheet marks the orderable NE555DR as obsolete (NE555DR.A is active), so the MPN may deserve a change."
 }

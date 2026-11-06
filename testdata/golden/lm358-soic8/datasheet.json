@@ -14,5 +14,5 @@
     "land_pattern": 64
   },
   "notes": "The datasheet covers several packages and devices; only the SOIC (D) package is described here. The land pattern is the example board layout of the TI drawing.",
-  "partspec_review": "Drafted by an AI assistant from the pages listed above; needs review by a maintainer before it is relied on."
+  "partspec_review": "Second pass by an AI assistant on 2026-11-06 against pages 3 (pinout and pin functions), 63 (D0008A outline) and 64 (example board layout): all 8 pins, types, dimensions and pad data agree with the datasheet. Not yet reviewed by a human. Doubts: the TI dimension nominals are midpoints computed from min and max; the land pattern is TI's example, which is not the same as the IPC-7351 result (inner pad edge differs by about 0.4 mm, within the two_sources limits)."
 }
