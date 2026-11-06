@@ -287,3 +287,16 @@ tr.sel td { animation: pulse-row 0.7s ease-out 1; }
 
 /* Whatever else a rule says, hidden means hidden. */
 [hidden] { display: none !important; }
+
+/* Side by side: the values to check, and the datasheet they were read from */
+#ds-dialog.wide { width: min(86rem, 97vw); }
+.gd-split { display: block; }
+.gd-split.review { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 18px; align-items: start; }
+.gd-split.review > #gd-review { min-width: 0; }
+.gd-split.review .gd-wrap { max-height: 66vh; }
+.gd-viewer.review-mode #gd-extend, .gd-viewer.review-mode #gd-whole, .gd-viewer.review-mode #gd-regions, .gd-viewer.review-mode #gd-size, .gd-viewer.review-mode #gd-text { display: none; }
+.gd-viewer.review-mode .gd-wrap { cursor: default; }
+.gd-box.src { border-color: #1a7f37; background: rgba(46, 160, 67, 0.22); box-shadow: 0 0 0 2px rgba(46, 160, 67, 0.35); z-index: 2; }
+.gd-pins tr.on td { background: color-mix(in srgb, var(--ok) 14%, transparent); }
+@media (max-width: 1000px) { .gd-split.review { grid-template-columns: 1fr; } }
+.gd-box.src.whole { background: transparent; border-width: 3px; box-shadow: inset 0 0 0 2px rgba(46, 160, 67, 0.35); }

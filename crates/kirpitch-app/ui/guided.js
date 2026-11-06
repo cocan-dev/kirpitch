@@ -146,6 +146,11 @@ function gdShow(step) {
   $("gd-reading").hidden = !(key && phase === "reading");
   $("gd-review").hidden = !(key && phase === "review");
   $("gd-p5").hidden = step !== GD_LAST;
+  // The page is shown to point at it, and next to the values to check them against it.
+  $("gd-split").hidden = !(key && (phase === "point" || phase === "review"));
+  $("gd-split").classList.toggle("review", phase === "review");
+  $("gd-viewer").classList.toggle("review-mode", phase === "review");
+  $("ds-dialog").classList.toggle("wide", phase === "review");
   const busy = gd.loading || phase === "reading";
   $("gd-back").hidden = step === 1;
   $("gd-back").disabled = busy;
@@ -165,7 +170,10 @@ function gdShow(step) {
     gdPaintRegions();
     gdPaintSize();
   }
-  if (key && phase === "review") gdPaintReview(key);
+  if (key && phase === "review") {
+    gdPaintReview(key);
+    gdShowSource(key);
+  }
   if (step === GD_LAST) gdPaintFinal();
   gdPaintStepper();
 }
@@ -397,6 +405,42 @@ function gdPaintReview(key) {
   }
 }
 
+// Next to the values: the datasheet at the place they were read from, with the
+// places you pointed at outlined.
+async function gdShowSource(key) {
+  if (!gd.pdf || !gd.count) return;
+  const d = gd.draft[key] || {};
+  const named = key === "pins" ? d.pins && d.pins[0] && d.pins[0].page : d.page;
+  const first = gd.regions[key][0];
+  gd.page = first ? first.page : named || (key === "metadata" ? 1 : gd.page);
+  gdBuildPages();
+  gdGoPage(gd.page);
+  gdPaintOverlay();
+  gdPaintRegions();
+}
+
+// Outlines a place on a page (a pin's line, for example) and brings it into view.
+function gdHighlight(page, bbox) {
+  document.querySelectorAll("#gd-pages .gd-box.src").forEach((b) => b.remove());
+  const pg = gdPageEl(page);
+  if (!pg) return;
+  // A place without a known line (a pin that was not found) is only outlined.
+  const b = el("div", { class: "gd-box src" + (bbox ? "" : " whole") });
+  const box = bbox || [0, 0, 1, 1];
+  // A line is thin: give it room so it can be seen.
+  const pad = 0.004;
+  b.style.left = Math.max(box[0] - pad, 0) * 100 + "%";
+  b.style.top = Math.max(box[1] - pad, 0) * 100 + "%";
+  b.style.width = (Math.min(box[2] + pad, 1) - Math.max(box[0] - pad, 0)) * 100 + "%";
+  b.style.height = (Math.min(box[3] + pad, 1) - Math.max(box[1] - pad, 0)) * 100 + "%";
+  pg.append(b);
+  gd.page = page;
+  gdWant(page);
+  const wrap = gdWrap();
+  wrap.scrollTop = pg.offsetTop + pg.offsetHeight * box[1] - wrap.clientHeight / 3;
+  gdShowPage();
+}
+
 function gdFormMetadata() {
   const d = gd.draft.metadata;
   const grid = el("div", { class: "gd-grid" });
@@ -452,6 +496,14 @@ function gdFormPins() {
       paintCount();
     });
     tr.append(el("td", {}, num), el("td", {}, name), el("td", {}, type), el("td", {}, flag), el("td", {}, del));
+    // Clicking a row shows the place in the datasheet where the pin was read.
+    const show = () => {
+      if (p.page) gdHighlight(p.page, p.grounded === false ? null : p.bbox);
+      body.querySelectorAll("tr.on").forEach((r) => r.classList.remove("on"));
+      tr.classList.add("on");
+    };
+    tr.addEventListener("focusin", show);
+    tr.addEventListener("click", show);
     return tr;
   };
   d.pins.forEach((p) => body.append(row(p)));
@@ -1038,7 +1090,7 @@ function gdExtendTo(page, y) {
     return [l, t, r, bo];
   };
   wrap.addEventListener("pointerdown", (ev) => {
-    if (ev.button !== 0 || !gdKey()) return;
+    if (ev.button !== 0 || !gdKey() || gdPhase(gdKey()) !== "point") return;
     const pg = ev.target.closest(".gd-pg");
     if (!pg) return;
     const draft = el("div", { class: "gd-box draft" });
