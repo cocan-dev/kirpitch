@@ -204,3 +204,19 @@ fn non_canonical_layout_fails_the_round_trip() {
 fn atoms_cannot_contain_spaces() {
     let _ = list("a b");
 }
+
+#[test]
+fn a_word_after_a_child_list_stays_on_its_line() {
+    // KiCad 8 writes a hidden pin as `(length 2.54) hide`.
+    let pin = list("pin")
+        .atom("passive")
+        .child(list("length").num(2.54))
+        .atom("hide")
+        .child(list("name").string("A"));
+    let text = pin.write();
+    assert_eq!(
+        text,
+        "(pin passive\n\t(length 2.54) hide\n\t(name \"A\")\n)\n"
+    );
+    assert_eq!(check_round_trip(&text).unwrap(), pin);
+}

@@ -132,6 +132,12 @@ impl KicadTarget {
         self >= KicadTarget::V9
     }
 
+    /// KiCad 8 writes a hidden pin as the bare word `hide` after its length;
+    /// newer versions write `(hide yes)`.
+    pub fn symbol_pin_hide_is_bare_word(self) -> bool {
+        self == KicadTarget::V8
+    }
+
     /// A filled polygon is written as `(fill solid)` in KiCad 8 and as
     /// `(fill yes)` in newer versions.
     pub fn footprint_fill_keyword(self) -> &'static str {
@@ -210,6 +216,8 @@ mod tests {
         assert_eq!(KicadTarget::V8.footprint_fill_keyword(), "solid");
         assert_eq!(KicadTarget::V9.footprint_fill_keyword(), "yes");
         assert!(KicadTarget::V8.footprint_paste_layer_before_mask());
+        assert!(KicadTarget::V8.symbol_pin_hide_is_bare_word());
+        assert!(!KicadTarget::V9.symbol_pin_hide_is_bare_word());
         assert!(KicadTarget::V9.has_embedded_fonts_setting());
         assert!(KicadTarget::V9.symbol_pins_sorted_by_position());
         assert!(!KicadTarget::V10.symbol_pins_sorted_by_position());
