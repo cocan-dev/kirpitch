@@ -351,7 +351,8 @@ function placeBox(box, a, b) {
   const wrap = $("page-wrap");
   const draft = el("div", { class: "region draft" });
   draft.hidden = true;
-  wrap.append(draft);
+  // Boxes are placed inside the page itself, not the scrolling frame around it.
+  $("page-inner").append(draft);
   let start = null;
 
   wrap.addEventListener("pointerdown", (ev) => {

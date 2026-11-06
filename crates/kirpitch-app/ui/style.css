@@ -164,3 +164,6 @@ td.edit.num-in input { width: 4.2em; }
 .dialog .result ul { margin: 0.2rem 0 0.6rem 1.1rem; padding: 0; }
 .dialog .result .bad { color: var(--err); }
 .dialog .result .good { color: var(--ok); }
+
+/* The page image and its boxes share one box that scrolls inside the frame, so a percentage of it is a place on the page. */
+.page-inner { position: relative; width: 100%; }

@@ -177,8 +177,10 @@
           <button type="button" id="next-page" aria-label="Next page">&gt;</button>
         </div>
         <div id="page-wrap" class="page-wrap" hidden>
-          <canvas id="page-canvas"></canvas>
-          <div id="region" class="region" hidden></div>
+          <div id="page-inner" class="page-inner">
+            <canvas id="page-canvas"></canvas>
+            <div id="region" class="region" hidden></div>
+          </div>
         </div>
         <section id="pick" class="pick" hidden aria-label="Selected region">
           <h4>Selected region <span id="pick-where" class="muted"></span></h4>
@@ -293,7 +295,7 @@
           <button type="button" id="gd-nextpage" aria-label="Next page">&gt;</button>
           <button type="button" id="gd-whole" class="ghost">Use the whole page</button>
         </div>
-        <div id="gd-wrap" class="gd-wrap"><canvas id="gd-canvas"></canvas><div id="gd-overlay" class="gd-overlay"></div></div>
+        <div id="gd-wrap" class="gd-wrap"><div id="gd-inner" class="page-inner"><canvas id="gd-canvas"></canvas><div id="gd-overlay" class="gd-overlay"></div></div></div>
         <div id="gd-regions" class="gd-regions"></div>
         <p id="gd-size" class="muted small"></p>
         <details id="gd-text" hidden><summary>What the model will read from the last box</summary><pre id="gd-text-pre" class="gd-text"></pre></details>
