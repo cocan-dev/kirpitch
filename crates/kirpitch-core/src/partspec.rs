@@ -26,6 +26,10 @@ pub const SCHEMA_VERSION: u32 = 1;
 pub struct PartSpec {
     /// Version of the PartSpec schema; currently 1.
     pub schema_version: u32,
+    /// How the values were obtained. Values of a hand-written file may omit
+    /// their source; values read from a datasheet may not (ADR 0004).
+    #[serde(default, skip_serializing_if = "Origin::is_hand")]
+    pub origin: Origin,
     /// Identity of the part.
     pub metadata: Metadata,
     /// The package (body and pitch).
@@ -40,6 +44,36 @@ pub struct PartSpec {
     /// Notes that override warnings.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub overrides: Vec<Override>,
+}
+
+/// How the values of a PartSpec were obtained.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Origin {
+    /// Typed in by a person. Sources are optional.
+    #[default]
+    Hand,
+    /// Picked by a person from a region of a datasheet page. Page and region
+    /// are required.
+    Region,
+    /// Read by a language model. Page, region and confidence are required.
+    Llm,
+}
+
+impl Origin {
+    /// True for [`Origin::Hand`]; used to leave the default out of files.
+    pub fn is_hand(&self) -> bool {
+        *self == Origin::Hand
+    }
+
+    /// The name used in PartSpec files.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Origin::Hand => "hand",
+            Origin::Region => "region",
+            Origin::Llm => "llm",
+        }
+    }
 }
 
 /// Identity and descriptive fields of the part.

@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::electrical::ElectricalType;
 use crate::fab::FabProfile;
-use crate::partspec::{Pad, PadRole, PartSpec, SCHEMA_VERSION};
+use crate::partspec::{Origin, Pad, PadRole, PartSpec, SCHEMA_VERSION};
 use crate::source::Source;
 use crate::units::LengthUnit;
 
@@ -46,6 +46,8 @@ pub enum Check {
     PositiveValue,
     /// Page numbers and boxes of sources are valid.
     SourceValid,
+    /// Values that were read from a datasheet carry a source.
+    SourceRequired,
 }
 
 impl Check {
@@ -62,6 +64,7 @@ impl Check {
             Check::PadClearance => "pad_clearance",
             Check::PositiveValue => "positive_value",
             Check::SourceValid => "source_valid",
+            Check::SourceRequired => "source_required",
         }
     }
 }
@@ -310,28 +313,61 @@ impl Validator {
     }
 
     fn sources(&mut self, spec: &PartSpec) {
-        let mut all: Vec<(String, &Source)> = Vec::new();
-        if let Some(s) = &spec.package.source {
-            all.push(("package.source".into(), s));
-        }
+        // Every place that can carry a source, with the source if there is one.
+        let mut slots: Vec<(String, Option<&Source>)> = Vec::new();
+        slots.push(("package.source".into(), spec.package.source.as_ref()));
         for (k, d) in &spec.package.dimensions {
-            if let Some(s) = &d.source {
-                all.push((format!("package.dimensions.{k}.source"), s));
-            }
+            slots.push((format!("package.dimensions.{k}.source"), d.source.as_ref()));
         }
         for (i, p) in spec.pins.iter().enumerate() {
-            if let Some(s) = &p.source {
-                all.push((format!("pins[{i}].source"), s));
-            }
+            slots.push((format!("pins[{i}].source"), p.source.as_ref()));
         }
-        if let Some(s) = &spec.land_pattern.source {
-            all.push(("land_pattern.source".into(), s));
-        }
+        slots.push((
+            "land_pattern.source".into(),
+            spec.land_pattern.source.as_ref(),
+        ));
         for (i, p) in spec.land_pattern.pads.iter().enumerate() {
-            if let Some(s) = &p.source {
-                all.push((format!("land_pattern.pads[{i}].source"), s));
+            slots.push((format!("land_pattern.pads[{i}].source"), p.source.as_ref()));
+        }
+        // Hand-written values may omit the source (ADR 0004); values read from a
+        // datasheet by a region pick or a model may not.
+        if spec.origin != Origin::Hand {
+            for (path, source) in &slots {
+                match source {
+                    None => self.add(
+                        Check::SourceRequired,
+                        Level::Error,
+                        path.clone(),
+                        format!(
+                            "a value with origin `{}` needs a source (page and region)",
+                            spec.origin.as_str()
+                        ),
+                    ),
+                    Some(s) => {
+                        if s.bbox.is_none() {
+                            self.add(
+                                Check::SourceRequired,
+                                Level::Error,
+                                format!("{path}.bbox"),
+                                "the region on the page is required",
+                            );
+                        }
+                        if spec.origin == Origin::Llm && s.confidence.is_none() {
+                            self.add(
+                                Check::SourceRequired,
+                                Level::Error,
+                                format!("{path}.confidence"),
+                                "the confidence of a model reading is required",
+                            );
+                        }
+                    }
+                }
             }
         }
+        let all: Vec<(String, &Source)> = slots
+            .into_iter()
+            .filter_map(|(p, s)| s.map(|s| (p, s)))
+            .collect();
         for (path, s) in all {
             if s.page == 0 {
                 self.add(

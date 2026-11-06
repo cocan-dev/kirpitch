@@ -17,6 +17,10 @@
       "description": "Identity of the part.",
       "$ref": "#/$defs/Metadata"
     },
+    "origin": {
+      "description": "How the values were obtained. Values of a hand-written file may omit\ntheir source; values read from a datasheet may not (ADR 0004).",
+      "$ref": "#/$defs/Origin"
+    },
     "overrides": {
       "description": "Notes that override warnings.",
       "type": "array",
@@ -342,6 +346,26 @@
     "Mm": {
       "description": "A length in millimetres.",
       "type": "number"
+    },
+    "Origin": {
+      "description": "How the values of a PartSpec were obtained.",
+      "oneOf": [
+        {
+          "description": "Typed in by a person. Sources are optional.",
+          "type": "string",
+          "const": "hand"
+        },
+        {
+          "description": "Picked by a person from a region of a datasheet page. Page and region\nare required.",
+          "type": "string",
+          "const": "region"
+        },
+        {
+          "description": "Read by a language model. Page, region and confidence are required.",
+          "type": "string",
+          "const": "llm"
+        }
+      ]
     },
     "Override": {
       "description": "A user note that overrides a warning.",
