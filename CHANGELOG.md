@@ -66,5 +66,7 @@ follows [Semantic Versioning](https://semver.org/).
 - Review flow without a model: `kirpitch template`, `pins`, `status`, `review`
   (with `--edit`) and `approve`; approvals store a fingerprint so editing an
   approved stage re-opens it and later stages (ADR 0022).
+- First KLC footprint checks (`kirpitch_kicad::klc`): courtyard, fab outline,
+  silkscreen width, text layers; generated footprints pass (ADR 0017 update).
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.

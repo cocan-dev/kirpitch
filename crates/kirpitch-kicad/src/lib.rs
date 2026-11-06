@@ -7,6 +7,7 @@
 //! and the wrapper around KiCad's command-line tool.
 
 pub mod cli;
+pub mod klc;
 pub mod sexpr;
 pub mod target;
 pub mod testing;
