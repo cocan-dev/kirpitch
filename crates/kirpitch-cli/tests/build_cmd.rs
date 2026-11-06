@@ -109,11 +109,11 @@ fn answers() -> Vec<String> {
         ),
         reply(&json!({ "pins": pins })),
         reply(&json!({
-            "family": "soic", "pin_count": 8, "pitch": 1.27,
-            "body_length": 4.9, "body_width": 3.9, "height_max": 1.75,
-            "lead_span": {"min": 5.8, "max": 6.2},
-            "lead_length": {"min": 0.41, "max": 1.27},
-            "lead_width": {"min": 0.31, "max": 0.51},
+            "family": "soic", "pin_count": 8, "e": 1.27, "A": 1.75,
+        "D": {"min": 4.81, "max": 5.0}, "E1": {"min": 3.81, "max": 3.98},
+        "E": {"min": 5.8, "max": 6.19},
+        "L": {"min": 0.41, "max": 1.27},
+        "b": {"min": 0.31, "max": 0.51},
             "page": 3, "confidence": 0.9
         })),
     ]

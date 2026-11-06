@@ -14,6 +14,9 @@ use crate::config::{ModelConfig, Provider, base_url, resolve_model_name};
 use crate::png::base64;
 use crate::transport::{Request, Transport, TransportError};
 
+/// Set this environment variable to print the raw answers of the servers.
+pub const ENV_DEBUG: &str = "KIRPITCH_DEBUG_MODELS";
+
 /// Seconds to wait for an answer.
 pub const TIMEOUT_SECS: u64 = 300;
 
@@ -50,6 +53,9 @@ pub struct ChatResponse {
     pub usage: Usage,
     /// Seconds the call took.
     pub seconds: f64,
+    /// The model stopped because it reached the length limit, so the answer
+    /// is cut off.
+    pub truncated: bool,
 }
 
 /// Why a call failed.
@@ -114,6 +120,23 @@ impl Client {
         let http = build_request(&self.model, self.key.as_deref(), request);
         let start = Instant::now();
         let reply = self.transport.post(&http, TIMEOUT_SECS)?;
+        if std::env::var_os(ENV_DEBUG).is_some() {
+            eprintln!(
+                "[kirpitch debug] {} answered {}: {}",
+                http.url,
+                reply.status,
+                {
+                    let n = reply.body.chars().count();
+                    let head: String = reply.body.chars().take(1500).collect();
+                    let tail: String = reply
+                        .body
+                        .chars()
+                        .skip(n.saturating_sub(1500).max(1500))
+                        .collect();
+                    format!("{head} ... {tail}")
+                }
+            );
+        }
         if !(200..300).contains(&reply.status) {
             return Err(ModelError::Http {
                 status: reply.status,
@@ -179,7 +202,10 @@ pub fn build_request(model: &ModelConfig, key: Option<&str>, chat: &ChatRequest)
             if let Some(k) = key {
                 headers.push(("Authorization".into(), format!("Bearer {k}")));
             }
-            (format!("{base}/api/chat"), ollama_body(name, chat))
+            (
+                format!("{base}/api/chat"),
+                ollama_body(name, chat, model.think),
+            )
         }
     };
     Request {
@@ -243,7 +269,7 @@ fn anthropic_body(model: &str, chat: &ChatRequest) -> Value {
     body
 }
 
-fn ollama_body(model: &str, chat: &ChatRequest) -> Value {
+fn ollama_body(model: &str, chat: &ChatRequest, think: Option<bool>) -> Value {
     let images: Vec<String> = chat.images.iter().map(|i| base64(i)).collect();
     let mut user = json!({"role": "user", "content": chat.user});
     if !images.is_empty() {
@@ -258,6 +284,9 @@ fn ollama_body(model: &str, chat: &ChatRequest) -> Value {
     if let Some(schema) = &chat.schema {
         body["format"] = schema.clone();
     }
+    if let Some(think) = think {
+        body["think"] = json!(think);
+    }
     body
 }
 
@@ -267,6 +296,15 @@ pub fn parse_response(provider: Provider, body: &str) -> Result<ChatResponse, Mo
         .map_err(|e| ModelError::Unexpected(format!("not JSON ({e})")))?;
     let unexpected = |what: &str| ModelError::Unexpected(format!("no {what}"));
     let count = |p: &str| v.pointer(p).and_then(Value::as_u64).unwrap_or(0);
+    let truncated = match provider {
+        Provider::Openai | Provider::OpenaiCompatible => {
+            v.pointer("/choices/0/finish_reason")
+                .and_then(Value::as_str)
+                == Some("length")
+        }
+        Provider::Anthropic => v.get("stop_reason").and_then(Value::as_str) == Some("max_tokens"),
+        Provider::Ollama => v.get("done_reason").and_then(Value::as_str) == Some("length"),
+    };
     let (text, usage) = match provider {
         Provider::Openai | Provider::OpenaiCompatible => {
             let text = v
@@ -326,6 +364,7 @@ pub fn parse_response(provider: Provider, body: &str) -> Result<ChatResponse, Mo
         text,
         usage,
         seconds: 0.0,
+        truncated,
     })
 }
 
@@ -342,6 +381,7 @@ mod tests {
             api_key_env: None,
             api_key_header: None,
             vision: None,
+            think: None,
             price_in: None,
             price_out: None,
         }

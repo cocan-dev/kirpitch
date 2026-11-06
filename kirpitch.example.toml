@@ -7,6 +7,7 @@
 provider = "ollama"                 # anthropic | openai | openai-compatible | ollama
 base_url = "http://localhost:11434"
 model = "qwen3-vl:7b"
+# think = false                   # Ollama: stop a model from thinking before it answers
 
 # A cloud model. "claude-sonnet" is resolved to the current version.
 [models.cloud]

@@ -346,12 +346,13 @@ pub fn bench_cmd(args: BenchArgs, out: &mut dyn Write) -> Result<(), Failure> {
     dirs.sort();
     writeln!(
         out,
-        "{:<18} {:>8} {:>10} {:>7} {:>10} {:>8}",
-        "part", "pinout", "footprint", "extra", "tokens", "seconds"
+        "{:<18} {:>8} {:>10} {:>7} {:>7} {:>10} {:>8}",
+        "part", "pinout", "dimensions", "pads", "extra", "tokens", "seconds"
     )
     .map_err(|e| e.to_string())?;
     let mut total = Stats::default();
     let (mut pins_ok, mut pins_all, mut fp_ok, mut fp_all) = (0usize, 0usize, 0usize, 0usize);
+    let (mut pads_ok, mut pads_all) = (0usize, 0usize);
     for dir in dirs {
         let name = dir
             .file_name()
@@ -391,21 +392,31 @@ pub fn bench_cmd(args: BenchArgs, out: &mut dyn Write) -> Result<(), Failure> {
                 let s = score(spec, &expected);
                 pins_ok += s.pins_correct;
                 pins_all += s.pins_expected;
-                fp_ok += s.dimensions_correct + s.pads_correct;
-                fp_all += s.dimensions_expected + s.pads_expected;
+                fp_ok += s.dimensions_correct;
+                fp_all += s.dimensions_expected;
+                pads_ok += s.pads_correct;
+                pads_all += s.pads_expected;
                 writeln!(
                     out,
-                    "{name:<18} {:>7.0}% {:>9.0}% {:>7} {:>10} {:>8.1}",
+                    "{name:<18} {:>7.0}% {:>9.0}% {:>6.0}% {:>7} {:>10} {:>8.1}",
                     s.pinout() * 100.0,
                     s.footprint() * 100.0,
+                    s.pads() * 100.0,
                     s.pins_extra,
                     tokens,
                     report.stats.seconds
                 )
+                .and_then(|()| {
+                    for m in &s.mismatches {
+                        writeln!(out, "    {m}")?;
+                    }
+                    Ok(())
+                })
             }
             None => {
                 pins_all += expected.pins.len();
-                fp_all += expected.package.dimensions.len() + expected.land_pattern.pads.len();
+                fp_all += expected.package.dimensions.len();
+                pads_all += expected.land_pattern.pads.len();
                 writeln!(out, "{name:<18} failed: {}", report.failures.join("; "))
             }
         }
@@ -420,14 +431,15 @@ pub fn bench_cmd(args: BenchArgs, out: &mut dyn Write) -> Result<(), Failure> {
     };
     writeln!(
         out,
-        "{:<18} {:>7.0}% {:>9.0}%   (all parts together)",
+        "{:<18} {:>7.0}% {:>9.0}% {:>6.0}%   (all parts together)",
         "total",
         pct(pins_ok, pins_all),
-        pct(fp_ok, fp_all)
+        pct(fp_ok, fp_all),
+        pct(pads_ok, pads_all)
     )
     .map_err(|e| e.to_string())?;
     describe_stats(&config, &total, out).map_err(|e| e.to_string())?;
-    writeln!(out, "The footprint share compares the datasheet's land pattern with the IPC-7351 pads of the template; a difference there is not always an error.")
+    writeln!(out, "dimensions: package dimensions (minimum and maximum) that match the golden part. pads: pads that match the golden land pattern; they come from the IPC-7351 formulas, while a golden part may carry the maker's own land pattern, so a difference is not always an error.")
         .map_err(|e| e.to_string())?;
     Ok(())
 }
