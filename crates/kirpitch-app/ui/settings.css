@@ -65,3 +65,37 @@
 .settings-head button { white-space: nowrap; }
 .ok-text.small, .err-text.small { font-size: 13px; }
 .task-row .pill { justify-self: start; }
+
+/* Collapsible model cards */
+.model-card { gap: 0; padding: 12px 16px; }
+.model-card.open { gap: 14px; }
+.model-head { flex-wrap: wrap; }
+.model-toggle { all: unset; display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 200px; cursor: pointer; padding: 4px 0; border-radius: 6px; }
+.model-toggle:focus-visible { outline: 2px solid var(--brick); outline-offset: 2px; }
+.model-toggle .chev { width: 14px; color: var(--muted); }
+.model-toggle .model-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-head .ghost { margin-left: 0; }
+.model-body { display: flex; flex-direction: column; gap: 14px; animation: rise 0.25s both; }
+.warn-text { color: var(--warn); }
+
+/* Search list */
+.combo { position: relative; flex: 1; min-width: 0; }
+.combo input { width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
+.combo input:focus { border-color: var(--brick); box-shadow: 0 0 0 3px var(--glow); outline: none; }
+.combo-list { position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px); max-height: 320px; overflow-y: auto; margin: 0; padding: 4px; list-style: none; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
+.combo-list[hidden] { display: none; }
+.combo-item { display: flex; flex-direction: column; gap: 1px; padding: 7px 10px; border-radius: 6px; cursor: pointer; }
+.combo-item:hover, .combo-item.active { background: color-mix(in srgb, var(--brick) 16%, transparent); }
+.combo-item.chosen .combo-id::after { content: "  ✓"; color: var(--ok); }
+.combo-id { font-weight: 600; word-break: break-all; }
+.combo-line { font-size: 12px; color: var(--muted); }
+.combo-empty { padding: 10px; color: var(--muted); font-size: 13px; }
+
+/* Choosing where a model runs */
+.preset-box { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.preset-box h4 { margin: 0; font-size: 18px; }
+.preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; width: 100%; }
+.preset { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left; padding: 14px; height: 100%; border-radius: var(--radius); }
+.preset strong { font-size: 15px; }
+.preset .pill { margin-top: auto; }
+.add-model-btn { align-self: flex-start; border-radius: 999px; border-color: var(--brick); }

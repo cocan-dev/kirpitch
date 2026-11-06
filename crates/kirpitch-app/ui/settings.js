@@ -13,18 +13,32 @@ const testResults = {}; // model name -> result of the last test
 const discovered = new WeakMap(); // draft model -> { state: "loading" | "done" | "error", models, error }
 
 const PRESETS_MODELS = [
-  { label: "Ollama on this computer", name: "ollama-local", provider: "ollama", base_url: "", model: "qwen3-vl:7b", keychain: false },
-  { label: "Ollama cloud (ollama.com)", name: "ollama-cloud", provider: "ollama", base_url: "https://ollama.com", model: "", keychain: true },
-  { label: "Anthropic Claude", name: "claude", provider: "anthropic", base_url: "", model: "claude-sonnet", keychain: true },
-  { label: "OpenAI", name: "openai", provider: "openai", base_url: "", model: "gpt-5", keychain: true },
-  { label: "LM Studio on this computer", name: "lm-studio", provider: "openai-compatible", base_url: "http://localhost:1234/v1", model: "local-model", keychain: false },
-  { label: "OpenRouter", name: "openrouter", provider: "openai-compatible", base_url: "https://openrouter.ai/api/v1", model: "vendor/model", keychain: true },
-  { label: "Mistral", name: "mistral", provider: "openai-compatible", base_url: "https://api.mistral.ai/v1", model: "mistral-large-latest", keychain: true },
-  { label: "Google Gemini", name: "gemini", provider: "openai-compatible", base_url: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-pro", keychain: true },
-  { label: "Another OpenAI-compatible server", name: "my-server", provider: "openai-compatible", base_url: "http://localhost:8000/v1", model: "model-name", keychain: false },
+  { label: "Ollama on this computer", blurb: "Free, private. Models you have pulled.", name: "ollama-local", provider: "ollama", base_url: "", model: "", keychain: false, local: true },
+  { label: "LM Studio on this computer", blurb: "Free, private. The local server of LM Studio.", name: "lm-studio", provider: "openai-compatible", base_url: "http://localhost:1234/v1", model: "", keychain: false, local: true },
+  { label: "Ollama cloud (ollama.com)", blurb: "Big open models run by Ollama. Needs a key.", name: "ollama-cloud", provider: "ollama", base_url: "https://ollama.com", model: "", keychain: true, local: false },
+  { label: "Anthropic Claude", blurb: "Claude models. Needs a key.", name: "claude", provider: "anthropic", base_url: "", model: "", keychain: true, local: false },
+  { label: "OpenAI", blurb: "GPT models. Needs a key.", name: "openai", provider: "openai", base_url: "", model: "", keychain: true, local: false },
+  { label: "OpenRouter", blurb: "Hundreds of models with one key.", name: "openrouter", provider: "openai-compatible", base_url: "https://openrouter.ai/api/v1", model: "", keychain: true, local: false },
+  { label: "Mistral", blurb: "Mistral models. Needs a key.", name: "mistral", provider: "openai-compatible", base_url: "https://api.mistral.ai/v1", model: "", keychain: true, local: false },
+  { label: "Google Gemini", blurb: "Gemini models. Needs a key.", name: "gemini", provider: "openai-compatible", base_url: "https://generativelanguage.googleapis.com/v1beta/openai", model: "", keychain: true, local: false },
+  { label: "Another OpenAI-compatible server", blurb: "vLLM, llama.cpp, Azure and others. You give the address.", name: "my-server", provider: "openai-compatible", base_url: "", model: "", keychain: false, local: false },
 ];
 
 const clone = (x) => JSON.parse(JSON.stringify(x));
+
+// Rebuilds the draft from the saved settings and keeps what the screen knew
+// about each model by name: its found list, whether its card was open.
+function rebuildDraft(old) {
+  const kept = new Map((old || []).map((m) => [m.name, { found: discovered.get(m), open: expanded.has(m), tried: triedAuto.has(m) }]));
+  draft = toDraft(appSettings);
+  for (const m of draft.models) {
+    const k = kept.get(m.name);
+    if (!k) continue;
+    if (k.found) discovered.set(m, k.found);
+    if (k.open) expanded.add(m);
+    if (k.tried) triedAuto.add(m);
+  }
+}
 
 function toDraft(view) {
   return {
@@ -138,88 +152,6 @@ function providerInfo(id) {
   return appSettings.providers.find((p) => p.id === id) || { default_url: "", key_hint: "" };
 }
 
-function modelCard(m, index) {
-  const card = el("section", { class: "model-card panel" });
-  const head = el("div", { class: "model-head" });
-  const title = el("h4", { text: m.name || "New model" });
-  const where = el("span", { class: "pill " + (m.local ? "good" : "warn"), text: m.local ? "stays on this computer or network" : "data leaves this computer" });
-  head.append(title, where);
-  const remove = el("button", { type: "button", class: "ghost small-btn", text: "Remove" });
-  remove.addEventListener("click", () => {
-    draft.models.splice(index, 1);
-    for (const k of ["pin_tables", "drawings", "metadata"]) if (draft[k] === m.name) draft[k] = "";
-    renderSettings();
-  });
-  head.append(remove);
-  card.append(head);
-
-  const grid = el("div", { class: "grid2" });
-  grid.append(
-    field("Name", textInput(m.name, (v) => (m.name = v.trim()), { placeholder: "claude" }), "How you will refer to it. Letters, digits, - _ ."),
-    field(
-      "Kind of server",
-      selectInput(appSettings.providers.map((p) => [p.id, p.label]), m.provider, (v) => {
-        m.provider = v;
-        renderSettings();
-      })
-    ),
-    modelPicker(m),
-    field("Address", textInput(m.base_url, (v) => (m.base_url = v.trim()), { placeholder: providerInfo(m.provider).default_url || "http://localhost:8000/v1" }), providerInfo(m.provider).default_url ? "Leave empty for the usual address." : "Needed for this kind of server.")
-  );
-  card.append(grid);
-
-  // The key
-  const keyBox = el("div", { class: "key-box" });
-  const keepBox = el("label", { class: "check" });
-  const keep = el("input", { type: "checkbox" });
-  keep.checked = !!m.keychain;
-  keep.addEventListener("change", () => {
-    m.keychain = keep.checked;
-    renderSettings();
-  });
-  keepBox.append(keep, el("span", { text: "This model needs an API key, keep it in the system keychain" }));
-  keyBox.append(keepBox);
-  if (m.keychain) {
-    const status = m.has_key ? "A key is stored." : "No key stored yet.";
-    keyBox.append(el("p", { class: m.has_key ? "ok-text small" : "muted small", text: status + " The key is never written to the settings file." }));
-    const row = el("div", { class: "pick-row" });
-    const key = textInput(m.newKey, (v) => (m.newKey = v), { type: "password", placeholder: m.has_key ? "Type a new key to replace it" : "Paste the API key" });
-    const save = el("button", { type: "button", text: m.has_key ? "Replace key" : "Save key" });
-    save.addEventListener("click", () => saveKey(m));
-    row.append(key, save);
-    if (m.has_key) {
-      const del = el("button", { type: "button", class: "ghost", text: "Delete key" });
-      del.addEventListener("click", () => deleteKey(m));
-      row.append(del);
-    }
-    keyBox.append(row);
-  }
-  card.append(keyBox);
-
-  // Advanced
-  const adv = el("details", { class: "advanced" }, el("summary", { text: "More options" }));
-  const advGrid = el("div", { class: "grid2" });
-  advGrid.append(
-    field("Environment variable with the key", textInput(m.api_key_env, (v) => (m.api_key_env = v.trim()), { placeholder: "ANTHROPIC_API_KEY" }), "Optional. When it is set it is used instead of the keychain."),
-    field("Header for the key", textInput(m.api_key_header, (v) => (m.api_key_header = v.trim()), { placeholder: "api-key" }), "Only if the server does not use the usual one (Azure OpenAI uses api-key)."),
-    field("Price per million input tokens", textInput(m.price_in == null ? "" : String(m.price_in), (v) => (m.price_in = v.trim() === "" ? null : Number(v)), { placeholder: "3.0" }), "For the cost estimate."),
-    field("Price per million output tokens", textInput(m.price_out == null ? "" : String(m.price_out), (v) => (m.price_out = v.trim() === "" ? null : Number(v)), { placeholder: "15.0" }))
-  );
-  if (m.provider === "ollama") {
-    advGrid.append(field("Let the model think first", selectInput([["", "Server default"], ["false", "No (faster)"], ["true", "Yes"]], m.think == null ? "" : String(m.think), (v) => (m.think = v === "" ? null : v === "true")), "Models that think can use their whole answer on it and answer nothing."));
-  }
-  adv.append(advGrid);
-  card.append(adv);
-
-  // Test
-  const test = el("div", { class: "test-row" });
-  const run = el("button", { type: "button", text: "Save and test" });
-  run.addEventListener("click", () => testModel(m, run));
-  test.append(run, resultView(testResults[m.name]));
-  card.append(test);
-  return card;
-}
-
 // ---- Finding the models a server offers ---------------------------------------------
 
 function money(x) {
@@ -230,16 +162,37 @@ function ctxText(n) {
   return n >= 1000000 ? (n / 1000000).toFixed(n % 1000000 ? 1 : 0) + "M" : Math.round(n / 1000) + "k";
 }
 
+// What is known about a model, as a short line.
 function foundLine(f) {
   const bits = [];
   if (f.label && f.label !== f.id) bits.push(f.label);
-  if (f.price_in != null && f.price_out != null) bits.push(money(f.price_in) + " in / " + money(f.price_out) + " out per million");
+  if (f.price_in != null && f.price_out != null) bits.push(money(f.price_in) + " in / " + money(f.price_out) + " out per million tokens");
   if (f.context) bits.push(ctxText(f.context) + " context");
   if (f.vision === true) bits.push("reads images");
   return bits.join(" · ");
 }
 
-async function discoverModels(m) {
+const listCache = new Map(); // "provider|address|name" -> { at, models }
+const LIST_TTL_MS = 10 * 60 * 1000;
+const triedAuto = new WeakSet(); // models whose list was asked for without a click
+
+function listKey(m) {
+  return [m.provider, m.base_url, m.old_name || m.name].join("|");
+}
+
+function canAsk(m) {
+  if (m.provider === "openai-compatible" && !m.base_url) return false;
+  return !m.keychain || m.has_key || m.env_set || !!m.newKey;
+}
+
+async function discoverModels(m, force) {
+  const key = listKey(m);
+  const cached = listCache.get(key);
+  if (!force && cached && Date.now() - cached.at < LIST_TTL_MS) {
+    discovered.set(m, { state: "done", models: cached.models, error: "" });
+    renderSettings();
+    return;
+  }
   discovered.set(m, { state: "loading", models: [], error: "" });
   renderSettings();
   try {
@@ -255,6 +208,7 @@ async function discoverModels(m) {
         new_key: m.newKey || "",
       },
     });
+    listCache.set(key, { at: Date.now(), models });
     discovered.set(m, { state: "done", models, error: "" });
     if (!m.model && models.length === 1) applyFound(m, models[0]);
   } catch (e) {
@@ -273,36 +227,125 @@ function applyFound(m, f) {
   updateDirty();
 }
 
+// ---- A list you can search and pick from ----------------------------------------------
+
+// A text box that opens the whole list when you click it, narrows the list while
+// you type, and also takes a name that is not in the list. Up/Down, Enter and
+// Esc work as in any combo box.
+function combo(m, found) {
+  const models = found && found.state === "done" ? found.models : [];
+  const wrap = el("div", { class: "combo" });
+  const id = "combo-" + Math.random().toString(36).slice(2);
+  const input = el("input", { type: "text", spellcheck: "false", autocomplete: "off", role: "combobox", "aria-autocomplete": "list", "aria-expanded": "false", "aria-controls": id });
+  input.placeholder = models.length ? "Click to see " + models.length + " models, or type to search" : "Model name";
+  input.value = m.model || "";
+  const list = el("ul", { class: "combo-list", id, role: "listbox" });
+  list.hidden = true;
+  let shown = [];
+  let active = -1;
+  let filter = "";
+
+  const close = () => {
+    list.hidden = true;
+    input.setAttribute("aria-expanded", "false");
+    active = -1;
+  };
+  const choose = (f) => {
+    applyFound(m, f);
+    close();
+    renderSettings();
+  };
+  const paint = () => {
+    const words = filter.toLowerCase().split(/\s+/).filter(Boolean);
+    shown = models.filter((f) => {
+      const hay = (f.id + " " + (f.label || "")).toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
+    list.replaceChildren();
+    if (!shown.length) {
+      list.append(el("li", { class: "combo-empty", text: filter ? "No model matches. The name you typed will be used as it is." : "The server listed no models." }));
+    }
+    shown.slice(0, 200).forEach((f, i) => {
+      const li = el("li", { role: "option", class: "combo-item" + (f.id === m.model ? " chosen" : ""), "aria-selected": String(i === active) });
+      li.append(el("span", { class: "combo-id", text: f.id }));
+      const line = foundLine(f);
+      if (line) li.append(el("span", { class: "combo-line", text: line }));
+      // mousedown, not click: the box loses focus first and would close the list.
+      li.addEventListener("mousedown", (ev) => {
+        ev.preventDefault();
+        choose(f);
+      });
+      if (i === active) li.classList.add("active");
+      list.append(li);
+    });
+    if (shown.length > 200) list.append(el("li", { class: "combo-empty", text: shown.length - 200 + " more: type to narrow the list." }));
+    const on = list.querySelector(".active");
+    if (on) on.scrollIntoView({ block: "nearest" });
+  };
+  const open = () => {
+    if (!models.length) return;
+    list.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+    paint();
+  };
+
+  input.addEventListener("focus", () => {
+    filter = "";
+    open();
+  });
+  input.addEventListener("click", () => {
+    if (list.hidden) {
+      filter = "";
+      open();
+    }
+  });
+  input.addEventListener("input", () => {
+    m.model = input.value.trim();
+    filter = input.value;
+    active = -1;
+    open();
+    updateDirty();
+  });
+  input.addEventListener("blur", () => {
+    close();
+    const f = models.find((x) => x.id === m.model);
+    if (f && (m.price_in == null || m.price_out == null)) {
+      applyFound(m, f);
+      renderSettings();
+    }
+  });
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      ev.preventDefault();
+      if (list.hidden) {
+        filter = "";
+        open();
+      }
+      const n = Math.min(shown.length, 200);
+      if (!n) return;
+      active = ev.key === "ArrowDown" ? (active + 1) % n : (active - 1 + n) % n;
+      paint();
+    } else if (ev.key === "Enter" && !list.hidden && active >= 0 && shown[active]) {
+      ev.preventDefault();
+      choose(shown[active]);
+    } else if (ev.key === "Escape" && !list.hidden) {
+      ev.stopPropagation();
+      close();
+    }
+  });
+  wrap.append(input, list);
+  return wrap;
+}
+
 function modelPicker(m) {
   const found = discovered.get(m);
   const row = el("div", { class: "pick-row" });
-  let input;
-  if (found && found.state === "done" && found.models.length) {
-    // A visible list of what the server offers; the current name stays
-    // selectable even when the server does not list it.
-    const known = found.models.some((x) => x.id === m.model);
-    const options = [["", "Choose a model (" + found.models.length + " found)…"]];
-    if (m.model && !known) options.push([m.model, m.model + " (not in the list)"]);
-    found.models.forEach((x) => {
-      const line = foundLine(x);
-      options.push([x.id, line ? x.id + " — " + line : x.id]);
-    });
-    input = selectInput(options, m.model, (v) => {
-      const x = found.models.find((y) => y.id === v);
-      if (x) applyFound(m, x);
-      else m.model = v;
-      renderSettings();
-    });
-  } else {
-    input = textInput(m.model, (v) => (m.model = v.trim()), { placeholder: "name, or press Find models" });
-  }
-  const find = el("button", { type: "button", text: found && found.state === "loading" ? "Looking…" : "Find models" });
-  find.disabled = !!(found && found.state === "loading");
-  find.addEventListener("click", () => discoverModels(m));
-  row.prepend(input);
-  row.append(find);
-  let help = "The name the server knows it by. Find models asks the server for its list.";
-  const wrap = field("Model", row, help);
+  const loading = !!(found && found.state === "loading");
+  const refresh = el("button", { type: "button", class: found && found.state === "done" ? "ghost" : "", text: loading ? "Looking…" : found && found.state === "done" ? "Refresh list" : "Find models" });
+  refresh.disabled = loading;
+  refresh.addEventListener("click", () => discoverModels(m, true));
+  row.append(combo(m, found), refresh);
+  const wrap = field("Model", row, found && found.state === "done" ? "" : "Press Find models to see what this server offers.");
   const note = el("span", { class: "help" });
   if (found && found.state === "error") {
     note.className = "help err-text";
@@ -310,17 +353,185 @@ function modelPicker(m) {
     wrap.append(note);
   } else if (found && found.state === "done") {
     const f = found.models.find((x) => x.id === m.model);
-    let text = found.models.length + " models found. Choose one from the list.";
+    let text = found.models.length + " models on this server.";
     if (f) {
       const line = foundLine(f);
       text = (line || "This model is on the server.") + (f.price_source === "OpenRouter list" ? " (price from the OpenRouter list; check your plan)" : "");
     } else if (m.model) {
-      text = "This name is not in the server's list of " + found.models.length + " models.";
+      text = "This name is not in the server's list. It will be used as typed.";
+      note.className = "help warn-text";
     }
     note.textContent = text;
     wrap.append(note);
   }
   return wrap;
+}
+
+// ---- One model ---------------------------------------------------------------------------
+
+const KEY_PLACES = {
+  anthropic: "console.anthropic.com, under API keys",
+  openai: "platform.openai.com/api-keys",
+  ollama: "ollama.com/settings/keys (a local Ollama needs no key)",
+  "https://openrouter.ai/api/v1": "openrouter.ai/keys",
+  "https://api.mistral.ai/v1": "console.mistral.ai, under API keys",
+  "https://generativelanguage.googleapis.com/v1beta/openai": "aistudio.google.com/apikey",
+};
+
+function keyPlace(m) {
+  return KEY_PLACES[m.base_url] || KEY_PLACES[m.provider] || "";
+}
+
+const expanded = new WeakSet(); // models whose card is open
+
+function nameProblem(m) {
+  if (!m.name) return "Give the model a name.";
+  if (!/^[A-Za-z0-9_.-]+$/.test(m.name)) return "Use letters, digits, - _ . only.";
+  if (draft.models.some((o) => o !== m && o.name === m.name)) return "Another model already has this name.";
+  return "";
+}
+
+function statusChip(m) {
+  const r = testResults[m.name];
+  if (r && !r.error) {
+    const ok = r.reachable && r.structured_json;
+    return el("span", { class: "pill " + (ok ? "good" : "bad"), text: ok ? "tested, works" : "test failed" });
+  }
+  if (m.keychain && !m.has_key && !m.env_set) return el("span", { class: "pill warn", text: "needs a key" });
+  return null;
+}
+
+function modelCard(m, index) {
+  const open = expanded.has(m);
+  const card = el("section", { class: "model-card panel" + (open ? " open" : "") });
+  const head = el("div", { class: "model-head" });
+  const toggle = el("button", { type: "button", class: "model-toggle", "aria-expanded": String(open) });
+  toggle.append(el("span", { class: "chev", "aria-hidden": "true", text: open ? "▾" : "▸" }), el("h4", { text: m.name || "New model" }), el("span", { class: "model-sub muted small", text: [providerLabel(m), m.model].filter(Boolean).join(" · ") }));
+  toggle.addEventListener("click", () => {
+    if (open) expanded.delete(m);
+    else expanded.add(m);
+    renderSettings();
+  });
+  head.append(toggle);
+  const chip1 = statusChip(m);
+  head.append(el("span", { class: "pill " + (m.local ? "good" : "warn"), text: m.local ? "stays on this computer or network" : "data leaves this computer" }));
+  if (chip1) head.append(chip1);
+  const remove = el("button", { type: "button", class: "ghost small-btn", text: "Remove" });
+  remove.addEventListener("click", () => {
+    if (!confirm('Remove the model "' + (m.name || "New model") + '"? Its stored key is deleted when you save.')) return;
+    draft.models.splice(index, 1);
+    for (const k of ["pin_tables", "drawings", "metadata"]) if (draft[k] === m.name) draft[k] = "";
+    renderSettings();
+  });
+  head.append(remove);
+  card.append(head);
+  if (!open) return card;
+
+  const body = el("div", { class: "model-body" });
+  const nameInput = textInput(m.name, (v) => {
+    m.name = v.trim();
+    const p = nameProblem(m);
+    nameHelp.textContent = p || "How you will refer to it.";
+    nameHelp.classList.toggle("err-text", !!p);
+  }, { placeholder: "claude" });
+  const nameHelp = el("span", { class: "help", text: "How you will refer to it." });
+  const nameField = el("label", { class: "f" }, el("span", { class: "lab", text: "Name" }), nameInput, nameHelp);
+  const problem = nameProblem(m);
+  if (problem) {
+    nameHelp.textContent = problem;
+    nameHelp.classList.add("err-text");
+  }
+  const grid = el("div", { class: "grid2" });
+  grid.append(
+    nameField,
+    field(
+      "Kind of server",
+      selectInput(appSettings.providers.map((p) => [p.id, p.label]), m.provider, (v) => {
+        m.provider = v;
+        discovered.delete(m);
+        triedAuto.delete(m);
+        renderSettings();
+      })
+    ),
+    modelPicker(m),
+    field(
+      "Address",
+      textInput(m.base_url, (v) => (m.base_url = v.trim()), { placeholder: providerInfo(m.provider).default_url || "http://localhost:8000/v1" }),
+      providerInfo(m.provider).default_url ? "Leave empty for the usual address." : "Needed for this kind of server."
+    )
+  );
+  body.append(grid);
+
+  // The key
+  const keyBox = el("div", { class: "key-box" });
+  const keepBox = el("label", { class: "check" });
+  const keep = el("input", { type: "checkbox" });
+  keep.checked = !!m.keychain;
+  keep.addEventListener("change", () => {
+    m.keychain = keep.checked;
+    renderSettings();
+  });
+  keepBox.append(keep, el("span", { text: "This model needs an API key, keep it in the system keychain" }));
+  keyBox.append(keepBox);
+  if (m.keychain) {
+    const status = m.has_key ? "A key is stored." : "No key stored yet.";
+    keyBox.append(el("p", { class: m.has_key ? "ok-text small" : "muted small", text: status + " It is never written to the settings file." }));
+    const place = keyPlace(m);
+    if (place && !m.has_key) keyBox.append(el("p", { class: "muted small", text: "Get a key at " + place + "." }));
+    const row = el("div", { class: "pick-row" });
+    const key = textInput(m.newKey, (v) => (m.newKey = v), { type: "password", placeholder: m.has_key ? "Type a new key to replace it" : "Paste the API key" });
+    key.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        saveKey(m);
+      }
+    });
+    const peek = el("button", { type: "button", class: "ghost", text: "Show" });
+    peek.addEventListener("click", () => {
+      const hidden = key.type === "password";
+      key.type = hidden ? "text" : "password";
+      peek.textContent = hidden ? "Hide" : "Show";
+    });
+    const save = el("button", { type: "button", text: m.has_key ? "Replace key" : "Save key" });
+    save.addEventListener("click", () => saveKey(m));
+    row.append(key, peek, save);
+    if (m.has_key) {
+      const del = el("button", { type: "button", class: "ghost", text: "Delete key" });
+      del.addEventListener("click", () => deleteKey(m));
+      row.append(del);
+    }
+    keyBox.append(row);
+  }
+  body.append(keyBox);
+
+  // Advanced
+  const adv = el("details", { class: "advanced" }, el("summary", { text: "More options" }));
+  const advGrid = el("div", { class: "grid2" });
+  advGrid.append(
+    field("Environment variable with the key", textInput(m.api_key_env, (v) => (m.api_key_env = v.trim()), { placeholder: "ANTHROPIC_API_KEY" }), "Optional. When it is set it is used instead of the keychain."),
+    field("Header for the key", textInput(m.api_key_header, (v) => (m.api_key_header = v.trim()), { placeholder: "api-key" }), "Only if the server does not use the usual one (Azure OpenAI uses api-key)."),
+    field("Price per million input tokens", textInput(m.price_in == null ? "" : String(m.price_in), (v) => (m.price_in = v.trim() === "" ? null : Number(v)), { placeholder: "3.0" }), "For the cost estimate. Filled in when you pick a model that has a known price."),
+    field("Price per million output tokens", textInput(m.price_out == null ? "" : String(m.price_out), (v) => (m.price_out = v.trim() === "" ? null : Number(v)), { placeholder: "15.0" }))
+  );
+  if (m.provider === "ollama") {
+    advGrid.append(field("Let the model think first", selectInput([["", "Server default"], ["false", "No (faster)"], ["true", "Yes"]], m.think == null ? "" : String(m.think), (v) => (m.think = v === "" ? null : v === "true")), "Models that think can use their whole answer on it and answer nothing."));
+  }
+  adv.append(advGrid);
+  body.append(adv);
+
+  // Test
+  const test = el("div", { class: "test-row" });
+  const run = el("button", { type: "button", class: "primary", text: "Save and test" });
+  run.addEventListener("click", () => testModel(m, run));
+  test.append(run, resultView(testResults[m.name]));
+  body.append(test);
+  card.append(body);
+  return card;
+}
+
+function providerLabel(m) {
+  const p = appSettings.providers.find((x) => x.id === m.provider);
+  return p ? p.label.replace(/ \(.*$/, "") : m.provider;
 }
 
 function chip(ok, label) {
@@ -340,26 +551,70 @@ function resultView(r) {
   return box;
 }
 
+// ---- Adding a model ---------------------------------------------------------------------------
+
+let adding = false;
+
+function addPreset(p) {
+  let name = p.name;
+  let n = 2;
+  while (draft.models.some((m) => m.name === name)) name = p.name + "-" + n++;
+  const m = { name, old_name: null, new: true, newKey: "", provider: p.provider, base_url: p.base_url, effective_url: "", model: p.model, api_key_env: "", keychain: p.keychain, has_key: false, env_set: false, api_key_header: "", think: null, price_in: null, price_out: null, local: p.provider === "ollama" ? !p.base_url : p.base_url.includes("localhost") };
+  draft.models.push(m);
+  expanded.add(m);
+  triedAuto.add(m);
+  adding = false;
+  renderSettings();
+  updateDirty();
+  if (canAsk(m)) discoverModels(m);
+}
+
+function presetGrid() {
+  const box = el("div", { class: "preset-box" });
+  box.append(el("h4", { text: draft.models.length ? "Add a model" : "Choose where your model runs" }));
+  const grid = el("div", { class: "preset-grid" });
+  PRESETS_MODELS.forEach((p) => {
+    const b = el("button", { type: "button", class: "preset" });
+    b.append(el("strong", { text: p.label }), el("span", { class: "muted small", text: p.blurb }), el("span", { class: "pill " + (p.local ? "good" : "warn"), text: p.local ? "on your computer" : "in the cloud" }));
+    b.addEventListener("click", () => addPreset(p));
+    grid.append(b);
+  });
+  box.append(grid);
+  if (draft.models.length) {
+    const cancel = el("button", { type: "button", class: "ghost", text: "Cancel" });
+    cancel.addEventListener("click", () => {
+      adding = false;
+      renderSettings();
+    });
+    box.append(cancel);
+  }
+  return box;
+}
+
 function renderModels() {
   const pane = $("pane-models");
+  if (draft.models.length === 1 && !triedAuto.has(draft.models[0]) && !expanded.has(draft.models[0])) expanded.add(draft.models[0]);
   const cards = draft.models.map((m, i) => modelCard(m, i));
-  const add = el("div", { class: "add-model" });
-  const select = selectInput([["", "Add a model…"], ...PRESETS_MODELS.map((p, i) => [String(i), p.label])], "", () => {});
-  select.addEventListener("change", () => {
-    if (select.value === "") return;
-    const p = PRESETS_MODELS[Number(select.value)];
-    let name = p.name;
-    let n = 2;
-    while (draft.models.some((m) => m.name === name)) name = p.name + "-" + n++;
-    draft.models.push({ name, old_name: null, new: true, newKey: "", provider: p.provider, base_url: p.base_url, effective_url: "", model: p.model, api_key_env: "", keychain: p.keychain, has_key: false, env_set: false, api_key_header: "", think: null, price_in: null, price_out: null, local: p.provider === "ollama" || p.base_url.includes("localhost") });
-    renderSettings();
-    updateDirty();
-    const added = draft.models[draft.models.length - 1];
-    if (!added.keychain) discoverModels(added);
+  // A list that is ready when the card is opened, without a click.
+  const toAsk = draft.models.filter((m) => {
+    if (triedAuto.has(m)) return false;
+    triedAuto.add(m);
+    return !discovered.has(m) && canAsk(m);
   });
-  add.append(select);
+  let tail;
+  if (adding || !draft.models.length) {
+    tail = presetGrid();
+  } else {
+    const add = el("button", { type: "button", class: "add-model-btn", text: "+ Add a model" });
+    add.addEventListener("click", () => {
+      adding = true;
+      renderSettings();
+    });
+    tail = add;
+  }
   const intro = el("p", { class: "muted", text: draft.models.length ? "Each model can do some or all of the tasks. Choose which under Tasks and privacy." : "No models yet. Without one, Kirpitch still works by hand: New part, then import the pins. Add a model to read datasheets automatically." });
-  pane.replaceChildren(intro, ...cards, add);
+  pane.replaceChildren(intro, ...cards, tail);
+  setTimeout(() => toAsk.forEach((m) => discoverModels(m)), 0);
 }
 
 function modelOptions(blank) {
@@ -488,9 +743,7 @@ async function saveSettings() {
   try {
     appSettings = await invoke("put_settings", { input: toInput() });
     for (const k of typedKeys) appSettings = await invoke("put_api_key", { name: k.name, key: k.key });
-    const kept = new Map(draft.models.filter((m) => discovered.has(m)).map((m) => [m.name, discovered.get(m)]));
-    draft = toDraft(appSettings);
-    for (const m of draft.models) if (kept.has(m.name)) discovered.set(m, kept.get(m.name));
+    rebuildDraft(draft.models);
     renderSettings();
     show("Settings saved.", "ok");
     return true;
@@ -513,7 +766,7 @@ async function deleteKey(m) {
   try {
     if (dirty() && !(await saveSettings())) return;
     appSettings = await invoke("remove_api_key", { name: m.name });
-    draft = toDraft(appSettings);
+    rebuildDraft(draft.models);
     renderSettings();
     show("Key removed from the keychain.", "ok");
   } catch (e) {
