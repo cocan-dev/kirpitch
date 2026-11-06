@@ -161,3 +161,25 @@ pin that is not in the text you chose is marked and asked about once. After the
 last step the part is made from the confirmed values alone, with no call to a
 model, and checked first: nothing is written while the checks find errors.
 See [ADR 0030](decisions/0030-step-by-step-with-confirmation.md).
+
+## How each model runs
+
+Under **Settings, Models**, each model has **Thinking and context**:
+
+- **Thinking effort** (none, minimal, low, medium, high): sent the way each kind
+  of server takes it: `reasoning_effort` for OpenAI-style servers (OpenAI's own
+  reasoning models also get `max_completion_tokens`), `think` for Ollama (a level
+  for models that take one, off for none), and an extended-thinking budget for
+  Anthropic (1,024, 2,048, 8,192 or 24,000 tokens, with the thinking counted
+  in the answer limit; a forced tool is not allowed with it, so the example in
+  the prompt carries the shape). A model that thinks can spend its whole answer
+  budget on thinking and answer nothing: turn the thinking off, lower the
+  effort, or raise the answer limit under **Extraction**.
+- **Context length**: for Ollama (`num_ctx`). Left empty, Kirpitch asks for what
+  each question needs (in steps from 4,096 to 131,072 tokens), because Ollama's
+  default is small and cuts the page text off without saying so.
+- **Temperature**: 0 by default. Not sent when an effort is set, because models
+  that think refuse it, unless you set one.
+- **Extra request fields**: a JSON object added to the request body. It wins over
+  what Kirpitch sets, so any option of a server can be used (it cannot replace
+  the model name, the messages or `stream`).

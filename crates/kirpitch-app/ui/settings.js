@@ -565,10 +565,8 @@ function modelCard(m, index) {
     field("Price per million input tokens (US dollars)", priceInput(m, "price_in", "3.0"), "For the cost estimate. Filled in when you pick a model that has a known price."),
     field("Price per million output tokens (US dollars)", priceInput(m, "price_out", "15.0"), "Leave empty when unknown.")
   );
-  if (m.provider === "ollama") {
-    advGrid.append(field("Let the model think first", selectInput([["", "Server default"], ["false", "No (faster)"], ["true", "Yes"]], m.think == null ? "" : String(m.think), (v) => (m.think = v === "" ? null : v === "true")), "Models that think can use their whole answer on it and answer nothing."));
-  }
   adv.append(advGrid);
+  body.append(modelRunGroup(m));
   body.append(adv);
 
   // Test
@@ -579,6 +577,65 @@ function modelCard(m, index) {
   body.append(test);
   card.append(body);
   return card;
+}
+
+// ---- How the model runs: thinking, context, temperature, extra fields ----------------------------
+
+const EFFORT_OPTIONS = [["", "Not sent: the server's own choice"], ["none", "Off: no thinking"], ["minimal", "Minimal"], ["low", "Low"], ["medium", "Medium"], ["high", "High"]];
+
+function effortHelp(m) {
+  if (m.provider === "ollama") return "Ollama: Off turns thinking off; Low, Medium and High are for models that take a level (gpt-oss), the others think or not. A model that thinks can use its whole answer budget on it and answer nothing: turn it off, or give it more room under Extraction.";
+  if (m.provider === "anthropic") return "Extended thinking with a budget: Minimal 1,024 tokens, Low 2,048, Medium 8,192, High 24,000. Off or not sent: no thinking.";
+  return "Sent as reasoning_effort, which OpenAI and many servers take for models that think. Off asks for none where the server allows it.";
+}
+
+// A number that may be empty; something that is not a number is marked.
+function optionalNumber(m, key, placeholder, opts = {}) {
+  const input = textInput(m[key] == null ? "" : String(m[key]), (v) => {
+    const text = v.trim().replace(",", ".");
+    const n = Number(text);
+    const bad = text !== "" && (!Number.isFinite(n) || n < 0 || (opts.integer && !Number.isInteger(n)));
+    input.classList.toggle("invalid", bad);
+    m[key] = text === "" || bad ? null : n;
+  }, { placeholder });
+  input.inputMode = "decimal";
+  return input;
+}
+
+function modelRunGroup(m) {
+  const set = [m.effort && "effort " + m.effort, m.think != null && "thinking " + (m.think ? "on" : "off"), m.context_length && "context " + m.context_length.toLocaleString(), m.temperature != null && "temperature " + m.temperature, m.extra_body && "extra fields"].filter(Boolean);
+  const group = el("details", { class: "advanced run-group" }, el("summary", { text: "Thinking and context" + (set.length ? " · " + set.join(" · ") : "") }));
+  group.open = true;
+  const grid = el("div", { class: "grid2" });
+  grid.append(field("Thinking effort", selectInput(EFFORT_OPTIONS, m.effort || "", (v) => (m.effort = v)), effortHelp(m)));
+  if (m.provider === "ollama") {
+    grid.append(field("Let the model think first", selectInput([["", "Server default"], ["false", "No (faster)"], ["true", "Yes"]], m.think == null ? "" : String(m.think), (v) => (m.think = v === "" ? null : v === "true")), "The plain on/off switch of Ollama. A thinking effort above, when set, wins over it."));
+    grid.append(field("Context length (tokens)", optionalNumber(m, "context_length", "Automatic", { integer: true }), "How much text the model can take at once (num_ctx). Left empty, Kirpitch asks for what each question needs, because Ollama's own default is small and silently cuts page text off."));
+  } else {
+    grid.append(field("Context length (tokens)", optionalNumber(m, "context_length", "Not used", { integer: true }), "Only Ollama takes this in a request. For LM Studio and similar servers set the context length when the model is loaded."));
+  }
+  grid.append(field("Temperature", optionalNumber(m, "temperature", m.effort ? "Not sent" : "0"), "0 gives the most repeatable answers (the default). Models that think usually refuse a temperature, so it is not sent when an effort is set."));
+  const extra = el("textarea", { rows: "4", spellcheck: "false", class: "extra-json", placeholder: '{"top_p": 0.9}' });
+  extra.value = m.extra_body || "";
+  const extraNote = el("span", { class: "help" });
+  extraNote.textContent = "Any other field of the request, as a JSON object. It is added to the request and wins over what Kirpitch sets (it cannot replace the model name, the messages or stream).";
+  extra.addEventListener("input", () => {
+    m.extra_body = extra.value.trim();
+    let bad = false;
+    if (m.extra_body) {
+      try {
+        const v = JSON.parse(m.extra_body);
+        bad = !v || typeof v !== "object" || Array.isArray(v);
+      } catch (e) {
+        bad = true;
+      }
+    }
+    extra.classList.toggle("invalid", bad);
+    updateDirty();
+  });
+  grid.append(el("label", { class: "f wide-field" }, el("span", { class: "lab", text: "Extra request fields (JSON)" }), extra, extraNote));
+  group.append(grid);
+  return group;
 }
 
 function providerLabel(m) {
@@ -611,7 +668,7 @@ function addPreset(p) {
   let name = p.name;
   let n = 2;
   while (draft.models.some((m) => m.name === name)) name = p.name + "-" + n++;
-  const m = { name, old_name: null, new: true, newKey: "", provider: p.provider, base_url: p.base_url, effective_url: "", model: p.model, api_key_env: "", keychain: p.keychain, has_key: false, env_set: false, api_key_header: "", think: null, price_in: null, price_out: null, local: p.provider === "ollama" ? !p.base_url : p.base_url.includes("localhost") };
+  const m = { name, old_name: null, new: true, newKey: "", provider: p.provider, base_url: p.base_url, effective_url: "", model: p.model, api_key_env: "", keychain: p.keychain, has_key: false, env_set: false, api_key_header: "", think: null, effort: "", context_length: null, temperature: null, extra_body: "", price_in: null, price_out: null, local: p.provider === "ollama" ? !p.base_url : p.base_url.includes("localhost") };
   draft.models.push(m);
   expanded.add(m);
   triedAuto.add(m);
@@ -918,6 +975,10 @@ function toInput() {
       keychain: !!m.keychain,
       api_key_header: m.api_key_header,
       think: m.think,
+      effort: m.effort || "",
+      context_length: m.context_length,
+      temperature: m.temperature,
+      extra_body: m.extra_body || "",
       price_in: m.price_in,
       price_out: m.price_out,
     })),

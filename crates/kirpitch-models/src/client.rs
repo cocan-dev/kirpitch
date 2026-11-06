@@ -238,7 +238,10 @@ pub fn build_request(model: &ModelConfig, key: Option<&str>, chat: &ChatRequest)
                 ));
             }
             headers.push(("anthropic-version".into(), "2023-06-01".into()));
-            (format!("{base}/v1/messages"), anthropic_body(name, chat))
+            (
+                format!("{base}/v1/messages"),
+                anthropic_body(name, chat, model),
+            )
         }
         Provider::Openai | Provider::OpenaiCompatible => {
             if let Some(k) = key {
@@ -252,10 +255,10 @@ pub fn build_request(model: &ModelConfig, key: Option<&str>, chat: &ChatRequest)
             } else {
                 "/v1/chat/completions"
             };
-            let mut body = openai_body(name, chat);
+            let mut body = openai_body(name, chat, model);
             // Ollama's OpenAI-compatible address understands this way of
             // asking a thinking model not to think.
-            if chat.no_think && base.contains("ollama") {
+            if chat.no_think && base.contains("ollama") && model.effort.is_none() {
                 body["reasoning_effort"] = json!("none");
             }
             (format!("{base}{path}"), body)
@@ -264,12 +267,16 @@ pub fn build_request(model: &ModelConfig, key: Option<&str>, chat: &ChatRequest)
             if let Some(k) = key {
                 headers.push(("Authorization".into(), format!("Bearer {k}")));
             }
-            (
-                format!("{base}/api/chat"),
-                ollama_body(name, chat, model.think),
-            )
+            (format!("{base}/api/chat"), ollama_body(name, chat, model))
         }
     };
+    let mut body = body;
+    // Fields of the person's own win over everything above.
+    if let Ok(extra) = model.extra_fields() {
+        for (key, value) in extra {
+            body[key] = value;
+        }
+    }
     Request {
         url,
         headers,
@@ -277,24 +284,62 @@ pub fn build_request(model: &ModelConfig, key: Option<&str>, chat: &ChatRequest)
     }
 }
 
+/// The context window to ask Ollama for: what the question and its answer need,
+/// in steps so the model is not reloaded for every small change. Ollama's own
+/// default is small and cuts the page text off without saying so.
+pub fn auto_context(chat: &ChatRequest) -> u32 {
+    let need = (chat.system.chars().count() + chat.user.chars().count()) / 3
+        + chat.max_tokens as usize
+        + 512;
+    [4096usize, 8192, 16384, 32768, 65536, 131_072]
+        .into_iter()
+        .find(|c| *c >= need)
+        .unwrap_or(131_072) as u32
+}
+
+/// The thinking budget of Anthropic for an effort level.
+fn thinking_budget(effort: &str) -> Option<u32> {
+    match effort {
+        "minimal" => Some(1024),
+        "low" => Some(2048),
+        "medium" => Some(8192),
+        "high" => Some(24_000),
+        _ => None,
+    }
+}
+
 fn data_url(png: &[u8]) -> String {
     format!("data:image/png;base64,{}", base64(png))
 }
 
-fn openai_body(model: &str, chat: &ChatRequest) -> Value {
+fn openai_body(model: &str, chat: &ChatRequest, cfg: &ModelConfig) -> Value {
     let mut content = vec![json!({"type": "text", "text": chat.user})];
     for image in &chat.images {
         content.push(json!({"type": "image_url", "image_url": {"url": data_url(image)}}));
     }
     let mut body = json!({
         "model": model,
-        "temperature": 0,
         "max_tokens": chat.max_tokens,
         "messages": [
             {"role": "system", "content": chat.system},
             {"role": "user", "content": content},
         ],
     });
+    // Reasoning models refuse a temperature of their own: it is only sent when
+    // there is no effort, or when the person set one.
+    match (cfg.temperature, &cfg.effort) {
+        (Some(t), _) => body["temperature"] = json!(t),
+        (None, None) => body["temperature"] = json!(0),
+        (None, Some(_)) => {}
+    }
+    if let Some(effort) = &cfg.effort {
+        body["reasoning_effort"] = json!(effort);
+        if cfg.provider == Provider::Openai {
+            // OpenAI's reasoning models count the thinking in this field.
+            body["max_completion_tokens"] = body["max_tokens"].take();
+            body.as_object_mut().map(|o| o.remove("max_tokens"));
+        }
+    }
     if let Some(schema) = &chat.schema {
         body["response_format"] = json!({
             "type": "json_schema",
@@ -304,7 +349,7 @@ fn openai_body(model: &str, chat: &ChatRequest) -> Value {
     body
 }
 
-fn anthropic_body(model: &str, chat: &ChatRequest) -> Value {
+fn anthropic_body(model: &str, chat: &ChatRequest, cfg: &ModelConfig) -> Value {
     let mut content = Vec::new();
     for image in &chat.images {
         content.push(json!({
@@ -315,23 +360,35 @@ fn anthropic_body(model: &str, chat: &ChatRequest) -> Value {
     content.push(json!({"type": "text", "text": chat.user}));
     let mut body = json!({
         "model": model,
-        "temperature": 0,
         "max_tokens": chat.max_tokens,
         "system": chat.system,
         "messages": [{"role": "user", "content": content}],
     });
-    if let Some(schema) = &chat.schema {
-        body["tools"] = json!([{
-            "name": "result",
-            "description": "Report the result.",
-            "input_schema": schema,
-        }]);
-        body["tool_choice"] = json!({"type": "tool", "name": "result"});
+    let budget = cfg.effort.as_deref().and_then(thinking_budget);
+    if let Some(budget) = budget {
+        // Extended thinking: the thinking counts in max_tokens, a forced tool is
+        // not allowed with it (the example in the prompt carries the shape), and
+        // the temperature is the server's own.
+        body["thinking"] = json!({"type": "enabled", "budget_tokens": budget});
+        body["max_tokens"] = json!(chat.max_tokens + budget);
+        if let Some(t) = cfg.temperature {
+            body["temperature"] = json!(t);
+        }
+    } else {
+        body["temperature"] = json!(cfg.temperature.unwrap_or(0.0));
+        if let Some(schema) = &chat.schema {
+            body["tools"] = json!([{
+                "name": "result",
+                "description": "Report the result.",
+                "input_schema": schema,
+            }]);
+            body["tool_choice"] = json!({"type": "tool", "name": "result"});
+        }
     }
     body
 }
 
-fn ollama_body(model: &str, chat: &ChatRequest, think: Option<bool>) -> Value {
+fn ollama_body(model: &str, chat: &ChatRequest, cfg: &ModelConfig) -> Value {
     let images: Vec<String> = chat.images.iter().map(|i| base64(i)).collect();
     let mut user = json!({"role": "user", "content": chat.user});
     if !images.is_empty() {
@@ -340,14 +397,27 @@ fn ollama_body(model: &str, chat: &ChatRequest, think: Option<bool>) -> Value {
     let mut body = json!({
         "model": model,
         "stream": false,
-        "options": {"temperature": 0, "num_predict": chat.max_tokens},
+        "options": {
+            "temperature": cfg.temperature.unwrap_or(0.0),
+            "num_predict": chat.max_tokens,
+            "num_ctx": cfg.context_length.unwrap_or_else(|| auto_context(chat)),
+        },
         "messages": [{"role": "system", "content": chat.system}, user],
     });
     if let Some(schema) = &chat.schema {
         body["format"] = schema.clone();
     }
-    if let Some(think) = think {
-        body["think"] = json!(think);
+    // Thinking: the effort says how much (a level for models that take one),
+    // else the on/off switch.
+    match cfg.effort.as_deref() {
+        Some("none") => body["think"] = json!(false),
+        Some("minimal") => body["think"] = json!("low"),
+        Some(level) => body["think"] = json!(level),
+        None => {
+            if let Some(think) = cfg.think {
+                body["think"] = json!(think);
+            }
+        }
     }
     if chat.no_think {
         body["think"] = json!(false);
@@ -460,6 +530,10 @@ mod tests {
 
     fn model(provider: Provider, base_url: Option<&str>) -> ModelConfig {
         ModelConfig {
+            effort: None,
+            context_length: None,
+            temperature: None,
+            extra_body: None,
             provider,
             model: "claude-sonnet".into(),
             base_url: base_url.map(str::to_string),

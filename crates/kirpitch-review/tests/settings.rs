@@ -333,3 +333,44 @@ fn extraction_options_are_saved_shown_and_checked() {
             .contains("attempts")
     );
 }
+
+#[test]
+fn how_a_model_runs_is_saved_shown_and_checked() {
+    let tmp = TempDir::new("model-options");
+    let path = tmp.path().join("kirpitch.toml");
+    let keys = MemoryKeyStore::default();
+    let mut m = model("cloud", "ollama");
+    m.effort = "high".into();
+    m.context_length = Some(32768);
+    m.temperature = Some(0.2);
+    m.extra_body = "{\"top_k\": 40}".into();
+    let view = save_settings(&path, &input(vec![m]), &keys).unwrap();
+    let v = &view.models[0];
+    assert_eq!(v.effort, "high");
+    assert_eq!(v.context_length, Some(32768));
+    assert_eq!(v.temperature, Some(0.2));
+    assert_eq!(v.extra_body, "{\"top_k\": 40}");
+    let file = fs::read_to_string(&path).unwrap();
+    assert!(
+        file.contains("effort = \"high\"") && file.contains("context_length = 32768"),
+        "{file}"
+    );
+
+    // Mistakes are named and nothing is written over the good file.
+    let mut bad = model("cloud", "ollama");
+    bad.extra_body = "{\"model\": \"x\"}".into();
+    let e = save_settings(&path, &input(vec![bad]), &keys).unwrap_err();
+    assert!(e.contains("cannot set"), "{e}");
+    let mut bad = model("cloud", "ollama");
+    bad.effort = "extreme".into();
+    assert!(
+        save_settings(&path, &input(vec![bad]), &keys)
+            .unwrap_err()
+            .contains("effort")
+    );
+    assert!(
+        fs::read_to_string(&path)
+            .unwrap()
+            .contains("effort = \"high\"")
+    );
+}
