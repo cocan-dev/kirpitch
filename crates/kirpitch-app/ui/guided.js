@@ -300,7 +300,8 @@ async function gdShowText(region) {
   const wrap = $("gd-wrap");
   const draft = el("div", { class: "gd-box draft" });
   draft.hidden = true;
-  wrap.append(draft);
+  // Boxes are placed inside the page itself, not the scrolling frame around it.
+  $("gd-inner").append(draft);
   const frac = (ev) => {
     const r = $("gd-canvas").getBoundingClientRect();
     return [Math.min(Math.max((ev.clientX - r.left) / r.width, 0), 1), Math.min(Math.max((ev.clientY - r.top) / r.height, 0), 1)];
