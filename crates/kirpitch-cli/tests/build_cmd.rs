@@ -134,17 +134,25 @@ fn without_a_configuration_the_manual_flow_is_suggested() {
     let pdf = tmp.path().join("d.pdf");
     fs::write(&pdf, datasheet_pdf()).unwrap();
     let spec = tmp.path().join("spec.json");
-    // No --config, and the test folder has no kirpitch.toml.
-    let (code, _, err) = run(
-        &[
+    // No --config, no kirpitch.toml in the folder, and an empty settings folder
+    // (a person who has used the app has a kirpitch.toml of their own there).
+    // The program runs as its own process so the folder can be set.
+    let empty = tmp.path().join("settings");
+    fs::create_dir_all(&empty).unwrap();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_kirpitch"))
+        .args([
             "build",
             &pdf.to_string_lossy(),
             "-o",
             &spec.to_string_lossy(),
-        ],
-        mock(&[]),
-    );
-    assert_eq!(code, 1);
+        ])
+        .current_dir(tmp.path())
+        .env("KIRPITCH_CONFIG_DIR", &empty)
+        .output()
+        .unwrap();
+    let code = output.status.code().unwrap_or(-1);
+    let err = String::from_utf8_lossy(&output.stderr).replace("\r\n", "\n");
+    assert_eq!(code, 1, "{err}");
     assert!(err.contains("no model is configured"), "{err}");
     assert!(err.contains("kirpitch template"), "{err}");
     assert!(!spec.exists());

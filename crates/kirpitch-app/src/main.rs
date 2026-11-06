@@ -9,8 +9,8 @@ use kirpitch_models::{CurlTransport, FoundModel, OsKeyStore, active_config_path}
 use kirpitch_review::{
     DatasheetInput, DatasheetOutcome, Example, FindInput, ImportOutcome, ModelTest, NewPartInput,
     PageImage, PinInput, RegionTable, SettingsInput, SettingsView, SpecView, approve_stage,
-    build_from_datasheet, export_files, import_pins, list_examples, new_part, now_rfc3339,
-    open_example, open_spec, read_region, render_datasheet_page, save_copy, set_pins,
+    build_from_datasheet_with_progress, export_files, import_pins, list_examples, new_part,
+    now_rfc3339, open_example, open_spec, read_region, render_datasheet_page, save_copy, set_pins,
 };
 
 #[tauri::command]
@@ -76,10 +76,18 @@ fn copy_part(path: String, dest: String) -> Result<SpecView, String> {
 /// Reading a datasheet with a model takes a while, so it runs off the thread
 /// of the window.
 #[tauri::command]
-async fn build_part(input: DatasheetInput) -> Result<DatasheetOutcome, String> {
-    tauri::async_runtime::spawn_blocking(move || build_from_datasheet(&input))
-        .await
-        .map_err(|e| e.to_string())?
+async fn build_part(
+    app: tauri::AppHandle,
+    input: DatasheetInput,
+) -> Result<DatasheetOutcome, String> {
+    use tauri::Emitter;
+    tauri::async_runtime::spawn_blocking(move || {
+        build_from_datasheet_with_progress(&input, &|progress| {
+            let _ = app.emit("build-progress", progress);
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// What kind of file a dialog asks for.

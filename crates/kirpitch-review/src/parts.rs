@@ -15,7 +15,10 @@ use kirpitch_core::templates::{
     DualRowGullWing, DualRowThroughHole, QuadFlatNoLead, Template, dual_row_gull_wing,
     dual_row_through_hole, quad_flat_no_lead, sot23,
 };
-use kirpitch_models::{BuildOptions, Cache, Config, CurlTransport, PageLines, TextLine, Transport};
+use kirpitch_models::{
+    BuildOptions, Cache, Config, CurlTransport, OsKeyStore, PageLines, Progress, StageState,
+    TextLine, Transport,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{SpecView, load_spec, open_spec, pdf_reader};
@@ -412,12 +415,37 @@ pub fn build_from_datasheet(input: &DatasheetInput) -> Result<DatasheetOutcome, 
     build_with_transport(input, Arc::new(CurlTransport))
 }
 
+/// Like [`build_from_datasheet`], and tells `on` how the build goes: reading
+/// the PDF, each stage of the models, and saving the part.
+pub fn build_from_datasheet_with_progress(
+    input: &DatasheetInput,
+    on: &dyn Fn(&Progress),
+) -> Result<DatasheetOutcome, String> {
+    build_with_transport_progress(input, Arc::new(CurlTransport), on)
+}
+
 /// Like [`build_from_datasheet`] with a given transport (for tests).
 pub fn build_with_transport(
     input: &DatasheetInput,
     transport: Arc<dyn Transport>,
 ) -> Result<DatasheetOutcome, String> {
+    build_with_transport_progress(input, transport, &|_| {})
+}
+
+/// Like [`build_with_transport`], with a report of the progress.
+pub fn build_with_transport_progress(
+    input: &DatasheetInput,
+    transport: Arc<dyn Transport>,
+    on: &dyn Fn(&Progress),
+) -> Result<DatasheetOutcome, String> {
     use sha2::{Digest, Sha256};
+    let say = |stage: &'static str, state: StageState, detail: String| {
+        on(&Progress {
+            stage,
+            state,
+            detail,
+        });
+    };
     if input.out.trim().is_empty() {
         return Err("choose where to save the part".into());
     }
@@ -430,9 +458,15 @@ pub fn build_with_transport(
         Some(Config::from_file(Path::new(input.config.trim())).map_err(|e| e.to_string())?)
     }
     .ok_or("no language model is configured: put a kirpitch.toml in the folder where the app was started, or choose one (see kirpitch.example.toml). Without a model, use New part and import the pins")?;
+    say(
+        "read",
+        StageState::Started,
+        "reading the text of the pages".into(),
+    );
     let bytes = fs::read(&input.pdf).map_err(|e| format!("{}: {e}", input.pdf))?;
-    let pages = read_pages(&bytes)?;
+    let pages = read_pages(&bytes).inspect_err(|e| say("read", StageState::Failed, e.clone()))?;
     if pages.iter().all(|p| p.lines.is_empty()) {
+        say("read", StageState::Failed, "no text in the PDF".into());
         return Err("the PDF has no text on any page (a scan); this version cannot read scans. Use New part instead".into());
     }
     let options = BuildOptions {
@@ -446,12 +480,21 @@ pub fn build_with_transport(
         ),
         ..Default::default()
     };
+    say("read", StageState::Done, format!("{} pages", pages.len()));
     let cache = Cache::in_dir(&if input.cache_dir.trim().is_empty() {
         std::env::temp_dir().join("kirpitch-cache")
     } else {
         PathBuf::from(input.cache_dir.trim())
     });
-    let report = kirpitch_models::build(&config, transport, &cache, &pages, &options);
+    let report = kirpitch_models::build_with_progress(
+        &config,
+        transport,
+        &cache,
+        &pages,
+        &options,
+        &OsKeyStore,
+        on,
+    );
     let models = report
         .models
         .iter()
@@ -480,6 +523,7 @@ pub fn build_with_transport(
         usage,
         pins_csv: None,
     };
+    say("save", StageState::Started, "saving the part".into());
     if let Some(spec) = &report.spec {
         if let Some(parent) = Path::new(&input.out)
             .parent()
@@ -504,5 +548,18 @@ pub fn build_with_transport(
         fs::write(&path, csv).map_err(|e| format!("{}: {e}", path.display()))?;
         outcome.pins_csv = Some(path.display().to_string());
     }
+    say(
+        "save",
+        if outcome.view.is_some() {
+            StageState::Done
+        } else {
+            StageState::Skipped
+        },
+        if outcome.view.is_some() {
+            "part saved".into()
+        } else {
+            "nothing to save yet".into()
+        },
+    );
     Ok(outcome)
 }

@@ -346,7 +346,10 @@ $("new-form").addEventListener("submit", async (ev) => {
 function openDatasheetDialog(pdf) {
   $("ds-error").hidden = true;
   $("ds-result").hidden = true;
-  $("ds-busy").hidden = true;
+  if (!buildRunning()) {
+    $("ds-progress").hidden = true;
+    $("ds-dialog").classList.remove("running");
+  }
   if (pdf) $("ds-pdf").value = pdf;
   $("ds-dialog").showModal();
 }
@@ -382,8 +385,9 @@ $("ds-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   $("ds-error").hidden = true;
   $("ds-result").hidden = true;
-  $("ds-busy").hidden = false;
   $("ds-run").disabled = true;
+  $("ds-cancel").disabled = true;
+  buildBegin($("ds-second").checked);
   try {
     const input = {
       pdf: $("ds-pdf").value.trim(),
@@ -393,6 +397,7 @@ $("ds-form").addEventListener("submit", async (ev) => {
       config: $("ds-config").value.trim(),
     };
     const outcome = await invoke("build_part", { input });
+    buildEnd(!!outcome.view, outcome.failures.length);
     const box = $("ds-result");
     box.replaceChildren(el("h3", { text: outcome.view ? "Done" : "Not finished" }));
     if (outcome.models.length) box.append(el("p", { class: "muted small", text: "Models" }), listOf(outcome.models));
@@ -416,6 +421,7 @@ $("ds-form").addEventListener("submit", async (ev) => {
     }
   } catch (e) {
     const message = String(e);
+    buildEnd(false, 1, message);
     $("ds-error").textContent = message;
     $("ds-error").hidden = false;
     if (/no language model is configured/.test(message) && typeof showSettings === "function") {
@@ -427,8 +433,8 @@ $("ds-form").addEventListener("submit", async (ev) => {
       $("ds-error").append(" ", open);
     }
   } finally {
-    $("ds-busy").hidden = true;
     $("ds-run").disabled = false;
+    $("ds-cancel").disabled = false;
   }
 });
 

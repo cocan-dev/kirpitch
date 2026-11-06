@@ -7,12 +7,13 @@ use std::fs;
 use std::sync::Arc;
 
 use kirpitch_kicad::testing::TempDir;
-use kirpitch_models::MockTransport;
+use kirpitch_models::{MockTransport, StageState};
 use kirpitch_review::{
-    DatasheetInput, NewPartInput, approve_stage, build_with_transport, list_examples, new_part,
-    now_rfc3339, open_example, save_copy,
+    DatasheetInput, NewPartInput, approve_stage, build_with_transport,
+    build_with_transport_progress, list_examples, new_part, now_rfc3339, open_example, save_copy,
 };
 use serde_json::{Value, json};
+use std::sync::Mutex;
 
 fn input(dir: &std::path::Path, kind: &str) -> NewPartInput {
     let mut v = json!({
@@ -221,7 +222,8 @@ fn a_datasheet_is_built_into_a_part_with_recorded_answers() {
         "b": {"min": 0.31, "max": 0.51}, "page": 3, "confidence": 0.9
     })));
     let out = tmp.path().join("lm358.json");
-    let outcome = build_with_transport(
+    let events = Mutex::new(Vec::new());
+    let outcome = build_with_transport_progress(
         &DatasheetInput {
             pdf: pdf_path.to_string_lossy().into_owned(),
             out: out.to_string_lossy().into_owned(),
@@ -231,8 +233,28 @@ fn a_datasheet_is_built_into_a_part_with_recorded_answers() {
             cache_dir: tmp.path().join("cache").to_string_lossy().into_owned(),
         },
         transport,
+        &|p| events.lock().unwrap().push((p.stage, p.state)),
     )
     .unwrap();
+    // Every stage reports when it starts and when it ends, in order.
+    use StageState::{Done, Started};
+    assert_eq!(
+        *events.lock().unwrap(),
+        [
+            ("read", Started),
+            ("read", Done),
+            ("metadata", Started),
+            ("metadata", Done),
+            ("pins", Started),
+            ("pins", Done),
+            ("package", Started),
+            ("package", Done),
+            ("assemble", Started),
+            ("assemble", Done),
+            ("save", Started),
+            ("save", Done),
+        ]
+    );
     assert!(outcome.failures.is_empty(), "{:?}", outcome.failures);
     let view = outcome.view.unwrap();
     assert_eq!(view.mpn, "LM358DR");

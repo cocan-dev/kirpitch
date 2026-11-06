@@ -72,7 +72,7 @@
         <p id="part-line" class="muted"></p>
       </div>
       <span id="package-name" class="pill"></span>
-      <div id="progress" class="progress" role="img" aria-label="Review progress"></div>
+      <div id="progress" class="build-progress" role="img" aria-label="Review progress"></div>
     </section>
 
     <div id="shell" class="shell" data-step="pinout">
@@ -276,7 +276,15 @@
       </label>
       <label class="check"><input id="ds-second" type="checkbox"> Read the pin table twice and flag differences</label>
       <p id="ds-error" class="message error" hidden></p>
-      <p id="ds-busy" class="message" hidden>Reading the datasheet… this can take a minute or more.</p>
+      <section id="ds-progress" class="build-progress" hidden aria-live="polite">
+        <header class="pg-head">
+          <strong id="pg-title">Reading the datasheet</strong>
+          <span id="pg-time" class="pg-time"></span>
+        </header>
+        <div class="pg-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="pg-fill"></div></div>
+        <p id="pg-eta" class="muted small"></p>
+        <ol id="pg-steps" class="pg-steps"></ol>
+      </section>
       <div id="ds-result" class="result" hidden></div>
       <div class="dialog-actions">
         <button type="button" id="ds-cancel">Close</button>
@@ -289,6 +297,7 @@
   <script src="shell.js"></script>
   <script src="start.js"></script>
   <script src="fun.js"></script>
+  <script src="progress.js"></script>
   <script src="settings.js"></script>
 </body>
 </html>
