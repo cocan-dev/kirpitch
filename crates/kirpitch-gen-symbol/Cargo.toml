@@ -1,0 +1,16 @@
+[package]
+name = "kirpitch-gen-symbol"
+description = "Generates KiCad symbols from a PartSpec"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+kirpitch-core = { path = "../kirpitch-core" }
+kirpitch-kicad = { path = "../kirpitch-kicad" }
+thiserror = "2.0.21"
