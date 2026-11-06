@@ -12,6 +12,7 @@
 pub mod build;
 pub mod client;
 pub mod config;
+pub mod discover;
 pub mod keys;
 pub mod png;
 pub mod probe;
@@ -26,6 +27,7 @@ pub use config::{
     CONFIG_FILE, Config, ConfigError, Folders, ModelConfig, Provider, Task, active_config_path,
     is_local_url, user_config_dir,
 };
+pub use discover::{FoundModel, ListRequest, list_models};
 pub use keys::{KeyError, KeyStore, MemoryKeyStore, OsKeyStore};
 pub use probe::{ProbeResult, probe};
 pub use tasks::{Cache, PageLines, Stats, TaskError, TextLine};
