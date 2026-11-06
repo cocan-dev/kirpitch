@@ -15,5 +15,5 @@
     "land_pattern": 27
   },
   "notes": "The pinout is read from the SOIC column of the package diagram on page 1; the pin table on page 7 repeats it. Only the SN (SOIC) package is described here.",
-  "partspec_review": "Drafted by an AI assistant from the pages listed above; needs review by a maintainer before it is relied on."
+  "partspec_review": "Second pass by an AI assistant on 2026-11-06 against pages 1 (SOIC pinout), 7 (pin function table), 26 (SN outline) and 27 (recommended land pattern): pins, types, dimensions and pad data agree. Not yet reviewed by a human. Doubts: the pin function table text of page 7 is garbled when extracted, so the SOIC column was read from the pinout on page 1 and the rising numbers per row; the MPN 24LC256 stands for the family, the orderable SOIC part is 24LC256-I/SN."
 }
