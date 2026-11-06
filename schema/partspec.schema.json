@@ -70,6 +70,13 @@
             "null"
           ]
         },
+        "digest": {
+          "description": "Fingerprint of the stage content that was approved. When the content\nchanges, the approval is stale and the stage is open again.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "note": {
           "description": "Free-form note.",
           "type": [

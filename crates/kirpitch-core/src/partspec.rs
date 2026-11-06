@@ -317,6 +317,10 @@ pub struct Approval {
     /// Free-form note.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// Fingerprint of the stage content that was approved. When the content
+    /// changes, the approval is stale and the stage is open again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
 }
 
 /// A user note that overrides a warning.
