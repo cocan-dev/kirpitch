@@ -41,6 +41,8 @@ struct Cli {
     command: Command,
 }
 
+// The variants differ in size only because of the command line arguments.
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand)]
 enum Command {
     /// Print the JSON schema of the PartSpec
