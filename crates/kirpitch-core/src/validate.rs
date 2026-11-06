@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::electrical::ElectricalType;
 use crate::fab::FabProfile;
+use crate::ipc;
 use crate::names;
 use crate::partspec::{Origin, Pad, PadRole, PartSpec, SCHEMA_VERSION};
 use crate::source::Source;
@@ -57,6 +58,8 @@ pub enum Check {
     ExposedPad,
     /// An override refers to a check that does not exist.
     OverrideUnknown,
+    /// The datasheet land pattern and the IPC-7351 result agree.
+    TwoSources,
 }
 
 impl Check {
@@ -78,6 +81,7 @@ impl Check {
             Check::PitchFit => "pitch_fit",
             Check::ExposedPad => "exposed_pad",
             Check::OverrideUnknown => "override_unknown",
+            Check::TwoSources => "two_sources",
         }
     }
 }
@@ -121,6 +125,7 @@ pub fn validate(spec: &PartSpec, fab: &FabProfile) -> Vec<Finding> {
     v.pitch_fit(spec);
     v.exposed_pad(spec);
     v.overrides(spec);
+    v.two_sources(spec);
     let mut findings = v.out;
     for f in &mut findings {
         if f.level == Level::Warning {
@@ -420,7 +425,7 @@ fn pad_gap(a: &Pad, b: &Pad) -> f64 {
 }
 
 /// Every check id that can appear in an override.
-const ALL_CHECKS: [Check; 15] = [
+const ALL_CHECKS: [Check; 16] = [
     Check::SchemaVersion,
     Check::PinCount,
     Check::PinNumber,
@@ -436,6 +441,7 @@ const ALL_CHECKS: [Check; 15] = [
     Check::PitchFit,
     Check::ExposedPad,
     Check::OverrideUnknown,
+    Check::TwoSources,
 ];
 
 /// Pads with a paste area above this size count as large exposed pads.
@@ -553,6 +559,96 @@ impl Validator {
                     format!("there is no check called `{}`", o.check),
                 );
             }
+        }
+    }
+}
+
+/// How far the pads of the datasheet may be from the calculated ones before a
+/// warning is given: outer pad edge, inner pad edge and pad width, in
+/// millimetres. The inner edge is loose because manufacturers shorten the pads
+/// towards the body; the aim is to catch gross errors such as wrong units.
+const TWO_SOURCES_OUTER: f64 = 0.3;
+const TWO_SOURCES_INNER: f64 = 0.5;
+const TWO_SOURCES_WIDTH: f64 = 0.2;
+
+fn dimension_range(spec: &PartSpec, key: &str) -> Option<ipc::Range> {
+    let t = spec.package.dimensions.get(key)?.value;
+    Some(ipc::Range::new(
+        t.min.map_or(t.nom.get(), |m| m.get()),
+        t.max.map_or(t.nom.get(), |m| m.get()),
+    ))
+}
+
+impl Validator {
+    /// When the datasheet gives both package dimensions (`E`, `L`, `b`) and a
+    /// land pattern, the IPC-7351 result and the recommended pattern should
+    /// agree (two-row gull-wing packages only).
+    fn two_sources(&mut self, spec: &PartSpec) {
+        let (Some(e), Some(l), Some(b)) = (
+            dimension_range(spec, "E"),
+            dimension_range(spec, "L"),
+            dimension_range(spec, "b"),
+        ) else {
+            return;
+        };
+        let pads: Vec<&Pad> = spec
+            .land_pattern
+            .pads
+            .iter()
+            .filter(|p| p.role == PadRole::Signal)
+            .collect();
+        let quarter = spec.package.body.width.get() / 4.0;
+        // Only two rows, one on each side (left and right of the body).
+        if pads.is_empty() || pads.iter().any(|p| p.x.get().abs() <= quarter) {
+            return;
+        }
+        let input = ipc::GullWingInput {
+            lead_span: e,
+            lead_length: l,
+            lead_width: b,
+            pitch: spec.package.pitch.get(),
+        };
+        let Ok(calc) = ipc::gull_wing(&input, ipc::Density::Nominal, &ipc::Tolerances::default())
+        else {
+            return;
+        };
+        let outer = pads
+            .iter()
+            .map(|p| p.x.get().abs() + p.size_x.get() / 2.0)
+            .fold(0.0, f64::max);
+        let inner = pads
+            .iter()
+            .map(|p| p.x.get().abs() - p.size_x.get() / 2.0)
+            .fold(f64::MAX, f64::min);
+        let width = pads[0].size_y.get();
+        let (calc_outer, calc_inner) = (calc.z_max / 2.0, calc.g_min / 2.0);
+        let mut differences = Vec::new();
+        if (outer - calc_outer).abs() > TWO_SOURCES_OUTER {
+            differences.push(format!(
+                "outer pad edge {outer:.3} mm, IPC-7351 gives {calc_outer:.3} mm"
+            ));
+        }
+        if (inner - calc_inner).abs() > TWO_SOURCES_INNER {
+            differences.push(format!(
+                "inner pad edge {inner:.3} mm, IPC-7351 gives {calc_inner:.3} mm"
+            ));
+        }
+        if (width - calc.x_max).abs() > TWO_SOURCES_WIDTH {
+            differences.push(format!(
+                "pad width {width:.3} mm, IPC-7351 gives {:.3} mm",
+                calc.x_max
+            ));
+        }
+        if !differences.is_empty() {
+            self.add(
+                Check::TwoSources,
+                Level::Warning,
+                "land_pattern.pads",
+                format!(
+                    "the land pattern and the package dimensions disagree: {}",
+                    differences.join("; ")
+                ),
+            );
         }
     }
 }

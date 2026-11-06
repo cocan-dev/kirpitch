@@ -395,3 +395,66 @@ fn an_override_for_a_missing_check_is_reported() {
         )]
     );
 }
+
+fn with_jedec_soic_dimensions(spec: &mut PartSpec) {
+    use kirpitch_core::{Sourced, Tolerance};
+    let dim = |min: f64, nom: f64, max: f64| {
+        Sourced::unsourced(Tolerance {
+            min: Some(mm(min)),
+            nom: mm(nom),
+            max: Some(mm(max)),
+        })
+    };
+    spec.package
+        .dimensions
+        .insert("E".into(), dim(5.8, 6.0, 6.2));
+    spec.package
+        .dimensions
+        .insert("L".into(), dim(0.4, 0.835, 1.27));
+    spec.package
+        .dimensions
+        .insert("b".into(), dim(0.31, 0.41, 0.51));
+}
+
+#[test]
+fn land_pattern_and_package_dimensions_are_compared() {
+    // The fixture uses KiCad's own pads, which are what IPC-7351 gives here.
+    let mut spec = load();
+    with_jedec_soic_dimensions(&mut spec);
+    assert_eq!(findings(&spec), vec![]);
+
+    // Pads in the wrong place (for example inches read as millimetres).
+    for pad in &mut spec.land_pattern.pads {
+        pad.x = mm(pad.x.get() * 2.0);
+    }
+    let found = validate(&spec, &FabProfile::generic());
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].check, Check::TwoSources);
+    assert_eq!(found[0].level, Level::Warning);
+    assert!(
+        found[0].message.contains("outer pad edge"),
+        "{}",
+        found[0].message
+    );
+
+    // The warning can be accepted with a note.
+    spec.overrides.push(kirpitch_core::partspec::Override {
+        check: "two_sources".into(),
+        path: String::new(),
+        note: "wider pads on purpose".into(),
+    });
+    let found = validate(&spec, &FabProfile::generic());
+    assert_eq!(
+        found[0].overridden_by.as_deref(),
+        Some("wider pads on purpose")
+    );
+}
+
+#[test]
+fn without_the_dimensions_there_is_nothing_to_compare() {
+    let mut spec = load();
+    for pad in &mut spec.land_pattern.pads {
+        pad.x = mm(pad.x.get() * 2.0);
+    }
+    assert!(!findings(&spec).iter().any(|f| f.0 == Check::TwoSources));
+}
