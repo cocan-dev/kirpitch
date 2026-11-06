@@ -124,3 +124,85 @@ fn kicad_loads_the_template_footprints() {
         }
     }
 }
+
+fn dip(pins: u32, row: f64) -> kirpitch_core::templates::DualRowThroughHole {
+    kirpitch_core::templates::DualRowThroughHole {
+        family: "DIP".into(),
+        pin_count: pins,
+        pitch: 2.54,
+        row_spacing: row,
+        body_length: (pins / 2 - 1) as f64 * 2.54 + 2.54,
+        body_width: 6.35,
+        height_max: 5.08,
+        pad_diameter: 1.6,
+        drill: 0.8,
+    }
+}
+
+fn dip_specs() -> Vec<PartSpec> {
+    use kirpitch_core::templates::dual_row_through_hole;
+    [(8u32, 7.62), (16, 7.62), (28, 15.24)]
+        .iter()
+        .map(|&(n, row)| part(dual_row_through_hole(&dip(n, row)).unwrap(), n))
+        .collect()
+}
+
+#[test]
+fn dip_footprint_is_through_hole_with_origin_at_pin_one() {
+    let spec = &dip_specs()[0];
+    let text = generate(spec, &Options::default()).unwrap();
+    assert!(text.starts_with("(footprint \"DIP-8_W7.62mm\"\n"));
+    assert!(text.contains("(attr through_hole)"));
+    assert!(text.contains("(pad \"1\" thru_hole rect\n\t\t(at 0 0)\n\t\t(size 1.6 1.6)\n\t\t(drill 0.8)\n\t\t(layers \"*.Cu\" \"*.Mask\")\n\t\t(remove_unused_layers no)"));
+    assert!(text.contains("(pad \"2\" thru_hole oval\n\t\t(at 0 2.54)"));
+    assert!(text.contains("(pad \"5\" thru_hole oval\n\t\t(at 7.62 7.62)"));
+    // Pin 1 mark: a half circle in the silkscreen, and the chamfer on the fab layer.
+    assert!(text.contains("(fp_arc"));
+    assert!(!text.contains("F.Paste"));
+    // Texts above and below the courtyard, centred on the body.
+    assert!(text.contains("(property \"Reference\" \"REF**\"\n\t\t(at 3.81 "));
+}
+
+#[test]
+fn dip_silkscreen_keeps_its_distance_from_the_pads() {
+    let spec = &dip_specs()[0];
+    let text = generate(spec, &Options::default()).unwrap();
+    // The vertical silkscreen lines are at least 0.26 mm from the pad edges
+    // (0.8 mm radius at x = 0 and x = 7.62).
+    let tree = kirpitch_kicad::sexpr::parse(&text).unwrap();
+    for node in &tree.items {
+        let kirpitch_kicad::Node::List(l) = node else {
+            continue;
+        };
+        if l.name() != Some("fp_line") || !l.write().contains("F.SilkS") {
+            continue;
+        }
+        let w = l.write();
+        let nums: Vec<f64> = w
+            .split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-'))
+            .filter_map(|s| s.parse::<f64>().ok())
+            .collect();
+        // start x, start y, end x, end y are the first four numbers.
+        for x in [nums[0], nums[2]] {
+            assert!(x - 0.8 >= 0.26 - 1e-9 || x - 0.8 < -1.0, "x = {x}");
+            assert!(7.62 - 0.8 - x >= 0.26 - 1e-9 || x > 7.62, "x = {x}");
+        }
+    }
+}
+
+#[test]
+fn kicad_loads_the_dip_footprints() {
+    let Some(cli) = kicad_cli_or_skip() else {
+        return;
+    };
+    for spec in dip_specs() {
+        for &target in KicadTarget::ALL {
+            let options = Options {
+                target,
+                ..Default::default()
+            };
+            let text = generate(&spec, &options).unwrap();
+            assert_footprint_loads(&cli, target, "dip", &text, &file_name(&spec));
+        }
+    }
+}

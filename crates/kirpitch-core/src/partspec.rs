@@ -133,6 +133,21 @@ pub struct Body {
     pub width: Mm,
     /// Maximum height above the board.
     pub height_max: Mm,
+    /// Where the centre of the body is, relative to the footprint origin.
+    /// Surface-mount footprints have their origin at the centre (leave this
+    /// out); through-hole footprints have it at pin 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub center: Option<Point>,
+}
+
+/// A position in footprint coordinates (x right, y down), in millimetres.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Point {
+    /// Horizontal position.
+    pub x: Mm,
+    /// Vertical position.
+    pub y: Mm,
 }
 
 /// One pin of the part.
@@ -212,6 +227,12 @@ pub struct Pad {
     /// What the pad is for.
     #[serde(default)]
     pub role: PadRole,
+    /// Surface-mount (default) or through-hole.
+    #[serde(default, skip_serializing_if = "PadKind::is_smd")]
+    pub kind: PadKind,
+    /// Diameter of the hole of a through-hole pad.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drill: Option<Mm>,
     /// Where the pad is shown in the datasheet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<Source>,
@@ -233,6 +254,24 @@ pub enum PadShape {
     Oval,
     /// Circle.
     Circle,
+}
+
+/// How a pad is mounted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PadKind {
+    /// Surface-mount pad on the top layer.
+    #[default]
+    Smd,
+    /// Through-hole pad with a drill, on all copper layers.
+    ThruHole,
+}
+
+impl PadKind {
+    /// True for [`PadKind::Smd`]; used to leave the default out of files.
+    pub fn is_smd(&self) -> bool {
+        *self == PadKind::Smd
+    }
 }
 
 /// What a pad is used for.

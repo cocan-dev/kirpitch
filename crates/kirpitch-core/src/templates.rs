@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use thiserror::Error;
 
 use crate::ipc::{self, Density, IpcError, Range, Tolerances};
-use crate::partspec::{Body, LandPattern, Package, Pad, PadRole, PadShape};
+use crate::partspec::{Body, LandPattern, Package, Pad, PadKind, PadRole, PadShape, Point};
 use crate::source::Sourced;
 use crate::units::{Mm, Tolerance, format_number};
 
@@ -167,6 +167,7 @@ fn build(
         length: mm(p.body_length, "body_length")?,
         width: mm(p.body_width, "body_width")?,
         height_max: mm(p.height_max, "height_max")?,
+        center: None,
     };
     let calc = ipc::gull_wing(
         &ipc::GullWingInput {
@@ -193,6 +194,8 @@ fn build(
             corner_ratio: Some(ratio),
             paste: true,
             role: PadRole::Signal,
+            kind: PadKind::Smd,
+            drill: None,
             source: None,
         });
     }
@@ -206,6 +209,124 @@ fn build(
     dimensions.insert("b".into(), dimension(p.lead_width)?);
     dimensions.insert("e".into(), dimension(Range::exact(p.pitch))?);
 
+    Ok(Template {
+        package: Package {
+            family: p.family.clone(),
+            name,
+            pin_count: p.pin_count,
+            pitch,
+            body,
+            dimensions,
+            source: None,
+        },
+        land_pattern: LandPattern {
+            pads,
+            courtyard: None,
+            source: None,
+        },
+    })
+}
+
+/// A through-hole package with two rows of pins (DIP, PDIP, CDIP).
+#[derive(Debug, Clone, PartialEq)]
+pub struct DualRowThroughHole {
+    /// Family name used in the footprint name, for example `DIP`.
+    pub family: String,
+    /// Number of pins, even and at least 4.
+    pub pin_count: u32,
+    /// Distance between pins in a row (`e`, normally 2.54).
+    pub pitch: f64,
+    /// Distance between the two rows (`eB`, 7.62 for the 300 mil DIP).
+    pub row_spacing: f64,
+    /// Body length along the rows (`D`).
+    pub body_length: f64,
+    /// Body width across the rows (`E1`).
+    pub body_width: f64,
+    /// Largest height above the board (`A`).
+    pub height_max: f64,
+    /// Diameter of the pads.
+    pub pad_diameter: f64,
+    /// Diameter of the holes.
+    pub drill: f64,
+}
+
+/// Fills the template of a dual-row through-hole package.
+///
+/// The footprint origin is pin 1, as for all through-hole footprints in KiCad.
+/// Pin 1 has a square pad, the others oval ones. Pins run down the left side
+/// and up the right side. The footprint is named like KiCad's, for example
+/// `DIP-8_W7.62mm`.
+pub fn dual_row_through_hole(p: &DualRowThroughHole) -> Result<Template, TemplateError> {
+    if p.pin_count < 4 || !p.pin_count.is_multiple_of(2) {
+        return Err(TemplateError::PinCount(p.pin_count));
+    }
+    let pitch = mm(p.pitch, "pitch")?;
+    mm(p.row_spacing, "row_spacing")?;
+    let pad_d = mm(p.pad_diameter, "pad_diameter")?;
+    let drill = mm(p.drill, "drill")?;
+    if p.drill >= p.pad_diameter {
+        return Err(TemplateError::BadValue("drill"));
+    }
+    if p.pad_diameter >= p.row_spacing {
+        return Err(TemplateError::BadValue("pad_diameter"));
+    }
+    let per_side = (p.pin_count / 2) as usize;
+    let last_y = (per_side - 1) as f64 * p.pitch;
+    let center = Point {
+        x: mm(p.row_spacing / 2.0, "row_spacing")?,
+        y: Mm::new(last_y / 2.0).map_err(|_| TemplateError::BadValue("pitch"))?,
+    };
+    let body = Body {
+        length: mm(p.body_length, "body_length")?,
+        width: mm(p.body_width, "body_width")?,
+        height_max: mm(p.height_max, "height_max")?,
+        center: Some(center),
+    };
+    let pad = |number: usize, x: f64, y: f64| -> Result<Pad, TemplateError> {
+        Ok(Pad {
+            number: number.to_string(),
+            shape: if number == 1 {
+                PadShape::Rect
+            } else {
+                PadShape::Oval
+            },
+            x: Mm::new(x).map_err(|_| TemplateError::BadValue("pad"))?,
+            y: Mm::new(y).map_err(|_| TemplateError::BadValue("pad"))?,
+            size_x: pad_d,
+            size_y: pad_d,
+            rotation_deg: 0.0,
+            corner_ratio: None,
+            paste: false,
+            role: PadRole::Signal,
+            kind: PadKind::ThruHole,
+            drill: Some(drill),
+            source: None,
+        })
+    };
+    let mut pads = Vec::with_capacity(p.pin_count as usize);
+    for i in 0..per_side {
+        pads.push(pad(i + 1, 0.0, i as f64 * p.pitch)?);
+    }
+    for i in 0..per_side {
+        pads.push(pad(
+            per_side + i + 1,
+            p.row_spacing,
+            last_y - i as f64 * p.pitch,
+        )?);
+    }
+
+    let mut dimensions: BTreeMap<String, Sourced<Tolerance>> = BTreeMap::new();
+    dimensions.insert("A".into(), dimension(Range::exact(p.height_max))?);
+    dimensions.insert("D".into(), dimension(Range::exact(p.body_length))?);
+    dimensions.insert("E1".into(), dimension(Range::exact(p.body_width))?);
+    dimensions.insert("e".into(), dimension(Range::exact(p.pitch))?);
+    dimensions.insert("eB".into(), dimension(Range::exact(p.row_spacing))?);
+    let name = format!(
+        "{}-{}_W{}mm",
+        p.family,
+        p.pin_count,
+        format_number(p.row_spacing)
+    );
     Ok(Template {
         package: Package {
             family: p.family.clone(),

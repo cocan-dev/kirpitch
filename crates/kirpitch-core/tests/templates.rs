@@ -175,3 +175,109 @@ fn sot23_templates_make_valid_partspecs() {
         assert!(findings.is_empty(), "SOT-23-{pins}: {findings:?}");
     }
 }
+
+fn dip(pins: u32, row: f64) -> kirpitch_core::templates::DualRowThroughHole {
+    kirpitch_core::templates::DualRowThroughHole {
+        family: "DIP".into(),
+        pin_count: pins,
+        pitch: 2.54,
+        row_spacing: row,
+        body_length: 9.27,
+        body_width: 6.35,
+        height_max: 5.08,
+        pad_diameter: 1.6,
+        drill: 0.8,
+    }
+}
+
+#[test]
+fn dip8_matches_the_official_footprint() {
+    use kirpitch_core::partspec::{PadKind, PadShape};
+    use kirpitch_core::templates::dual_row_through_hole;
+    let t = dual_row_through_hole(&dip(8, 7.62)).unwrap();
+    assert_eq!(t.package.name, "DIP-8_W7.62mm");
+    // KiCad: pin 1 at the origin, pins 1 to 4 down, 5 to 8 up on the right.
+    assert_eq!(pad_at(&t, "1"), (0.0, 0.0));
+    assert_eq!(pad_at(&t, "4"), (0.0, 7.62));
+    assert_eq!(pad_at(&t, "5"), (7.62, 7.62));
+    assert_eq!(pad_at(&t, "8"), (7.62, 0.0));
+    let p1 = &t.land_pattern.pads[0];
+    assert_eq!(p1.shape, PadShape::Rect);
+    assert_eq!(p1.kind, PadKind::ThruHole);
+    assert_eq!(p1.drill.unwrap().format(), "0.8");
+    assert_eq!(t.land_pattern.pads[1].shape, PadShape::Oval);
+    let c = t.package.body.center.unwrap();
+    assert_eq!(
+        (c.x.format().as_str(), c.y.format().as_str()),
+        ("3.81", "3.81")
+    );
+}
+
+#[test]
+fn wide_dips_have_their_row_spacing_in_the_name() {
+    use kirpitch_core::templates::dual_row_through_hole;
+    let t = dual_row_through_hole(&dip(16, 15.24)).unwrap();
+    assert_eq!(t.package.name, "DIP-16_W15.24mm");
+    assert_eq!(pad_at(&t, "16"), (15.24, 0.0));
+    assert_eq!(pad_at(&t, "9"), (15.24, 17.78));
+}
+
+#[test]
+fn dip_templates_make_valid_partspecs() {
+    use kirpitch_core::templates::dual_row_through_hole;
+    for (pins, row) in [(8, 7.62), (14, 7.62), (16, 7.62), (28, 15.24)] {
+        let mut d = dip(pins, row);
+        d.body_length = (pins / 2 - 1) as f64 * 2.54 + 2.54;
+        let spec = part_from(dual_row_through_hole(&d).unwrap(), pins, "DIP");
+        let findings = validate(&spec, &FabProfile::generic());
+        assert!(findings.is_empty(), "DIP-{pins}: {findings:?}");
+    }
+}
+
+#[test]
+fn bad_dip_dimensions_are_rejected() {
+    use kirpitch_core::templates::{TemplateError, dual_row_through_hole};
+    let mut d = dip(8, 7.62);
+    d.drill = 1.6;
+    assert_eq!(
+        dual_row_through_hole(&d).unwrap_err(),
+        TemplateError::BadValue("drill")
+    );
+    let mut d = dip(8, 7.62);
+    d.pad_diameter = 8.0;
+    assert_eq!(
+        dual_row_through_hole(&d).unwrap_err(),
+        TemplateError::BadValue("pad_diameter")
+    );
+    assert_eq!(
+        dual_row_through_hole(&dip(5, 7.62)).unwrap_err(),
+        TemplateError::PinCount(5)
+    );
+}
+
+#[test]
+fn drills_are_checked() {
+    use kirpitch_core::partspec::PadKind;
+    use kirpitch_core::templates::dual_row_through_hole;
+    let mut spec = part_from(dual_row_through_hole(&dip(8, 7.62)).unwrap(), 8, "DIP");
+    let ok = validate(&spec, &FabProfile::generic());
+    assert!(ok.is_empty(), "{ok:?}");
+
+    spec.land_pattern.pads[0].drill = None;
+    spec.land_pattern.pads[1].drill = Some(kirpitch_core::Mm::new(2.0).unwrap());
+    spec.land_pattern.pads[2].kind = PadKind::Smd; // still has a drill
+    let found = validate(&spec, &FabProfile::generic());
+    let paths: Vec<&str> = found
+        .iter()
+        .filter(|f| f.check.id() == "drill")
+        .map(|f| f.path.as_str())
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            "land_pattern.pads[0].drill",
+            "land_pattern.pads[1].drill",
+            "land_pattern.pads[2].drill"
+        ]
+    );
+}
