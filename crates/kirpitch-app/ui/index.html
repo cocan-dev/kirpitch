@@ -15,13 +15,35 @@
       <datalist id="recent"></datalist>
       <button type="submit">Open</button>
     </form>
+    <div class="actions" aria-label="Start">
+      <button type="button" id="btn-open-file">Open file…</button>
+      <button type="button" id="btn-new" class="primary">New part…</button>
+      <button type="button" id="btn-datasheet">From datasheet…</button>
+      <button type="button" id="btn-copy" disabled>Save copy…</button>
+    </div>
   </header>
 
   <p id="message" class="message" role="status" hidden></p>
 
   <main id="empty" class="empty">
-    <p>Open a PartSpec file to review it.</p>
-    <p class="hint">Build one with <code>kirpitch template</code> and <code>kirpitch pins</code>, or open one from <code>testdata\golden</code>.</p>
+    <h2>Start</h2>
+    <div class="start-actions">
+      <button type="button" id="start-new" class="primary">New part…</button>
+      <button type="button" id="start-open">Open file…</button>
+      <button type="button" id="start-datasheet">From datasheet…</button>
+    </div>
+    <p class="hint">You can also drop a PartSpec file (.json) onto this window.</p>
+    <div class="start-lists">
+      <section aria-label="Examples">
+        <h3>Examples</h3>
+        <p class="muted small">Working copies of the golden parts: your approvals and edits never change the originals.</p>
+        <ul id="examples" class="start-list"></ul>
+      </section>
+      <section aria-label="Recent">
+        <h3>Recent</h3>
+        <ul id="recent-list" class="start-list"></ul>
+      </section>
+    </div>
   </main>
 
   <main id="work" hidden>
@@ -63,6 +85,7 @@
         <form id="pdf-form" class="pdf-form">
           <label class="sr" for="pdf-path">Datasheet PDF</label>
           <input id="pdf-path" type="text" spellcheck="false" placeholder="Path of the datasheet PDF, for example testdata\pdfs\lm358.pdf">
+          <button type="button" id="pdf-browse">Browse…</button>
           <button type="submit">Show</button>
         </form>
         <div class="pager">
@@ -93,6 +116,7 @@
       <h3>Write KiCad files</h3>
       <form id="export-form" class="export-form">
         <label>Folder <input id="out-dir" type="text" spellcheck="false" placeholder="C:\parts\out"></label>
+        <button type="button" id="out-browse">Browse…</button>
         <label>KiCad version
           <select id="target">
             <option value="">Installed version</option>
@@ -107,6 +131,66 @@
     </section>
   </main>
 
+  <dialog id="new-dialog" class="dialog" aria-labelledby="new-title">
+    <form id="new-form" method="dialog">
+      <h2 id="new-title">New part</h2>
+      <p class="muted small">Pick a package, check its dimensions (millimetres, from the datasheet drawing) and give the part a name. The pins start as PIN1, PIN2, …; name them in the pin table, or drag a box over the pin table of the datasheet.</p>
+      <div class="row">
+        <label>Start from
+          <select id="new-preset"></select>
+        </label>
+        <label>Package kind
+          <select id="new-kind">
+            <option value="dual-row">SOIC / SSOP / TSSOP / MSOP</option>
+            <option value="sot23">SOT-23</option>
+            <option value="dip">DIP (through-hole)</option>
+            <option value="qfn">QFN (flat no-lead)</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <label>Part number <input id="new-mpn" type="text" required spellcheck="false" placeholder="LM358DR"></label>
+        <label>Manufacturer <input id="new-maker" type="text" spellcheck="false" placeholder="Texas Instruments"></label>
+      </div>
+      <label class="wide">Description <input id="new-desc" type="text" spellcheck="false" placeholder="Dual operational amplifier"></label>
+      <fieldset id="new-fields" class="fields"><legend>Package dimensions</legend></fieldset>
+      <p id="new-note" class="muted small"></p>
+      <p id="new-error" class="message error" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" id="new-cancel">Cancel</button>
+        <button type="submit" class="primary">Choose where to save…</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="ds-dialog" class="dialog" aria-labelledby="ds-title">
+    <form id="ds-form" method="dialog">
+      <h2 id="ds-title">New part from a datasheet</h2>
+      <p class="muted small">A language model reads the text of the datasheet and fills in the pins and the package. Every pin is checked against the page text, and you review each stage. This sends text of the datasheet to the models in your <code>kirpitch.toml</code>; the result says which of them leave this machine. Scanned PDFs (no text) do not work.</p>
+      <label class="wide">Datasheet PDF
+        <span class="pick-row"><input id="ds-pdf" type="text" required spellcheck="false"><button type="button" id="ds-pdf-browse">Browse…</button></span>
+      </label>
+      <label class="wide">Package or page hint (recommended when the datasheet has several packages)
+        <input id="ds-hint" type="text" spellcheck="false" placeholder="SOIC-8, drawing D0008A, pinout on page 3">
+      </label>
+      <label class="wide">Save the part as
+        <span class="pick-row"><input id="ds-out" type="text" required spellcheck="false"><button type="button" id="ds-out-browse">Browse…</button></span>
+      </label>
+      <label class="wide">Model settings (leave empty for kirpitch.toml in the folder the app started in)
+        <span class="pick-row"><input id="ds-config" type="text" spellcheck="false"><button type="button" id="ds-config-browse">Browse…</button></span>
+      </label>
+      <label class="check"><input id="ds-second" type="checkbox"> Read the pin table twice and flag differences</label>
+      <p id="ds-error" class="message error" hidden></p>
+      <p id="ds-busy" class="message" hidden>Reading the datasheet… this can take a minute or more.</p>
+      <div id="ds-result" class="result" hidden></div>
+      <div class="dialog-actions">
+        <button type="button" id="ds-cancel">Close</button>
+        <button type="submit" id="ds-run" class="primary">Build part</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="app.js"></script>
+  <script src="start.js"></script>
 </body>
 </html>

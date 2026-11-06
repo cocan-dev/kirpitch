@@ -19,3 +19,5 @@ kirpitch-gen-3d = { path = "../kirpitch-gen-3d" }
 kirpitch-extract = { path = "../kirpitch-extract" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+kirpitch-models = { path = "../kirpitch-models" }
+sha2 = "0.11.1"

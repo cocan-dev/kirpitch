@@ -59,10 +59,7 @@ data leaves your machine or network.
 cargo run -p kirpitch-app
 ```
 
-Type the path of a PartSpec file and press Open. The window shows the pin table,
-the symbol, the footprint, the 3D views and the datasheet page side by side;
-selecting a pin highlights it everywhere. You can edit pins, drag a box on the
-datasheet page to read a pin table, approve each stage and write the KiCad files.
+The start screen lists the example parts (opened as working copies) and your recent files, and has **New part…** (a package form with presets), **Open file…**, and **From datasheet…** (a language model reads the PDF; needs a `kirpitch.toml`). You can also drop a `.json` or a `.pdf` on the window. The window shows the pin table, the symbol, the footprint, the 3D views and the datasheet page side by side; selecting a pin highlights it everywhere. You can edit pins, drag a box on the datasheet page to read a pin table, approve each stage, save a copy and write the KiCad files.
 On Linux it needs the WebKitGTK development packages; on Windows the WebView2
 runtime that comes with Windows 11.
 

@@ -7,6 +7,14 @@
 //! computed here as plain data ([`SpecView`]) so that it can be tested without
 //! a window; `main.rs` only connects these functions to the web view.
 
+mod parts;
+
+pub use parts::{
+    DatasheetInput, DatasheetOutcome, Example, NewPartInput, build_from_datasheet,
+    build_with_transport, find_testdata, list_examples, new_part, open_example, read_pages,
+    save_copy,
+};
+
 use std::fs;
 use std::path::Path;
 
@@ -563,7 +571,12 @@ pub fn find_pdfium_dir() -> Option<std::path::PathBuf> {
     } else {
         ("linux-x64", "lib")
     };
-    let dir = Path::new("testdata/pdfium").join(platform).join(lib);
+    let relative = Path::new("pdfium").join(platform).join(lib);
+    let dir = Path::new("testdata").join(&relative);
+    if dir.is_dir() {
+        return Some(dir);
+    }
+    let dir = find_testdata()?.join(relative);
     dir.is_dir().then_some(dir)
 }
 
@@ -738,7 +751,7 @@ pub fn symbol_svg(spec: &PartSpec) -> Result<String, String> {
     ))
 }
 
-fn pdf_reader() -> Result<kirpitch_extract::PdfReader, String> {
+pub(crate) fn pdf_reader() -> Result<kirpitch_extract::PdfReader, String> {
     let dir = find_pdfium_dir();
     kirpitch_extract::PdfReader::new(dir.as_deref()).map_err(|e| {
         format!("{e}. Run `cargo xtask fetch-pdfium` and set KIRPITCH_PDFIUM_LIB_DIR to the folder it prints.")
