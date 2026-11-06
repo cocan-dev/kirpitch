@@ -305,3 +305,23 @@ impl PartSpec {
         text
     }
 }
+
+impl Pad {
+    /// The smallest axis-aligned box around the pad, as
+    /// `(x_min, y_min, x_max, y_max)` in millimetres. Rotated pads use the box
+    /// around the rotated rectangle; round and oval shapes use their full
+    /// rectangle, so the box is never smaller than the pad.
+    pub fn bounds(&self) -> (f64, f64, f64, f64) {
+        let r = self.rotation_deg.to_radians();
+        let (s, c) = (r.sin().abs(), r.cos().abs());
+        let (w, h) = (self.size_x.get(), self.size_y.get());
+        let hx = (w * c + h * s) / 2.0;
+        let hy = (w * s + h * c) / 2.0;
+        (
+            self.x.get() - hx,
+            self.y.get() - hy,
+            self.x.get() + hx,
+            self.y.get() + hy,
+        )
+    }
+}

@@ -359,23 +359,9 @@ impl Validator {
 /// Rotated pads use the box around the rotated rectangle, which can only make
 /// the gap look smaller, never larger.
 fn pad_gap(a: &Pad, b: &Pad) -> f64 {
-    let (ax0, ay0, ax1, ay1) = bounds(a);
-    let (bx0, by0, bx1, by1) = bounds(b);
+    let (ax0, ay0, ax1, ay1) = a.bounds();
+    let (bx0, by0, bx1, by1) = b.bounds();
     let dx = (ax0 - bx1).max(bx0 - ax1).max(0.0);
     let dy = (ay0 - by1).max(by0 - ay1).max(0.0);
     dx.hypot(dy)
-}
-
-fn bounds(p: &Pad) -> (f64, f64, f64, f64) {
-    let r = p.rotation_deg.to_radians();
-    let (s, c) = (r.sin().abs(), r.cos().abs());
-    let (w, h) = (p.size_x.get(), p.size_y.get());
-    let hx = (w * c + h * s) / 2.0;
-    let hy = (w * s + h * c) / 2.0;
-    (
-        p.x.get() - hx,
-        p.y.get() - hy,
-        p.x.get() + hx,
-        p.y.get() + hy,
-    )
 }
