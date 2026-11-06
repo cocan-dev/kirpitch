@@ -71,5 +71,8 @@ follows [Semantic Versioning](https://semver.org/).
 - `kirpitch-extract`: PDF page rendering, characters with positions and text of a
   region (pdfium via `pdfium-render`, ADR 0016); `cargo xtask fetch-pdfium`; `PDF`
   workflow on Linux, macOS and Windows.
+- Region pick: `kirpitch pins --pdf FILE --page N --region l,t,r,b` reads a pin table from
+  a region of a datasheet page (column detection from text positions); the page
+  and region are saved as the source of every pin.
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.

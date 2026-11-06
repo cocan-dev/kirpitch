@@ -37,4 +37,4 @@ jobs:
       - run: cargo xtask fetch-pdfium
       - name: Test with pdfium
         shell: bash
-        run: KIRPITCH_PDFIUM_LIB_DIR="$PWD/${{ matrix.lib }}" cargo test -p kirpitch-extract
+        run: KIRPITCH_PDFIUM_LIB_DIR="$PWD/${{ matrix.lib }}" cargo test -p kirpitch-extract -p kirpitch-cli

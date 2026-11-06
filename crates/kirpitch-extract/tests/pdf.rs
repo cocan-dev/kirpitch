@@ -9,59 +9,8 @@
 use std::path::PathBuf;
 
 use kirpitch_core::BoundingBox;
+use kirpitch_extract::testing::{Item, make_pdf};
 use kirpitch_extract::{PdfError, PdfReader};
-
-/// One text item: `(x, y, font size, text)` in points from the bottom-left.
-type Item = (f32, f32, f32, &'static str);
-
-/// Builds a PDF with one US Letter page (612 x 792 pt) per entry of `pages`.
-fn make_pdf(pages: &[Vec<Item>]) -> Vec<u8> {
-    let mut objects: Vec<String> = Vec::new();
-    let kids: Vec<String> = (0..pages.len())
-        .map(|i| format!("{} 0 R", 4 + 2 * i))
-        .collect();
-    objects.push("<< /Type /Catalog /Pages 2 0 R >>".into());
-    objects.push(format!(
-        "<< /Type /Pages /Kids [{}] /Count {} >>",
-        kids.join(" "),
-        pages.len()
-    ));
-    objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".into());
-    for (i, items) in pages.iter().enumerate() {
-        let content_id = 5 + 2 * i;
-        objects.push(format!(
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents {content_id} 0 R /Resources << /Font << /F1 3 0 R >> >> >>"
-        ));
-        let mut stream = String::new();
-        for (x, y, size, text) in items {
-            stream.push_str(&format!("BT /F1 {size} Tf {x} {y} Td ({text}) Tj ET\n"));
-        }
-        objects.push(format!(
-            "<< /Length {} >>\nstream\n{}endstream",
-            stream.len(),
-            stream
-        ));
-    }
-    let mut out = String::from("%PDF-1.4\n");
-    let mut offsets = Vec::new();
-    for (i, body) in objects.iter().enumerate() {
-        offsets.push(out.len());
-        out.push_str(&format!("{} 0 obj\n{}\nendobj\n", i + 1, body));
-    }
-    let xref = out.len();
-    out.push_str(&format!(
-        "xref\n0 {}\n0000000000 65535 f \n",
-        objects.len() + 1
-    ));
-    for o in offsets {
-        out.push_str(&format!("{o:010} 00000 n \n"));
-    }
-    out.push_str(&format!(
-        "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
-        objects.len() + 1
-    ));
-    out.into_bytes()
-}
 
 fn reader() -> Option<PdfReader> {
     match std::env::var_os("KIRPITCH_PDFIUM_LIB_DIR") {
@@ -174,4 +123,23 @@ fn a_missing_library_is_reported() {
         PdfReader::new(Some(&dir)),
         Err(PdfError::Library(_))
     ));
+}
+
+#[test]
+fn a_pin_table_region_becomes_a_table_that_the_pin_import_reads() {
+    use kirpitch_core::pintable::{ImportOptions, parse_pin_table};
+    use kirpitch_extract::{DEFAULT_COLUMN_GAP, table_from_lines};
+    let Some(r) = reader() else { return };
+    let pdf = make_pdf(&[pin_table_page()]);
+    let region = BoundingBox([0.0, 1.0 - 700.0 / 792.0, 1.0, 1.0 - 620.0 / 792.0]);
+    let lines = r.lines_in_region(&pdf, 1, region).unwrap();
+    let table = table_from_lines(&lines, DEFAULT_COLUMN_GAP);
+    assert_eq!(table.to_tsv(), "NAME\tNO.\nGND\t1\nTRIG\t2\nOUT\t3\n");
+    let pins = parse_pin_table(&table.to_tsv(), &ImportOptions::default()).unwrap();
+    let got: Vec<(&str, &str)> = pins
+        .pins
+        .iter()
+        .map(|p| (p.number.as_str(), p.name.as_str()))
+        .collect();
+    assert_eq!(got, [("1", "GND"), ("2", "TRIG"), ("3", "OUT")]);
 }
