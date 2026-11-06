@@ -68,5 +68,8 @@ follows [Semantic Versioning](https://semver.org/).
   approved stage re-opens it and later stages (ADR 0022).
 - First KLC footprint checks (`kirpitch_kicad::klc`): courtyard, fab outline,
   silkscreen width, text layers; generated footprints pass (ADR 0017 update).
+- `kirpitch-extract`: PDF page rendering, characters with positions and text of a
+  region (pdfium via `pdfium-render`, ADR 0016); `cargo xtask fetch-pdfium`; `PDF`
+  workflow on Linux, macOS and Windows.
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.
