@@ -2,7 +2,14 @@
 # Only licences compatible with GPL-3.0-or-later are allowed.
 
 [advisories]
-ignore = []
+# Each ignored advisory needs a reason.
+ignore = [
+    # proc-macro-error is unmaintained (no vulnerability). It is a compile-time
+    # procedural macro used only by glib-macros, which tauri pulls in for the GTK
+    # backend on Linux. It is not part of the code that runs in Kirpitch, and
+    # tauri has to move to a replacement; check again on each tauri update.
+    { id = "RUSTSEC-2024-0370", reason = "unmaintained compile-time macro, only via tauri's GTK backend" },
+]
 
 [licenses]
 confidence-threshold = 0.8
