@@ -32,5 +32,7 @@ follows [Semantic Versioning](https://semver.org/).
 - Golden test set: TI LM358, TI NE555 and Microchip 24LC256 in SOIC-8 with
   datasheet URL and SHA-256 (no PDFs), hand-written PartSpecs and expected KiCad
   files; symbols place bidirectional pins on the right.
+- `cargo xtask fetch-datasheets` and `verify-datasheets`: download the golden
+  datasheets into the ignored `testdata/pdfs/` and report changed hashes (drift).
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.
