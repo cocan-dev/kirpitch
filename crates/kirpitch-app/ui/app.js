@@ -61,12 +61,20 @@ function sourceCell(text, low) {
   return el("td", { class: cls, text: low ? text + " (low confidence)" : text });
 }
 
-function table(headers, rows) {
+function table(headers, rows, onRow) {
   const head = el("tr");
   headers.forEach((h) => head.append(el("th", { scope: "col", text: h })));
-  const body = rows.map((cells) => {
+  const body = rows.map((cells, i) => {
     const tr = el("tr");
     cells.forEach((c) => tr.append(c instanceof Node ? c : el("td", { text: c })));
+    if (onRow) {
+      tr.className = "clickable";
+      tr.addEventListener("click", () => {
+        document.querySelectorAll("tr.selected").forEach((r) => r.classList.remove("selected"));
+        tr.classList.add("selected");
+        onRow(i);
+      });
+    }
     return tr;
   });
   return el("table", {}, el("thead", {}, head), el("tbody", {}, ...body));
@@ -113,7 +121,8 @@ function renderPinout(view) {
   $("view-pinout").replaceChildren(
     table(
       ["Pin", "Name", "Type", "Group", "Source"],
-      view.pins.map((p) => [p.number, p.name, p.electrical_type, p.group || "–", sourceCell(p.source, p.low_confidence)])
+      view.pins.map((p) => [p.number, p.name, p.electrical_type, p.group || "–", sourceCell(p.source, p.low_confidence)]),
+      (i) => showSource(view.pins[i])
     )
   );
 }
@@ -131,7 +140,8 @@ function renderFootprint(view) {
         el("td", { class: "num", text: p.size_y }),
         el("td", { class: "num", text: p.drill || "–" }),
         sourceCell(p.source, false),
-      ])
+      ]),
+      (i) => showSource(view.pads[i])
     )
   );
 }
@@ -172,6 +182,9 @@ function render(view) {
   renderFindings(view);
   // The SVG is made by our own Rust code from numbers and escaped text.
   $("svg").innerHTML = view.footprint_svg;
+  const saved = savedPdf(view.path);
+  $("pdf-path").value = saved;
+  if (saved) showPage(1).catch((e) => show(String(e), "error"));
 }
 
 function selectTab(name) {
@@ -217,3 +230,93 @@ $("export-form").addEventListener("submit", async (ev) => {
 });
 
 renderRecent();
+
+// ---- Datasheet pages -------------------------------------------------------
+
+function savedPdf(specPath) {
+  try {
+    return localStorage.getItem("kirpitch.pdf:" + specPath) || "";
+  } catch {
+    return "";
+  }
+}
+
+function rememberPdf(specPath, pdfPath) {
+  try {
+    localStorage.setItem("kirpitch.pdf:" + specPath, pdfPath);
+  } catch {
+    // Only a convenience.
+  }
+}
+
+let pageState = { path: "", page: 1, count: 0 };
+
+function decodeBase64(text) {
+  const bin = atob(text);
+  const bytes = new Uint8ClampedArray(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+// Draws a page of the datasheet and, when given, a box around a region
+// (fractions from the top-left corner).
+async function showPage(page, region) {
+  const pdf = $("pdf-path").value.trim();
+  if (!pdf) {
+    $("pdf-hint").textContent = "Type the path of the datasheet PDF first.";
+    return;
+  }
+  const image = await invoke("page_image", { pdf, page, width: 900 });
+  const canvas = $("page-canvas");
+  canvas.width = image.width;
+  canvas.height = image.height;
+  canvas.getContext("2d").putImageData(new ImageData(decodeBase64(image.rgba_base64), image.width, image.height), 0, 0);
+  pageState = { path: pdf, page: Math.min(Math.max(page, 1), image.page_count), count: image.page_count };
+  $("page-no").value = pageState.page;
+  $("page-no").max = image.page_count;
+  $("page-count").textContent = "of " + image.page_count;
+  $("page-wrap").hidden = false;
+  const box = $("region");
+  if (region) {
+    box.hidden = false;
+    box.style.left = region[0] * 100 + "%";
+    box.style.top = region[1] * 100 + "%";
+    box.style.width = (region[2] - region[0]) * 100 + "%";
+    box.style.height = (region[3] - region[1]) * 100 + "%";
+  } else {
+    box.hidden = true;
+  }
+  if (current) rememberPdf(current.path, pdf);
+  show("", "");
+}
+
+async function showSource(row) {
+  selectSide("datasheet");
+  if (!row.page) {
+    show("This value has no source page.", "error");
+    return;
+  }
+  try {
+    await showPage(row.page, row.region);
+  } catch (e) {
+    show(String(e), "error");
+  }
+}
+
+function selectSide(name) {
+  for (const t of ["datasheet", "footprint"]) {
+    $("side-" + t).setAttribute("aria-selected", String(t === name));
+    $("pane-" + t).hidden = t !== name;
+  }
+}
+
+document.querySelectorAll("[data-side]").forEach((b) => b.addEventListener("click", () => selectSide(b.dataset.side)));
+
+const showError = (e) => show(String(e), "error");
+$("pdf-form").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  showPage(Number($("page-no").value) || 1).catch(showError);
+});
+$("prev-page").addEventListener("click", () => showPage(pageState.page - 1).catch(showError));
+$("next-page").addEventListener("click", () => showPage(pageState.page + 1).catch(showError));
+$("page-no").addEventListener("change", () => showPage(Number($("page-no").value) || 1).catch(showError));

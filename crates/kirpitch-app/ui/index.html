@@ -45,9 +45,32 @@
       </section>
 
       <aside class="panel preview">
-        <h3>Footprint <span id="package-name" class="muted"></span></h3>
-        <div id="svg" class="svg"></div>
-        <p class="muted small">Millimetres, y points down. Pin 1 has a bold outline.</p>
+        <div class="tabs" role="tablist">
+          <button role="tab" id="side-datasheet" aria-selected="true" data-side="datasheet">Datasheet</button>
+          <button role="tab" id="side-footprint" aria-selected="false" data-side="footprint">Footprint <span id="package-name" class="muted"></span></button>
+        </div>
+        <div id="pane-datasheet">
+          <form id="pdf-form" class="pdf-form">
+            <label class="sr" for="pdf-path">Datasheet PDF</label>
+            <input id="pdf-path" type="text" spellcheck="false" placeholder="Path of the datasheet PDF, for example testdata\pdfs\lm358.pdf">
+            <button type="submit">Show</button>
+          </form>
+          <div class="pager">
+            <button type="button" id="prev-page" aria-label="Previous page">&lt;</button>
+            <label>Page <input id="page-no" type="number" min="1" value="1"></label>
+            <span id="page-count" class="muted"></span>
+            <button type="button" id="next-page" aria-label="Next page">&gt;</button>
+          </div>
+          <div id="page-wrap" class="page-wrap" hidden>
+            <canvas id="page-canvas"></canvas>
+            <div id="region" class="region" hidden></div>
+          </div>
+          <p id="pdf-hint" class="muted small">Click a row of the pin or pad table to jump to the page it was read from. A box marks the region when the source has one.</p>
+        </div>
+        <div id="pane-footprint" hidden>
+          <div id="svg" class="svg"></div>
+          <p class="muted small">Millimetres, y points down. Pin 1 has a bold outline.</p>
+        </div>
       </aside>
     </div>
 
