@@ -243,6 +243,33 @@ impl KicadCli {
         Ok(files)
     }
 
+    /// Exports a board to a STEP file with `kicad-cli pcb export step` and
+    /// returns what the tool printed. It fails when the tool fails, prints an
+    /// error, or cannot add the 3D model of a footprint (a missing or broken
+    /// model file is only a warning for KiCad itself).
+    pub fn export_board_step(&self, board: &Path, out_file: &Path) -> Result<String, CliError> {
+        let mut cmd = Command::new(&self.path);
+        cmd.args(["pcb", "export", "step", "--subst-models", "-f", "-o"])
+            .arg(out_file)
+            .arg(board);
+        let out = cmd.output().map_err(|source| CliError::Spawn {
+            path: self.path.clone(),
+            source,
+        })?;
+        let text = combined(&out);
+        if !out.status.success()
+            || has_error_message(&text)
+            || text.contains("Could not add 3D model")
+            || text.contains("File not found")
+        {
+            return Err(CliError::Failed {
+                code: out.status.code(),
+                output: text,
+            });
+        }
+        Ok(text)
+    }
+
     fn run_with_out(
         &self,
         flags: &[&str],

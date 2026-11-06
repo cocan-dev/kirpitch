@@ -147,3 +147,8 @@ td.edit.num-in input { width: 4.2em; }
 .pin-actions button { padding: 1px 6px; font-size: 12px; }
 .add-pin { margin-top: 8px; }
 .edit-hint { margin: 4px 0 0; }
+
+.model-views { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+.model-views figure { margin: 0; }
+.model-views figcaption { font-size: 0.75rem; opacity: 0.7; text-align: center; }
+.model-views svg { width: 100%; height: auto; max-height: 9rem; background: rgba(127, 127, 127, 0.08); }

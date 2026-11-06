@@ -79,6 +79,9 @@ pub struct Options {
     pub target: KicadTarget,
     /// Limits used to validate the PartSpec first.
     pub fab: FabProfile,
+    /// Path of the 3D model (STEP or VRML) to link, written as it should
+    /// appear in the footprint, for example `${KIPRJMOD}/3d/part.step`.
+    pub model: Option<String>,
 }
 
 impl Default for Options {
@@ -86,6 +89,7 @@ impl Default for Options {
         Options {
             target: KicadTarget::LATEST,
             fab: FabProfile::generic(),
+            model: None,
         }
     }
 }
@@ -195,6 +199,15 @@ pub fn generate(spec: &PartSpec, options: &Options) -> Result<String, GenerateEr
     }
     if options.target.has_embedded_fonts_setting() {
         fp = fp.child(list("embedded_fonts").atom("no"));
+    }
+    if let Some(path) = &options.model {
+        fp = fp.child(
+            list("model")
+                .string(path)
+                .child(list("offset").child(list("xyz").num(0.0).num(0.0).num(0.0)))
+                .child(list("scale").child(list("xyz").num(1.0).num(1.0).num(1.0)))
+                .child(list("rotate").child(list("xyz").num(0.0).num(0.0).num(0.0))),
+        );
     }
     Ok(fp.write())
 }

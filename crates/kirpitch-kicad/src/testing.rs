@@ -192,6 +192,73 @@ pub fn assert_footprint_loads(
     }
 }
 
+/// Builds a one-footprint board around the text of a footprint, places it at
+/// the middle of a square board outline and writes it to `dir/board.kicad_pcb`.
+/// Model paths of the footprint that start with `${KIPRJMOD}` are taken relative
+/// to `dir`.
+pub fn write_board_with_footprint(
+    target: crate::KicadTarget,
+    dir: &Path,
+    footprint: &str,
+) -> std::path::PathBuf {
+    let version = target.footprint_format_version();
+    // KiCad 8 and 9 only know ${KIPRJMOD} for boards inside a project, so the
+    // folder is written out.
+    let folder = dir.to_string_lossy().replace('\\', "/");
+    let footprint = footprint.replace("${KIPRJMOD}", &folder);
+    let mut fp = String::new();
+    for line in footprint.lines() {
+        let t = line.trim();
+        if t.starts_with("(version ") || t.starts_with("(generator ") {
+            continue;
+        }
+        fp.push_str(line);
+        fp.push('\n');
+        if t == "(layer \"F.Cu\")" {
+            fp.push_str(
+                "	(uuid \"11111111-1111-4111-8111-111111111111\")
+	(at 100 100)
+",
+            );
+        }
+    }
+    let board = format!(
+        "(kicad_pcb
+	(version {version})
+	(generator \"pcbnew\")
+	(general
+		(thickness 1.6)
+	)
+	(paper \"A4\")
+	(layers
+		(0 \"F.Cu\" signal)
+		(2 \"B.Cu\" signal)
+		(5 \"F.SilkS\" user)
+		(7 \"F.Mask\" user)
+		(9 \"F.Paste\" user)
+		(13 \"F.Fab\" user)
+		(15 \"F.CrtYd\" user)
+		(25 \"Edge.Cuts\" user)
+	)
+	(gr_rect
+		(start 90 90)
+		(end 110 110)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer \"Edge.Cuts\")
+		(uuid \"22222222-2222-4222-8222-222222222222\")
+	)
+{fp})
+"
+    );
+    let path = dir.join("board.kicad_pcb");
+    std::fs::write(&path, board).expect("write board");
+    path
+}
+
 /// True when `cli` is the KiCad version that `target` is written for. Prints a
 /// message when it is not, so the skipped check is visible in the test output.
 pub fn installed_is(cli: &KicadCli, target: crate::KicadTarget) -> bool {

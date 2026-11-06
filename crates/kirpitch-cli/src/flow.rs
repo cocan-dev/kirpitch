@@ -37,6 +37,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Failure, load, print_findings};
 
+/// The findings of the PartSpec checks and of the 3D fit check.
+fn all_findings(spec: &PartSpec) -> Vec<kirpitch_core::Finding> {
+    let mut findings = validate(spec, &crate::fab());
+    findings.extend(kirpitch_gen_3d::fit_findings(spec));
+    findings
+}
+
 /// A stage on the command line.
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum StageArg {
@@ -44,6 +51,9 @@ pub enum StageArg {
     Pinout,
     /// Gate 2: package dimensions and pads
     Footprint,
+    /// Gate 3: the 3D model on the footprint
+    #[value(name = "3d")]
+    Model3d,
 }
 
 impl StageArg {
@@ -51,6 +61,7 @@ impl StageArg {
         match self {
             StageArg::Pinout => Gate::Pinout,
             StageArg::Footprint => Gate::Footprint,
+            StageArg::Model3d => Gate::Model3d,
         }
     }
 }
@@ -519,7 +530,7 @@ fn status_word(s: GateStatus) -> &'static str {
 
 pub fn status(args: StatusArgs, out: &mut dyn Write) -> Result<(), Failure> {
     let spec = load(&args.spec)?;
-    let findings = validate(&spec, &crate::fab());
+    let findings = all_findings(&spec);
     for gate in Gate::ALL {
         let mine = stage_findings(gate, &findings);
         let errors = mine
@@ -557,9 +568,10 @@ pub fn review(args: ReviewArgs, out: &mut dyn Write) -> Result<(), Failure> {
     match gate {
         Gate::Pinout => print_pinout(&spec, out),
         Gate::Footprint => print_footprint(&spec, out),
+        Gate::Model3d => print_model3d(&spec, out),
     }
     .map_err(flow_err)?;
-    let findings = validate(&spec, &crate::fab());
+    let findings = all_findings(&spec);
     let mine: Vec<_> = stage_findings(gate, &findings)
         .into_iter()
         .cloned()
@@ -664,6 +676,35 @@ fn print_footprint(spec: &PartSpec, out: &mut dyn Write) -> std::io::Result<()> 
     Ok(())
 }
 
+fn print_model3d(spec: &PartSpec, out: &mut dyn Write) -> std::io::Result<()> {
+    let model = match kirpitch_gen_3d::build(spec) {
+        Ok(m) => m,
+        Err(e) => return writeln!(out, "no 3D model: {e}"),
+    };
+    let (lo, hi) = model.bounds();
+    let body = &model.boxes[0];
+    let size = body.size();
+    writeln!(out, "{}: {} parts", model.name, model.boxes.len())?;
+    writeln!(
+        out,
+        "  body      {:.2} x {:.2} x {:.2} mm, from {:.2} to {:.2} mm above the board",
+        size[0], size[1], size[2], body.min[2], body.max[2]
+    )?;
+    writeln!(
+        out,
+        "  overall   {:.2} x {:.2} mm, {:.2} mm high (limit {} mm), lowest point {:.2} mm",
+        hi[0] - lo[0],
+        hi[1] - lo[1],
+        hi[2],
+        spec.package.body.height_max.format(),
+        lo[2]
+    )?;
+    writeln!(
+        out,
+        "  The model is built from the package and the pads; to change it, edit the footprint stage."
+    )
+}
+
 /// The part of a PartSpec that the footprint stage edits.
 #[derive(Serialize, Deserialize)]
 struct FootprintSlice {
@@ -679,6 +720,7 @@ fn stage_json(spec: &PartSpec, gate: Gate) -> String {
             package: spec.package.clone(),
             land_pattern: spec.land_pattern.clone(),
         }),
+        Gate::Model3d => Ok("null".to_string()),
     };
     let mut text = text.expect("serialisation cannot fail");
     text.push('\n');
@@ -691,6 +733,9 @@ fn apply_stage_json(spec: &mut PartSpec, gate: Gate, text: &str) -> Result<(), S
         Gate::Pinout => {
             spec.pins = serde_json::from_str::<Vec<Pin>>(text).map_err(|e| e.to_string())?;
         }
+        Gate::Model3d => {
+            return Err("the 3D model has no values of its own; edit the footprint stage".into());
+        }
         Gate::Footprint => {
             let slice: FootprintSlice = serde_json::from_str(text).map_err(|e| e.to_string())?;
             spec.package = slice.package;
@@ -701,6 +746,11 @@ fn apply_stage_json(spec: &mut PartSpec, gate: Gate, text: &str) -> Result<(), S
 }
 
 fn edit_stage(path: &Path, spec: &mut PartSpec, gate: Gate) -> Result<(), Failure> {
+    if gate == Gate::Model3d {
+        return Err(Failure::Message(
+            "the 3D model has no values of its own; edit the footprint stage".into(),
+        ));
+    }
     let tmp = std::env::temp_dir().join(format!(
         "kirpitch-{}-{}.json",
         gate.name(),
@@ -741,7 +791,7 @@ pub fn approve_cmd(
 ) -> Result<(), Failure> {
     let gate = args.stage.gate();
     let mut spec = load(&args.spec)?;
-    let findings = validate(&spec, &crate::fab());
+    let findings = all_findings(&spec);
     match approve(&mut spec, gate, &findings, args.note, now_rfc3339()) {
         Ok(()) => {
             save(&args.spec, &spec)?;
@@ -817,12 +867,14 @@ mod tests {
     #[test]
     fn stage_values_round_trip_through_the_editor_text() {
         let mut spec = PartSpec::from_json_str(FIXTURE).unwrap();
-        for gate in Gate::ALL {
+        for gate in [Gate::Pinout, Gate::Footprint] {
             let before = spec.clone();
             let text = stage_json(&spec, gate);
             apply_stage_json(&mut spec, gate, &text).unwrap();
             assert_eq!(spec, before);
         }
+        // The 3D model has nothing to edit.
+        assert!(apply_stage_json(&mut spec, Gate::Model3d, "null").is_err());
         // An edited pin name is taken over, other stages are untouched.
         let text = stage_json(&spec, Gate::Pinout).replace("OUT1", "OUT_A");
         apply_stage_json(&mut spec, Gate::Pinout, &text).unwrap();

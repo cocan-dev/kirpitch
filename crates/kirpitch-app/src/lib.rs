@@ -126,6 +126,20 @@ pub struct SpecView {
     /// A drawing of the symbol as SVG; empty when the PartSpec has errors, so
     /// that no symbol can be made.
     pub symbol_svg: String,
+    /// Flat views of the 3D model (top, front, side) as SVG; empty when no
+    /// model can be built.
+    pub model_views: Vec<ModelViewSvg>,
+    /// One line about the size of the 3D model.
+    pub model_summary: String,
+}
+
+/// One flat view of the 3D model.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ModelViewSvg {
+    /// `top`, `front` or `side`.
+    pub name: String,
+    /// The drawing.
+    pub svg: String,
 }
 
 /// The fab profile of this run: the file named in `KIRPITCH_FAB_PROFILE`, or
@@ -165,7 +179,9 @@ fn status_name(s: GateStatus) -> &'static str {
 
 /// Builds the view of a PartSpec.
 pub fn view(path: &str, spec: &PartSpec) -> SpecView {
-    let findings = validate(spec, &fab());
+    let mut findings = validate(spec, &fab());
+    findings.extend(kirpitch_gen_3d::fit_findings(spec));
+    let (model_views, model_summary) = model_views(spec);
     let gates = Gate::ALL
         .iter()
         .map(|&gate| {
@@ -174,6 +190,7 @@ pub fn view(path: &str, spec: &PartSpec) -> SpecView {
             let approval = match gate {
                 Gate::Pinout => spec.approvals.pinout.as_ref(),
                 Gate::Footprint => spec.approvals.footprint.as_ref(),
+                Gate::Model3d => spec.approvals.model_3d.as_ref(),
             };
             GateView {
                 name: gate.name().to_string(),
@@ -234,7 +251,33 @@ pub fn view(path: &str, spec: &PartSpec) -> SpecView {
         findings: findings.iter().map(finding_view).collect(),
         footprint_svg: footprint_svg(spec),
         symbol_svg: symbol_svg(spec).unwrap_or_default(),
+        model_views,
+        model_summary,
     }
+}
+
+/// The flat views and a size line of the 3D model.
+fn model_views(spec: &PartSpec) -> (Vec<ModelViewSvg>, String) {
+    let Ok(model) = kirpitch_gen_3d::build(spec) else {
+        return (Vec::new(), String::new());
+    };
+    let (lo, hi) = model.bounds();
+    let views = kirpitch_gen_3d::View::ALL
+        .iter()
+        .map(|&v| ModelViewSvg {
+            name: v.name().to_string(),
+            svg: kirpitch_gen_3d::view_svg(&model, v),
+        })
+        .collect();
+    let summary = format!(
+        "{} parts, {:.2} x {:.2} mm, {:.2} mm high (limit {} mm)",
+        model.boxes.len(),
+        hi[0] - lo[0],
+        hi[1] - lo[1],
+        hi[2],
+        spec.package.body.height_max.format()
+    );
+    (views, summary)
 }
 
 fn finding_view(f: &Finding) -> FindingView {
@@ -272,7 +315,8 @@ pub fn approve_stage(
 ) -> Result<SpecView, String> {
     let gate = Gate::parse(stage).ok_or_else(|| format!("there is no stage called `{stage}`"))?;
     let mut spec = load_spec(Path::new(path))?;
-    let findings = validate(&spec, &fab());
+    let mut findings = validate(&spec, &fab());
+    findings.extend(kirpitch_gen_3d::fit_findings(&spec));
     let note = note.filter(|n| !n.trim().is_empty());
     match approve(&mut spec, gate, &findings, note, at) {
         Ok(()) => {}
@@ -407,8 +451,9 @@ fn escape(text: &str) -> String {
         .replace('"', "&quot;")
 }
 
-/// Writes the KiCad symbol and footprint of a PartSpec into `out_dir`
-/// (`<MPN>.kicad_sym` and `kirpitch.pretty/<package>.kicad_mod`). Returns the
+/// Writes the KiCad symbol, footprint and 3D model of a PartSpec into `out_dir`
+/// (`<MPN>.kicad_sym`, `kirpitch.pretty/<package>.kicad_mod` and
+/// `kirpitch.3dshapes/<package>.step` and `.wrl`). Returns the
 /// paths written. The PartSpec is validated first by the generators.
 pub fn export_files(path: &str, out_dir: &str, target: Option<u32>) -> Result<Vec<String>, String> {
     use kirpitch_kicad::KicadTarget;
@@ -419,14 +464,31 @@ pub fn export_files(path: &str, out_dir: &str, target: Option<u32>) -> Result<Ve
     };
     let dir = Path::new(out_dir);
     fs::create_dir_all(dir).map_err(|e| format!("{out_dir}: {e}"))?;
+    let (step_name, wrl_name) = kirpitch_gen_3d::file_names(&spec);
     let symbol =
         kirpitch_gen_symbol::generate(&spec, &kirpitch_gen_symbol::Options { target, fab: fab() })
             .map_err(|e| e.to_string())?;
     let footprint = kirpitch_gen_footprint::generate(
         &spec,
-        &kirpitch_gen_footprint::Options { target, fab: fab() },
+        &kirpitch_gen_footprint::Options {
+            target,
+            fab: fab(),
+            model: Some(format!("${{KIPRJMOD}}/kirpitch.3dshapes/{}", step_name)),
+        },
     )
     .map_err(|e| e.to_string())?;
+    let model = kirpitch_gen_3d::build(&spec).map_err(|e| e.to_string())?;
+    if let Some(issue) = kirpitch_gen_3d::check_fit(&spec, &model).first() {
+        return Err(format!("3D model: {}", issue.message));
+    }
+    let shapes = dir.join("kirpitch.3dshapes");
+    fs::create_dir_all(&shapes).map_err(|e| format!("{}: {e}", shapes.display()))?;
+    let step_path = shapes.join(&step_name);
+    let wrl_path = shapes.join(&wrl_name);
+    fs::write(&step_path, kirpitch_gen_3d::write_step(&model).as_bytes())
+        .map_err(|e| format!("{}: {e}", step_path.display()))?;
+    fs::write(&wrl_path, kirpitch_gen_3d::write_vrml(&model).as_bytes())
+        .map_err(|e| format!("{}: {e}", wrl_path.display()))?;
     let sym_path = dir.join(kirpitch_gen_symbol::file_name(&spec));
     let pretty = dir.join("kirpitch.pretty");
     fs::create_dir_all(&pretty).map_err(|e| format!("{}: {e}", pretty.display()))?;
@@ -437,6 +499,8 @@ pub fn export_files(path: &str, out_dir: &str, target: Option<u32>) -> Result<Ve
     Ok(vec![
         sym_path.display().to_string(),
         mod_path.display().to_string(),
+        step_path.display().to_string(),
+        wrl_path.display().to_string(),
     ])
 }
 

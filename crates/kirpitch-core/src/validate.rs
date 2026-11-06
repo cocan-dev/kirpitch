@@ -62,6 +62,10 @@ pub enum Check {
     TwoSources,
     /// Through-hole pads have a hole that is smaller than the pad.
     Drill,
+    /// The 3D model sits on the footprint: terminals on pads, body inside the
+    /// courtyard, height within the maximum, pin 1 in the same corner. The
+    /// check runs in the 3D generator, which reports it.
+    ModelFit,
 }
 
 impl Check {
@@ -85,6 +89,7 @@ impl Check {
             Check::OverrideUnknown => "override_unknown",
             Check::TwoSources => "two_sources",
             Check::Drill => "drill",
+            Check::ModelFit => "model_fit",
         }
     }
 }
@@ -429,7 +434,7 @@ fn pad_gap(a: &Pad, b: &Pad) -> f64 {
 }
 
 /// Every check id that can appear in an override.
-const ALL_CHECKS: [Check; 17] = [
+const ALL_CHECKS: [Check; 18] = [
     Check::SchemaVersion,
     Check::PinCount,
     Check::PinNumber,
@@ -447,6 +452,7 @@ const ALL_CHECKS: [Check; 17] = [
     Check::OverrideUnknown,
     Check::TwoSources,
     Check::Drill,
+    Check::ModelFit,
 ];
 
 /// Pads with a paste area above this size count as large exposed pads.

@@ -8,6 +8,7 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- 3D model: `kirpitch-gen-3d` builds a parametric model of body, pin 1 mark and terminals and writes STEP and VRML; `gen 3d`, `gen all` writes `kirpitch.3dshapes` and links it from the footprint; review stage `3d` with the `model_fit` check; flat views in the window (ADR 0025).
 - QFN support: `ipc::flat_no_lead`, `quad_flat_no_lead`, `kirpitch template ... qfn`, checked against KiCad's QFN-32 footprint.
 - Fab profiles from a JSON file (`--fab FILE`, `KIRPITCH_FAB_PROFILE`); see ADR 0024.
 - Cargo workspace with the `kirpitch-core` crate (stub).

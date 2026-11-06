@@ -1,0 +1,19 @@
+[package]
+name = "kirpitch-gen-3d"
+description = "Builds a parametric 3D model (VRML and STEP) from a PartSpec"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+kirpitch-core = { path = "../kirpitch-core" }
+thiserror = "2.0.21"
+
+[dev-dependencies]
+kirpitch-gen-footprint = { path = "../kirpitch-gen-footprint" }
+kirpitch-kicad = { path = "../kirpitch-kicad" }

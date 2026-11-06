@@ -1838,6 +1838,7 @@ version = "0.0.1"
 dependencies = [
  "kirpitch-core",
  "kirpitch-extract",
+ "kirpitch-gen-3d",
  "kirpitch-gen-footprint",
  "kirpitch-gen-symbol",
  "kirpitch-kicad",
@@ -1854,6 +1855,7 @@ dependencies = [
  "clap",
  "kirpitch-core",
  "kirpitch-extract",
+ "kirpitch-gen-3d",
  "kirpitch-gen-footprint",
  "kirpitch-gen-symbol",
  "kirpitch-kicad",
@@ -1883,6 +1885,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "kirpitch-gen-3d"
+version = "0.0.1"
+dependencies = [
+ "kirpitch-core",
+ "kirpitch-gen-footprint",
+ "kirpitch-kicad",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "kirpitch-gen-footprint"
 version = "0.0.1"
 dependencies = [
@@ -1905,6 +1917,7 @@ name = "kirpitch-golden"
 version = "0.0.1"
 dependencies = [
  "kirpitch-core",
+ "kirpitch-gen-3d",
  "kirpitch-gen-footprint",
  "kirpitch-gen-symbol",
  "kirpitch-kicad",
