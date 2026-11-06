@@ -17,6 +17,7 @@ serde_json = "1.0.154"
 sha2 = "0.11.1"
 thiserror = "2.0.21"
 toml = "0.9"
+keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native", "linux-native"] }
 
 [dev-dependencies]
 kirpitch-kicad = { path = "../kirpitch-kicad" }

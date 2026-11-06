@@ -52,7 +52,7 @@ function progressOf(path) {
 
 function stepStatus(view, i) {
   const g = gateFor(view, i);
-  if (!g) return view.gates.every((x) => x.status === "approved") ? "ready" : "optional";
+  if (!g) return view.gates.every((x) => x.status === "approved") ? "complete" : "optional";
   if (g.status === "approved") return "approved";
   if (g.errors > 0) return "errors";
   if (!earlierApproved(view, i)) return "waiting";
@@ -278,6 +278,8 @@ function renderCrumbs() {
 }
 
 function goHome() {
+  $("settings").hidden = true;
+  if (typeof settingsReturn !== "undefined") settingsReturn = null;
   current = null;
   selected = null;
   $("work").hidden = true;
@@ -290,6 +292,7 @@ function goHome() {
 }
 
 function render(view, keepSheet) {
+  $("settings").hidden = true;
   const newPart = !current || current.path !== view.path;
   current = view;
   $("empty").hidden = true;

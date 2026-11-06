@@ -415,8 +415,17 @@ $("ds-form").addEventListener("submit", async (ev) => {
       box.append(open);
     }
   } catch (e) {
-    $("ds-error").textContent = String(e);
+    const message = String(e);
+    $("ds-error").textContent = message;
     $("ds-error").hidden = false;
+    if (/no language model is configured/.test(message) && typeof showSettings === "function") {
+      const open = el("button", { type: "button", class: "primary small-btn", text: "Open settings" });
+      open.addEventListener("click", () => {
+        $("ds-dialog").close();
+        showSettings();
+      });
+      $("ds-error").append(" ", open);
+    }
   } finally {
     $("ds-busy").hidden = true;
     $("ds-run").disabled = false;

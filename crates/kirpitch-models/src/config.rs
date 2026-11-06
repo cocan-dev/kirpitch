@@ -9,13 +9,13 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Name of the configuration file looked for in the current folder.
 pub const CONFIG_FILE: &str = "kirpitch.toml";
 
 /// How Kirpitch talks to a model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Provider {
     /// Anthropic Messages API.
@@ -43,7 +43,7 @@ impl Provider {
 }
 
 /// One model.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModelConfig {
     /// How to talk to it.
@@ -52,49 +52,82 @@ pub struct ModelConfig {
     /// resolved to the current versions.
     pub model: String,
     /// Server address; the provider's usual address when left out.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_url: Option<String>,
     /// Environment variable that holds the API key.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_key_env: Option<String>,
     /// Header that carries the key, when it is not the usual one (for example
     /// `api-key` for Azure OpenAI).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_key_header: Option<String>,
     /// Whether the model can read images. Unknown when left out (the probe of
     /// `kirpitch models test` finds out).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vision: Option<bool>,
     /// Ollama only: whether the model may think before it answers. Models
     /// that think can use all of their answer budget on it and answer
     /// nothing; set this to `false` for them. Not sent when left out.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub think: Option<bool>,
+    /// The key is in the operating system keychain (set in the app), under the
+    /// name of this model. A key in the environment variable wins.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub keychain: bool,
     /// Price of one million input tokens, for the cost estimate.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub price_in: Option<f64>,
     /// Price of one million output tokens, for the cost estimate.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub price_out: Option<f64>,
 }
 
 /// Which model does which task.
-#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Tasks {
     /// Reading pin tables.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pin_tables: Option<String>,
     /// Reading package drawings and dimension tables.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub drawings: Option<String>,
     /// Reading the part number, maker and description.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<String>,
 }
 
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+/// Folders and defaults for the app. The command line ignores them.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Folders {
+    /// Where new and saved parts go by default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parts: Option<String>,
+    /// Where KiCad files are written by default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    /// Where the Browse dialog for datasheets starts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub datasheets: Option<String>,
+    /// KiCad major version to write for (8, 9 or 10); the installed one when
+    /// left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kicad_target: Option<u32>,
+    /// A fab profile file (see `--fab`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fab_profile: Option<String>,
+    /// The folder with the pdfium library.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pdfium_dir: Option<String>,
+}
+
 /// Privacy settings.
-#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Privacy {
     /// Refuse every server that is not on this machine or the local network.
@@ -103,7 +136,7 @@ pub struct Privacy {
 }
 
 /// The whole configuration.
-#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     /// The models by name.
@@ -115,6 +148,9 @@ pub struct Config {
     /// Privacy settings.
     #[serde(default)]
     pub privacy: Privacy,
+    /// Folders and defaults of the app.
+    #[serde(default)]
+    pub folders: Folders,
 }
 
 /// The kinds of work a model is asked to do.
@@ -193,15 +229,37 @@ impl Config {
         })
     }
 
-    /// Looks for `kirpitch.toml` in the current folder. `None` when there is
-    /// none, which means no-LLM mode.
+    /// Looks for `kirpitch.toml` in the current folder, then in the folder of
+    /// the user's settings (see [`user_config_dir`]). `None` when there is none,
+    /// which means no-LLM mode.
     pub fn discover() -> Result<Option<Config>, ConfigError> {
-        let path = Path::new(CONFIG_FILE);
+        let path = active_config_path();
         if path.is_file() {
-            Config::from_file(path).map(Some)
+            Config::from_file(&path).map(Some)
         } else {
             Ok(None)
         }
+    }
+
+    /// The configuration as TOML text. Comments of a hand-written file are not
+    /// kept.
+    pub fn to_toml_string(&self) -> Result<String, ConfigError> {
+        toml::to_string_pretty(self).map_err(|e| ConfigError::Parse(e.to_string()))
+    }
+
+    /// Writes the configuration to `path` (creating the folder). The file is
+    /// written whole to a side file first, so an interruption cannot leave half
+    /// a file.
+    pub fn write_to(&self, path: &Path) -> Result<(), ConfigError> {
+        self.check()?;
+        let text = self.to_toml_string()?;
+        let io = |e: std::io::Error| ConfigError::Io(format!("{}: {e}", path.display()));
+        if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent).map_err(io)?;
+        }
+        let side = path.with_extension("toml.tmp");
+        std::fs::write(&side, text).map_err(io)?;
+        std::fs::rename(&side, path).map_err(io)
     }
 
     fn check(&self) -> Result<(), ConfigError> {
@@ -267,6 +325,37 @@ impl Config {
             .map(|(_, m)| model_is_local(m))
             .unwrap_or(true)
     }
+}
+
+/// The folder of the user's settings: `%APPDATA%\Kirpitch` on Windows,
+/// `~/Library/Application Support/Kirpitch` on macOS, else `$XDG_CONFIG_HOME/kirpitch`
+/// or `~/.config/kirpitch`. `KIRPITCH_CONFIG_DIR` replaces it (tests use it).
+pub fn user_config_dir() -> Option<std::path::PathBuf> {
+    use std::path::PathBuf;
+    if let Some(dir) = std::env::var_os("KIRPITCH_CONFIG_DIR").filter(|d| !d.is_empty()) {
+        return Some(PathBuf::from(dir));
+    }
+    let home = || std::env::var_os("HOME").map(PathBuf::from);
+    if cfg!(windows) {
+        std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("Kirpitch"))
+    } else if cfg!(target_os = "macos") {
+        home().map(|h| h.join("Library/Application Support/Kirpitch"))
+    } else {
+        std::env::var_os("XDG_CONFIG_HOME")
+            .filter(|d| !d.is_empty())
+            .map(|d| PathBuf::from(d).join("kirpitch"))
+            .or_else(|| home().map(|h| h.join(".config/kirpitch")))
+    }
+}
+
+/// The configuration file in use: `kirpitch.toml` in the current folder when it
+/// exists, else the one in the user's settings folder (which may not exist yet).
+pub fn active_config_path() -> std::path::PathBuf {
+    let local = Path::new(CONFIG_FILE);
+    if local.is_file() {
+        return local.to_path_buf();
+    }
+    user_config_dir().map_or_else(|| local.to_path_buf(), |d| d.join(CONFIG_FILE))
 }
 
 /// The server address of a model, without a trailing slash.
@@ -435,6 +524,48 @@ local_only = true
                 .unwrap()
                 .stays_local(Task::PinTables)
         );
+    }
+
+    #[test]
+    fn a_config_survives_writing_and_reading() {
+        let text = format!(
+            "{EXAMPLE}
+[folders]
+parts = \"C:/parts\"
+kicad_target = 9
+"
+        );
+        let c = Config::from_toml_str(&text).unwrap();
+        assert_eq!(c.folders.kicad_target, Some(9));
+        let dir = std::env::temp_dir().join(format!("kirpitch-config-test-{}", std::process::id()));
+        let path = dir.join("nested/kirpitch.toml");
+        c.write_to(&path).unwrap();
+        let back = Config::from_file(&path).unwrap();
+        assert_eq!(back, c);
+        // No side file is left behind.
+        assert!(!path.with_extension("toml.tmp").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_config_with_a_broken_task_is_not_written() {
+        let mut c = Config::from_toml_str(EXAMPLE).unwrap();
+        c.tasks.drawings = Some("missing".into());
+        let path = std::env::temp_dir().join("kirpitch-config-never-written.toml");
+        assert!(matches!(
+            c.write_to(&path),
+            Err(ConfigError::UnknownModel { .. })
+        ));
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn keys_are_never_written_to_the_file() {
+        let mut c = Config::from_toml_str(EXAMPLE).unwrap();
+        c.models.get_mut("cloud-best").unwrap().keychain = true;
+        let text = c.to_toml_string().unwrap();
+        assert!(text.contains("keychain = true"));
+        assert!(!text.contains("sk-"));
     }
 
     #[test]

@@ -12,14 +12,21 @@
 pub mod build;
 pub mod client;
 pub mod config;
+pub mod keys;
 pub mod png;
 pub mod probe;
 pub mod tasks;
 pub mod transport;
 
-pub use build::{BuildOptions, BuildReport, Score, assemble, build, score, template_from_answer};
+pub use build::{
+    BuildOptions, BuildReport, Score, assemble, build, build_with_keys, score, template_from_answer,
+};
 pub use client::{ChatRequest, ChatResponse, Client, ModelError, Usage};
-pub use config::{CONFIG_FILE, Config, ConfigError, ModelConfig, Provider, Task, is_local_url};
+pub use config::{
+    CONFIG_FILE, Config, ConfigError, Folders, ModelConfig, Provider, Task, active_config_path,
+    is_local_url, user_config_dir,
+};
+pub use keys::{KeyError, KeyStore, MemoryKeyStore, OsKeyStore};
 pub use probe::{ProbeResult, probe};
 pub use tasks::{Cache, PageLines, Stats, TaskError, TextLine};
 pub use transport::{CurlTransport, MockTransport, Reply, Request, Transport, TransportError};

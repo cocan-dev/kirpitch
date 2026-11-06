@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="fun.css">
   <link rel="stylesheet" href="shell.css">
+  <link rel="stylesheet" href="settings.css">
 </head>
 <body>
   <header class="top">
@@ -17,6 +18,7 @@
       <button type="button" id="btn-new" class="primary">New part…</button>
       <button type="button" id="btn-open-file">Open…</button>
       <button type="button" id="btn-datasheet">From datasheet…</button>
+      <button type="button" id="btn-settings" class="icon" aria-label="Settings" title="Settings: models, keys and folders">⚙</button>
       <div class="menu">
         <button type="button" id="menu-btn" class="icon" aria-haspopup="true" aria-expanded="false" aria-label="More actions" title="More">⋯</button>
         <div id="menu-pop" class="menu-pop" hidden>
@@ -195,6 +197,35 @@
     <footer id="stepbar" class="stepbar"></footer>
   </main>
 
+  <main id="settings" class="settings" hidden>
+    <header class="settings-head">
+      <div>
+        <h2>Settings</h2>
+        <p class="muted small">Saved in <code id="settings-path"></code>. The command line reads the same file. API keys are kept in the system keychain, never in this file.</p>
+      </div>
+      <button type="button" id="settings-back" class="ghost">← Back</button>
+    </header>
+    <p id="settings-warning" class="message error" hidden></p>
+    <div class="settings-body">
+      <nav id="settings-tabs" class="settings-tabs" aria-label="Settings sections" role="tablist">
+        <button type="button" data-pane="models" role="tab">Models and keys</button>
+        <button type="button" data-pane="tasks" role="tab">Tasks and privacy</button>
+        <button type="button" data-pane="folders" role="tab">Folders and defaults</button>
+      </nav>
+      <div class="settings-panes">
+        <section id="pane-models" class="pane" role="tabpanel"></section>
+        <section id="pane-tasks" class="pane" role="tabpanel" hidden></section>
+        <section id="pane-folders" class="pane" role="tabpanel" hidden></section>
+      </div>
+    </div>
+    <footer class="settings-bar">
+      <span id="settings-dirty" class="err-text" hidden>Unsaved changes</span>
+      <span class="spacer"></span>
+      <button type="button" id="settings-discard" class="ghost" disabled>Discard changes</button>
+      <button type="button" id="settings-save" class="primary" disabled>Save settings</button>
+    </footer>
+  </main>
+
   <dialog id="new-dialog" class="dialog" aria-labelledby="new-title">
     <form id="new-form" method="dialog">
       <h2 id="new-title">New part</h2>
@@ -258,5 +289,6 @@
   <script src="shell.js"></script>
   <script src="start.js"></script>
   <script src="fun.js"></script>
+  <script src="settings.js"></script>
 </body>
 </html>

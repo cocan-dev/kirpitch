@@ -11,6 +11,7 @@ use std::time::Instant;
 use serde_json::{Value, json};
 
 use crate::config::{ModelConfig, Provider, base_url, resolve_model_name};
+use crate::keys::KeyStore;
 use crate::png::base64;
 use crate::transport::{Request, Transport, TransportError};
 
@@ -103,6 +104,40 @@ impl Client {
             ),
             None => None,
         };
+        Ok(Client::new(model.clone(), key, transport))
+    }
+
+    /// Connects to the model called `name` in the configuration. The key comes
+    /// from the environment variable the model names, when that is set, else
+    /// from the keychain when the model keeps its key there. A model that names
+    /// a variable that is not set and has no key in the keychain is an error.
+    pub fn connect(
+        name: &str,
+        model: &ModelConfig,
+        transport: Arc<dyn Transport>,
+        keys: &dyn KeyStore,
+    ) -> Result<Client, ModelError> {
+        let from_env = model
+            .api_key_env
+            .as_ref()
+            .and_then(|var| std::env::var(var).ok())
+            .filter(|v| !v.is_empty());
+        let key = match from_env {
+            Some(k) => Some(k),
+            None if model.keychain => keys
+                .get(name)
+                .map_err(|e| ModelError::Unexpected(e.to_string()))?
+                .filter(|k| !k.is_empty()),
+            None => None,
+        };
+        if key.is_none() {
+            if let Some(var) = &model.api_key_env {
+                return Err(ModelError::NoKey(var.clone()));
+            }
+            if model.keychain {
+                return Err(ModelError::NoKey(format!("the keychain entry `{name}`")));
+            }
+        }
         Ok(Client::new(model.clone(), key, transport))
     }
 
@@ -382,6 +417,7 @@ mod tests {
             api_key_header: None,
             vision: None,
             think: None,
+            keychain: false,
             price_in: None,
             price_out: None,
         }
@@ -508,6 +544,32 @@ mod tests {
                 message: "bad key".into()
             })
         );
+    }
+
+    #[test]
+    fn the_key_comes_from_the_variable_then_the_keychain() {
+        use crate::keys::{KeyStore, MemoryKeyStore};
+        let keys = MemoryKeyStore::new();
+        let t: Arc<dyn Transport> = Arc::new(MockTransport::new());
+        // No key needed.
+        let m = model(Provider::Ollama, None);
+        assert!(Client::connect("m", &m, t.clone(), &keys).is_ok());
+        // A keychain model with no key stored is an error that names the entry.
+        let mut k = model(Provider::Openai, None);
+        k.keychain = true;
+        assert_eq!(
+            Client::connect("work", &k, t.clone(), &keys).err(),
+            Some(ModelError::NoKey("the keychain entry `work`".into()))
+        );
+        // With the key stored the request carries it.
+        keys.set("work", "sk-secret").unwrap();
+        let c = Client::connect("work", &k, t.clone(), &keys).unwrap();
+        let req = build_request(c.model(), Some("sk-secret"), &ask());
+        assert!(req.headers.iter().any(|(_, v)| v.contains("sk-secret")));
+        // A variable that is not set does not stop the keychain from being used.
+        let mut both = k.clone();
+        both.api_key_env = Some("KIRPITCH_TEST_KEY_BOTH".into());
+        assert!(Client::connect("work", &both, t, &keys).is_ok());
     }
 
     #[test]
