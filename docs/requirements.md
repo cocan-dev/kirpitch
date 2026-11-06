@@ -129,7 +129,7 @@ Kirpitch is written in **Rust**, chosen over Go because it gives a single static
 
 **License:** GPL-3.0-or-later (GNU General Public License, version 3 or later), the same family as KiCad. Parts that users generate with Kirpitch belong to them; the license covers Kirpitch's code, not its output. Code: [github.com/cocan-dev/kirpitch](https://github.com/cocan-dev/kirpitch). Planned crate name `kirpitch` on crates.io and website kirpitch.dev. Contacts: hello@cocan.dev, and security@cocan.dev for security issues.
 
-- **Structure:** a Cargo workspace (Cargo = Rust's build tool). Crates: `kirpitch-core` (PartSpec schema and validation), `kirpitch-kicad` (S-expression writer and KiCad version targets, shared by the generators), `kirpitch-extract`, `kirpitch-gen-symbol`, `kirpitch-gen-footprint`, `kirpitch-gen-3d`, `kirpitch-gen-spice`, `kirpitch-cli`, `kirpitch-app`.
+- **Structure:** a Cargo workspace (Cargo = Rust's build tool). Crates: `kirpitch-core` (PartSpec schema and validation), `kirpitch-kicad` (S-expression writer and KiCad version targets, shared by the generators), `kirpitch-extract`, `kirpitch-gen-symbol`, `kirpitch-gen-footprint`, `kirpitch-gen-3d`, `kirpitch-gen-spice`, `kirpitch-cli`, `kirpitch-app`. Two helper crates are not part of the product: `kirpitch-golden` (the golden test set, tests only) and `xtask` (development commands such as `cargo xtask fetch-datasheets`).
 - **PDF and OCR:** candidates are `pdfium-render` for page rendering and text with positions, and `ocrs` or Tesseract for scans. Check that each library is still actively maintained before adopting it.
 - **LLM backends:** any provider the user has, or none, behind one Rust trait (see Model configuration). Every response is structured JSON checked against the PartSpec schema.
 - **KiCad files:** write the S-expression formats (KiCad's bracketed text format) with our own serializer, with one writer per supported KiCad version (see KiCad versions).
@@ -208,7 +208,7 @@ Kirpitch is fully usable without any model. Only the Extract step changes; the g
 
 - **Desktop app (main interface):** a local app built with Tauri. The screens use web technology (HTML, JavaScript) shown in the operating system's built-in web view, but it is not a website: no server, no account, and files stay on the machine. It runs the review gates described in Pipeline.
 - **Local web mode:** `kirpitch serve` serves the same interface on `localhost` (or the LAN), so it can run on a home server or another machine and be used from a browser.
-- **CLI:** `kirpitch build datasheet.pdf` runs extraction and stops at Gate 1. Then `kirpitch review --stage pinout|footprint|3d|spice` shows that stage's values and opens them in `$EDITOR`, and `kirpitch approve --stage <name>` unlocks the next stage. Add `--yes` to approve everything without prompts (batch runs only).
+- **CLI:** `kirpitch build datasheet.pdf` runs extraction and stops at Gate 1. Then `kirpitch review --stage pinout|footprint|3d|spice` shows that stage's values and opens them in `$EDITOR`, and `kirpitch approve --stage <name>` unlocks the next stage. Add `--yes` to approve everything without prompts (batch runs only). Milestone 1 has three commands that work on a hand-written PartSpec: `kirpitch schema` prints the JSON schema, `kirpitch check spec.json` lists the validation findings, and `kirpitch gen symbol|footprint|all spec.json -o dir [--target 8|9|10]` writes the KiCad files.
 - **Library:** `kirpitch-core` and the generators can be used as a Rust crate (library) on their own.
 - **Later:** a KiCad plugin that uses KiCad's IPC API (inter-process communication interface, KiCad 9+) to start Kirpitch from inside the editor.
 
@@ -270,6 +270,14 @@ The MVP (minimum viable product) covers text-based PDFs and standard IC packages
 5. **Extras:** SPICE models, fetching by MPN, PCM packaging, and the KiCad plugin.
 
 **Out of scope for now:** fitting SPICE models from datasheet curves, BGA (ball grid array) parts with more than 256 balls, and placing parts into schematics.
+
+**Milestone 1 status:** done in November 2026 for SOIC-8 (symbol and footprint, KiCad 8, 9 and 10, three golden parts). Points found on the way that need a decision later:
+
+- The generators use a silkscreen line of 0.12 mm as KiCad's own libraries do, which is below the 0.15 mm minimum of the generic fab profile. Decide which one the silkscreen check follows.
+- Parts that share a package get the same footprint name but may have slightly different pads (for example rounded or square corners). The library (milestone 3) must decide when one footprint is reused.
+- Bidirectional pins go on the right of a symbol and a pin cannot yet be moved to another side by hand.
+- The golden PartSpecs were drafted by an AI assistant and still need a human review against the datasheets.
+- KLC rule numbers are not yet cited or checked (ADR 0008).
 
 **Open questions**
 

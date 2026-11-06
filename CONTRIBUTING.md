@@ -20,7 +20,11 @@ scope and design decisions.
 ## Development setup
 
 - Rust, stable toolchain (install with [rustup](https://rustup.rs)).
-- KiCad 8, 9 or 10, for tests that load generated files with `kicad-cli`.
+- KiCad 8, 9 or 10, for tests that load generated files with `kicad-cli`
+  (optional). Set `KIRPITCH_KICAD_CLI` to the path of `kicad-cli`; without it
+  these tests are skipped with a message. On Linux, `scripts/kicad-cli-docker.sh`
+  runs `kicad-cli` of any version from the official container image. See
+  [testdata/README.md](testdata/README.md).
 - Git, with your commit name and email configured.
 
 ## Checks before every commit
