@@ -270,7 +270,7 @@
       <ol id="gd-stepper" class="gd-stepper" aria-label="Steps"></ol>
       <div id="gd-body">
       <section id="gd-p1" class="gd-pane">
-      <p class="muted small">A language model reads the datasheet and fills in the pins and the package. The best way: <strong>you point at where things are</strong> (a page, or a box drawn on it) and the model reads only that. It costs less and does not have to guess. Every pin is checked against the page text, and you review each stage afterwards. This sends text of the datasheet to the models in your Settings; the result says which of them leave this machine. Scanned PDFs (no text) do not work.</p>
+      <p class="muted small">Step by step: for each thing in turn you point at where it is in the datasheet (a page, or a box drawn on it), a model reads only that, and you check the result and correct it. Nothing goes on until you confirm it, and the part is made from what you confirmed. This sends text of the datasheet to the models in your Settings. Scanned PDFs (no text) do not work.</p>
       <label class="wide">Datasheet PDF
         <span class="pick-row"><input id="ds-pdf" type="text" required spellcheck="false"><button type="button" id="ds-pdf-browse">Browse…</button></span>
       </label>
@@ -280,6 +280,7 @@
       <label class="wide">Save the part as
         <span class="pick-row"><input id="ds-out" type="text" required spellcheck="false"><button type="button" id="ds-out-browse">Browse…</button></span>
       </label>
+      <label class="check"><input id="ds-second" type="checkbox"> Read the pin table twice and flag differences</label>
       <p class="muted small" id="ds-settings-note">The models, prompts and limits come from Settings. <button type="button" id="ds-open-settings" class="link">Open settings</button></p>
       <p class="muted small"><button type="button" id="gd-auto" class="link">Skip the guide and let the program search the whole datasheet</button> (slower, uses more of the model, and can pick the wrong pages in a long datasheet).</p>
       </section>
@@ -303,13 +304,38 @@
         <details id="gd-text" hidden><summary>What the model will read from the last box</summary><pre id="gd-text-pre" class="gd-text"></pre></details>
       </section>
 
+      <section id="gd-reading" class="gd-pane gd-reading" hidden aria-live="polite">
+        <span class="mini-spin big" aria-hidden="true"></span>
+        <div>
+          <h3 id="gd-reading-title">Reading</h3>
+          <p class="muted small"><span id="gd-reading-where"></span> · <span id="gd-reading-time">0 s</span>. The calls to the model are listed under Model output.</p>
+        </div>
+      </section>
+
+      <section id="gd-review" class="gd-pane" hidden>
+        <h3 id="gd-review-title"></h3>
+        <p id="gd-review-help" class="muted small"></p>
+        <p id="gd-review-banner" class="message error" hidden></p>
+        <div id="gd-review-body"></div>
+        <div id="gd-review-notes"></div>
+        <p id="gd-review-error" class="message error" hidden></p>
+      </section>
+
       <section id="gd-p5" class="gd-pane" hidden>
-        <h3>Ready to read</h3>
+        <h3>Ready to build</h3>
         <ul id="gd-summary" class="gd-summary"></ul>
+        <div id="gd-ready"></div>
         <p id="gd-total" class="muted small"></p>
-        <label class="check"><input id="ds-second" type="checkbox"> Read the pin table twice and flag differences</label>
       </section>
       </div>
+      <details id="pg-verbose" class="pg-verbose" hidden>
+        <summary><span>Model output</span> <span id="pg-verbose-count" class="muted small"></span></summary>
+        <div class="pg-verbose-bar">
+          <span class="muted small">What is sent to the model and what it answers, call by call. The model's own thinking is shown when the server returns it.</span>
+          <button type="button" id="pg-copy" class="ghost small-btn">Copy all</button>
+        </div>
+        <div id="pg-log" class="pg-log"></div>
+      </details>
       <p id="ds-error" class="message error" hidden></p>
       <section id="ds-progress" class="build-progress" hidden aria-live="polite">
         <header class="pg-head">
@@ -317,20 +343,15 @@
           <span id="pg-time" class="pg-time"></span>
         </header>
         <ol id="pg-steps" class="pg-steps"></ol>
-        <details id="pg-verbose" class="pg-verbose">
-          <summary><span>Model output</span> <span id="pg-verbose-count" class="muted small"></span></summary>
-          <div class="pg-verbose-bar">
-            <span class="muted small">What is sent to the model and what it answers, call by call. The model's own thinking is shown when the server returns it.</span>
-            <button type="button" id="pg-copy" class="ghost small-btn">Copy all</button>
-          </div>
-          <div id="pg-log" class="pg-log"></div>
-        </details>
       </section>
       <div id="ds-result" class="result" hidden></div>
       <div class="dialog-actions">
         <button type="button" id="ds-cancel">Close</button>
         <button type="button" id="gd-back" hidden>Back</button>
         <button type="button" id="gd-skip" class="ghost" hidden>Let the program search for this</button>
+        <button type="button" id="gd-nofp" class="ghost" hidden>No recommended footprint: calculate the pads</button>
+        <button type="button" id="gd-again" class="ghost" hidden>Point again</button>
+        <button type="button" id="gd-reread" class="ghost" hidden>Read again</button>
         <button type="button" id="gd-next" class="primary">Next</button>
         <button type="submit" id="ds-run" class="primary" hidden>Build part</button>
       </div>

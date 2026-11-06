@@ -17,6 +17,7 @@ pub mod keys;
 pub mod png;
 pub mod probe;
 pub mod prompts;
+pub mod steps;
 pub mod tasks;
 pub mod transport;
 

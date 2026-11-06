@@ -454,3 +454,82 @@ fn what_the_guided_window_reads_is_what_the_backend_sends() {
     }
     let _ = StepSize::default();
 }
+
+#[test]
+fn a_part_is_made_from_confirmed_values_checked_first_and_never_overwritten() {
+    if kirpitch_review::find_pdfium_dir().is_none() {
+        eprintln!("SKIPPED: no pdfium library (cargo xtask fetch-pdfium)");
+        return;
+    }
+    use kirpitch_review::{ConfirmedInput, build_confirmed, check_step_values};
+    let tmp = TempDir::new("confirmed");
+    let pdf_path = tmp.path().join("d.pdf");
+    fs::write(&pdf_path, pdf()).unwrap();
+    let pdf_text = pdf_path.to_string_lossy().into_owned();
+    let out = tmp.path().join("p.json");
+    let pins = |names: &[&str]| {
+        let list: Vec<Value> = names
+            .iter()
+            .enumerate()
+            .map(|(i, n)| json!({"number": (i + 1).to_string(), "name": n, "type": "passive"}))
+            .collect();
+        json!({ "pins": list })
+    };
+    let package = json!({"family": "soic", "pin_count": 8, "e": 1.27, "A": 1.75,
+        "D": {"min": 4.81, "max": 5.0}, "E1": {"min": 3.81, "max": 3.98},
+        "E": {"min": 5.8, "max": 6.19}, "L": {"min": 0.41, "max": 1.27},
+        "b": {"min": 0.31, "max": 0.51}, "page": 3});
+    let input = |pins: Value, dry_run: bool| ConfirmedInput {
+        pdf: pdf_text.clone(),
+        out: out.to_string_lossy().into_owned(),
+        hint: String::new(),
+        metadata: json!({"mpn": "LM358DR", "manufacturer": "TI", "description": "Op amp"}),
+        pins,
+        package: package.clone(),
+        footprint: None,
+        pin_regions: vec![],
+        dry_run,
+    };
+    let good = pins(&["OUT1", "IN1-", "IN1+", "GND", "IN2+", "IN2-", "OUT2", "VCC"]);
+
+    // A dry run checks and writes nothing.
+    let dry = build_confirmed(&input(good.clone(), true)).unwrap();
+    assert!(
+        dry.view.is_none() && dry.failures.is_empty(),
+        "{:?}",
+        dry.failures
+    );
+    assert!(dry.usage.contains("no model"));
+    assert!(!out.exists());
+
+    // A repeated pin name is caught before anything is written.
+    let repeated = pins(&["A", "A", "C", "D", "E", "F", "G", "H"]);
+    let bad = build_confirmed(&input(repeated, false)).unwrap();
+    assert!(bad.view.is_none());
+    assert!(
+        !bad.failures.is_empty(),
+        "the repeated name must be an error"
+    );
+    assert!(!out.exists(), "nothing is written when the checks fail");
+
+    // Pieces that do not fit are refused with the reason.
+    let e = build_confirmed(&input(pins(&["A", "B", "C"]), false)).unwrap_err();
+    assert!(e.contains("3 pins") && e.contains('8'), "{e}");
+
+    // The real thing, then never over the same file.
+    let made = build_confirmed(&input(good.clone(), false)).unwrap();
+    assert_eq!(made.view.unwrap().mpn, "LM358DR");
+    assert!(out.exists());
+    let again = build_confirmed(&input(good, false)).unwrap_err();
+    assert!(again.contains("already exists"), "{again}");
+
+    // Values typed in by hand are checked in the window's words.
+    let e = check_step_values(
+        &pdf_text,
+        "pins",
+        &json!({"pins": [{"number": "1", "name": "A", "type": "loud"}]}),
+        &[],
+    )
+    .unwrap_err();
+    assert!(e.contains("not one of"), "{e}");
+}

@@ -304,6 +304,9 @@ pub struct Ctx<'a> {
     /// Which steps were given the text to read by the person (so the pages
     /// are not searched for).
     pub pinned: Pinned,
+    /// Where the accepted answer of a step is kept as the model wrote it
+    /// (screens that show it for the person to confirm use this).
+    pub raw: Option<&'a std::cell::RefCell<Option<Value>>>,
 }
 
 /// Which steps read exactly the text they were given.
@@ -437,9 +440,12 @@ pub fn json_from_text(text: &str) -> Result<Value, String> {
 /// Models sometimes put the answer inside a wrapper (`properties`, `answer`,
 /// `result`, ...), most often after seeing a schema. The answer itself is
 /// checked first, then what is inside such a wrapper.
-fn check_wrapped<T>(v: &Value, check: &impl Fn(&Value) -> Result<T, String>) -> Result<T, String> {
+fn check_wrapped<T>(
+    v: &Value,
+    check: &impl Fn(&Value) -> Result<T, String>,
+) -> Result<(T, Value), String> {
     let first = match check(v) {
-        Ok(x) => return Ok(x),
+        Ok(x) => return Ok((x, v.clone())),
         Err(e) => e,
     };
     for key in [
@@ -453,7 +459,7 @@ fn check_wrapped<T>(v: &Value, check: &impl Fn(&Value) -> Result<T, String>) -> 
         if let Some(inner) = v.get(key).filter(|x| x.is_object())
             && let Ok(x) = check(inner)
         {
-            return Ok(x);
+            return Ok((x, inner.clone()));
         }
     }
     Err(first)
@@ -554,7 +560,10 @@ Answer with only a JSON object that follows this JSON schema, with these exact f
             }
         };
         match json_from_text(&text).and_then(|v| check_wrapped(&v, &check)) {
-            Ok(value) => {
+            Ok((value, accepted)) => {
+                if let Some(raw) = ctx.raw {
+                    *raw.borrow_mut() = Some(accepted);
+                }
                 if from_cache {
                     stats.cached += 1;
                 } else {
@@ -826,6 +835,49 @@ fn ground(pages: &[PageLines], pin: &PinAnswer) -> Option<(u32, [f64; 4])> {
 pub const UNGROUNDED_CONFIDENCE: f64 = 0.3;
 /// Confidence of a pin where two readings disagree.
 pub const DISAGREE_CONFIDENCE: f64 = 0.4;
+
+/// Pins that were read or typed, with their place in the text. Pins found on a
+/// line of `pages` get its page and box; the others keep the page they came
+/// with (or `default_page`) and the whole page. `confirmed` is for pins a
+/// person has checked: their confidence is full.
+pub fn read_pins(
+    pins: Vec<PinAnswer>,
+    pages: &[PageLines],
+    default_page: u32,
+    confirmed: bool,
+) -> PinsResult {
+    let mut notes = Vec::new();
+    let read = pins
+        .into_iter()
+        .map(|pin| {
+            let found = ground(pages, &pin);
+            let grounded = found.is_some();
+            let (page, bbox) =
+                found.unwrap_or((pin.page.unwrap_or(default_page), [0.0, 0.0, 1.0, 1.0]));
+            if !grounded && !pages.is_empty() {
+                notes.push(format!(
+                    "pin {} `{}` is not on one line of the text you chose (check it)",
+                    pin.number, pin.name
+                ));
+            }
+            let confidence = if confirmed {
+                1.0
+            } else if grounded {
+                pin.confidence
+            } else {
+                pin.confidence.min(UNGROUNDED_CONFIDENCE)
+            };
+            ReadPin {
+                pin,
+                page,
+                bbox,
+                confidence,
+                grounded,
+            }
+        })
+        .collect();
+    PinsResult { pins: read, notes }
+}
 
 /// Reads the pin table. `hint` can say where to look, for example "8 pins,
 /// SOIC package" or "the pinout is on page 4".
