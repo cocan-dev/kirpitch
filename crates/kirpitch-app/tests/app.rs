@@ -292,3 +292,109 @@ fn an_invalid_partspec_has_no_symbol_drawing() {
     assert_eq!(view.symbol_svg, "");
     assert!(!view.footprint_svg.is_empty());
 }
+
+/// A datasheet page with an 8-pin table, built for the test.
+fn pin_page() -> Vec<(f32, f32, f32, &'static str)> {
+    let rows = [
+        ("1", "OUT1", "Output"),
+        ("2", "IN1-", "Input"),
+        ("3", "IN1+", "Input"),
+        ("4", "V-", "Power"),
+        ("5", "IN2+", "Input"),
+        ("6", "IN2-", "Input"),
+        ("7", "OUT2", "Output"),
+        ("8", "V+", "Power"),
+    ];
+    let mut items = vec![
+        (72.0, 740.0, 14.0, "Pin Functions"),
+        (72.0, 710.0, 12.0, "PIN"),
+        (150.0, 710.0, 12.0, "NAME"),
+        (260.0, 710.0, 12.0, "TYPE"),
+    ];
+    for (i, (n, name, ty)) in rows.iter().enumerate() {
+        let y = 690.0 - 20.0 * i as f32;
+        items.push((72.0, y, 12.0, n));
+        items.push((150.0, y, 12.0, name));
+        items.push((260.0, y, 12.0, ty));
+    }
+    items
+}
+
+#[test]
+fn a_region_of_the_page_becomes_the_pin_table() {
+    if std::env::var_os("KIRPITCH_PDFIUM_LIB_DIR").is_none() {
+        eprintln!("SKIPPED: set KIRPITCH_PDFIUM_LIB_DIR to run this test");
+        return;
+    }
+    let tmp = TempDir::new("app-region");
+    let pdf = tmp.path().join("d.pdf");
+    fs::write(&pdf, kirpitch_extract::testing::make_pdf(&[pin_page()])).unwrap();
+    let pdf = pdf.to_string_lossy().into_owned();
+    // Under the heading: from y = 725 down to 515 pt of 792.
+    let region = [0.0, 1.0 - 725.0 / 792.0, 1.0, 1.0 - 515.0 / 792.0];
+
+    let table = kirpitch_app::read_region(&pdf, 1, region).unwrap();
+    assert_eq!(table.rows.len(), 9);
+    assert_eq!(table.rows[0], ["PIN", "NAME", "TYPE"]);
+    assert_eq!(table.rows[8], ["8", "V+", "Power"]);
+
+    // The user may fix a cell in the text before using it.
+    let edited = table.tsv.replace("V+\tPower", "V+\tPower supply");
+    let tmp2 = TempDir::new("app-region-spec");
+    let spec = copy_of("lm358-soic8", &tmp2);
+    let out = kirpitch_app::import_pins(&spec, &edited, 1, Some(region)).unwrap();
+    assert_eq!(out.view.pins.len(), 8);
+    assert_eq!(out.view.pins[7].name, "V+");
+    assert_eq!(out.view.pins[7].electrical_type, "power_in");
+    assert_eq!(out.view.pins[0].page, Some(1));
+    assert_eq!(out.view.pins[0].region, Some(region));
+    assert!(out.warnings.is_empty(), "{:?}", out.warnings);
+    // The file was saved.
+    assert_eq!(open_spec(&spec).unwrap().pins[0].name, "OUT1");
+}
+
+#[test]
+fn importing_pins_makes_an_approved_pinout_stale() {
+    let tmp = TempDir::new("app-import-stale");
+    let spec = copy_of("lm358-soic8", &tmp);
+    approve_stage(&spec, "pinout", None, now_rfc3339()).unwrap();
+    let out = kirpitch_app::import_pins(
+        &spec,
+        "1 OUT1 output\n2 IN1- input\n3 IN1+ input\n4 V- power\n5 IN2+ input\n6 IN2- input\n7 OUT2 output\n8 VCC power\n",
+        3,
+        None,
+    )
+    .unwrap();
+    assert_eq!(out.view.gates[0].status, "stale");
+}
+
+#[test]
+fn bad_regions_and_tables_give_readable_errors() {
+    let tmp = TempDir::new("app-import-bad");
+    let spec = copy_of("lm358-soic8", &tmp);
+    for bad in [
+        [0.5, 0.5, 0.1, 0.9],
+        [0.1, 0.1, 0.1, 0.1],
+        [0.0, 0.0, 1.5, 1.0],
+    ] {
+        assert!(
+            kirpitch_app::read_region("x.pdf", 1, bad)
+                .unwrap_err()
+                .contains("empty or outside"),
+            "{bad:?}"
+        );
+        assert!(kirpitch_app::import_pins(&spec, "1 A", 1, Some(bad)).is_err());
+    }
+    assert!(
+        kirpitch_app::import_pins(&spec, "", 1, None)
+            .unwrap_err()
+            .contains("empty")
+    );
+    assert!(
+        kirpitch_app::import_pins(&spec, "1 A\n,B\n", 1, None)
+            .unwrap_err()
+            .contains("line 2")
+    );
+    // A failed import leaves the file as it was.
+    assert_eq!(open_spec(&spec).unwrap().pins.len(), 8);
+}

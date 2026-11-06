@@ -502,10 +502,7 @@ pub fn find_pdfium_dir() -> Option<std::path::PathBuf> {
 /// Renders one page of a datasheet PDF, `width_px` pixels wide.
 pub fn render_datasheet_page(pdf: &str, page: u32, width_px: u32) -> Result<PageImage, String> {
     let bytes = fs::read(pdf).map_err(|e| format!("{pdf}: {e}"))?;
-    let dir = find_pdfium_dir();
-    let reader = kirpitch_extract::PdfReader::new(dir.as_deref()).map_err(|e| {
-        format!("{e}. Run `cargo xtask fetch-pdfium` and set KIRPITCH_PDFIUM_LIB_DIR to the folder it prints.")
-    })?;
+    let reader = pdf_reader()?;
     let count = reader.page_count(&bytes).map_err(|e| e.to_string())?;
     let page = page.clamp(1, count.max(1));
     let image = reader
@@ -671,4 +668,88 @@ pub fn symbol_svg(spec: &PartSpec) -> Result<String, String> {
         num(x1 - x0),
         num(y1 - y0),
     ))
+}
+
+fn pdf_reader() -> Result<kirpitch_extract::PdfReader, String> {
+    let dir = find_pdfium_dir();
+    kirpitch_extract::PdfReader::new(dir.as_deref()).map_err(|e| {
+        format!("{e}. Run `cargo xtask fetch-pdfium` and set KIRPITCH_PDFIUM_LIB_DIR to the folder it prints.")
+    })
+}
+
+/// The text of a region of a datasheet page, split into rows and columns.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RegionTable {
+    /// The cells, row by row.
+    pub rows: Vec<Vec<String>>,
+    /// The same as tab-separated text, which the pin import reads.
+    pub tsv: String,
+}
+
+fn check_region(region: [f64; 4]) -> Result<kirpitch_core::BoundingBox, String> {
+    let bbox = kirpitch_core::BoundingBox(region);
+    if bbox.is_valid() && region[2] - region[0] > 0.001 && region[3] - region[1] > 0.001 {
+        Ok(bbox)
+    } else {
+        Err("the selected region is empty or outside the page".to_string())
+    }
+}
+
+/// Reads the text inside `region` (fractions from the top-left corner of the
+/// page) and finds its columns.
+pub fn read_region(pdf: &str, page: u32, region: [f64; 4]) -> Result<RegionTable, String> {
+    let bbox = check_region(region)?;
+    let bytes = fs::read(pdf).map_err(|e| format!("{pdf}: {e}"))?;
+    let lines = pdf_reader()?
+        .lines_in_region(&bytes, page, bbox)
+        .map_err(|e| e.to_string())?;
+    if lines.is_empty() {
+        return Err("there is no text in the selected region (a scanned page needs OCR)".into());
+    }
+    let table = kirpitch_extract::table_from_lines(&lines, kirpitch_extract::DEFAULT_COLUMN_GAP);
+    Ok(RegionTable {
+        tsv: table.to_tsv(),
+        rows: table.rows,
+    })
+}
+
+/// The result of importing a pin table.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ImportOutcome {
+    /// The PartSpec as it is after the import.
+    pub view: SpecView,
+    /// Types that were guessed and other things to look at.
+    pub warnings: Vec<String>,
+}
+
+/// Replaces the pins of a PartSpec by the pins in `tsv` (tab separated, or any
+/// text the pin import understands) and saves the file. The page and region are
+/// saved as the source of every pin. Approvals of the pinout and later stages
+/// become stale because the content changed.
+pub fn import_pins(
+    path: &str,
+    tsv: &str,
+    page: u32,
+    region: Option<[f64; 4]>,
+) -> Result<ImportOutcome, String> {
+    let bbox = region.map(check_region).transpose()?;
+    let mut spec = load_spec(Path::new(path))?;
+    let source = kirpitch_core::Source {
+        page,
+        bbox,
+        confidence: None,
+    };
+    let result = kirpitch_core::pintable::parse_pin_table(
+        tsv,
+        &kirpitch_core::pintable::ImportOptions {
+            source: Some(source),
+        },
+    )
+    .map_err(|e| e.to_string())?;
+    spec.pins = result.pins;
+    fs::write(path, spec.to_json_string().as_bytes()).map_err(|e| format!("{path}: {e}"))?;
+    Ok(ImportOutcome {
+        view: view(path, &spec),
+        warnings: result.warnings,
+    })
 }
