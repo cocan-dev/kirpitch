@@ -80,5 +80,7 @@ follows [Semantic Versioning](https://semver.org/).
 - App: the datasheet page next to the pin table. Click a pin or pad row to jump to the
   page it was read from, with a box around the region when the source has one;
   pages are rendered with pdfium.
+- App: pin table, symbol, footprint and datasheet are always visible side by side; selecting
+  a pin in any of them highlights it in all of them and shows its datasheet page.
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.

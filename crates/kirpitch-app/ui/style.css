@@ -79,13 +79,8 @@ main { padding: 16px; max-width: 1400px; margin: 0 auto; }
 .gate .counts .w { color: var(--warn); font-weight: 600; }
 .gate form { display: flex; gap: 8px; }
 .gate form input { flex: 1; }
-.columns { display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr); gap: 12px; }
-@media (max-width: 900px) { .columns { grid-template-columns: 1fr; } }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
 .panel h3 { margin: 0 0 8px; font-size: 15px; }
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
-.tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 6px 10px; }
-.tabs button[aria-selected=true] { border-bottom-color: var(--brick); color: var(--brick); font-weight: 600; }
 .count { color: var(--muted); font-weight: 400; }
 table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
 th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); }
@@ -98,8 +93,6 @@ td.num { text-align: right; }
 .finding .lvl.error { color: var(--err); }
 .finding .lvl.warning { color: var(--warn); }
 .finding .path { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--muted); }
-.preview .svg { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
-.preview svg { width: 100%; height: auto; max-height: 520px; display: block; }
 svg .body { fill: none; stroke: var(--body); stroke-width: .1; }
 svg .courtyard { fill: none; stroke: var(--muted); stroke-width: .05; stroke-dasharray: .3 .2; }
 svg .pad { fill: var(--copper); stroke: var(--copper-line); stroke-width: .03; }
@@ -121,3 +114,23 @@ svg .label { fill: var(--text); text-anchor: middle; dominant-baseline: central;
 tr.clickable { cursor: pointer; }
 tr.clickable:hover td { background: var(--bg); }
 tr.selected td { background: var(--bg); box-shadow: inset 2px 0 0 var(--brick); }
+.head { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 3fr); gap: 12px; align-items: start; }
+.head .gates { margin-bottom: 12px; }
+.triple { display: grid; grid-template-columns: minmax(300px, 1.1fr) minmax(280px, 1fr) minmax(320px, 1.2fr); gap: 12px; align-items: start; }
+@media (max-width: 1100px) { .triple { grid-template-columns: 1fr; } .head { grid-template-columns: 1fr; } }
+.drawing { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin-bottom: 8px; }
+.drawing svg { width: 100%; height: auto; max-height: 360px; display: block; }
+.drawing .empty-note { color: var(--muted); font-size: 12px; margin: 0; }
+details.more { margin-top: 10px; }
+details.more summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+/* The selected pin, in every view. */
+tr.sel td { background: color-mix(in srgb, var(--brick) 22%, transparent); box-shadow: inset 3px 0 0 var(--brick); }
+svg .pad.sel, svg g.sel .pad { stroke: var(--brick); stroke-width: .2; fill: color-mix(in srgb, var(--brick) 55%, var(--copper)); }
+svg [data-pin] { cursor: pointer; }
+svg .sbody { fill: var(--panel); stroke: var(--body); stroke-width: .25; }
+svg .spin line { stroke: var(--text); stroke-width: .2; }
+svg .spin .hit { fill: transparent; }
+svg .pname, svg .pnum { fill: var(--text); font-size: 1.1px; font-family: system-ui, sans-serif; }
+svg .pnum { fill: var(--muted); font-size: .9px; }
+svg .spin.sel line { stroke: var(--brick); stroke-width: .5; }
+svg .spin.sel .pname, svg .spin.sel .pnum { fill: var(--brick); font-weight: 700; }
