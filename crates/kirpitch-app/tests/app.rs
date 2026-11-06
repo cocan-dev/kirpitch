@@ -398,3 +398,101 @@ fn bad_regions_and_tables_give_readable_errors() {
     // A failed import leaves the file as it was.
     assert_eq!(open_spec(&spec).unwrap().pins.len(), 8);
 }
+
+fn inputs(view: &kirpitch_app::SpecView) -> Vec<kirpitch_app::PinInput> {
+    view.pins
+        .iter()
+        .map(|p| kirpitch_app::PinInput {
+            number: p.number.clone(),
+            name: p.name.clone(),
+            electrical_type: p.electrical_type.clone(),
+            group: p.group.clone(),
+            page: p.page,
+            region: p.region,
+        })
+        .collect()
+}
+
+#[test]
+fn a_pin_can_be_renamed_and_retyped_and_keeps_its_source() {
+    let tmp = TempDir::new("app-edit");
+    let path = copy_of("ne555-soic8", &tmp);
+    let mut pins = inputs(&open_spec(&path).unwrap());
+    pins[4].name = "  CTRL ".into();
+    pins[4].electrical_type = "input".into();
+    pins[4].group = Some("  ".into());
+    let view = kirpitch_app::set_pins(&path, pins).unwrap();
+    assert_eq!(view.pins[4].name, "CTRL");
+    assert_eq!(view.pins[4].electrical_type, "input");
+    assert_eq!(view.pins[4].group, None);
+    assert_eq!(view.pins[4].page, Some(3), "the source is kept");
+    assert_eq!(open_spec(&path).unwrap().pins[4].name, "CTRL");
+    assert!(view.electrical_types.contains(&"no_connect".to_string()));
+}
+
+#[test]
+fn pins_can_be_added_deleted_and_moved() {
+    let tmp = TempDir::new("app-edit-list");
+    let path = copy_of("ne555-soic8", &tmp);
+    let mut pins = inputs(&open_spec(&path).unwrap());
+    pins.remove(0); // delete GND
+    pins.swap(0, 1); // move OUT before TRIG
+    pins.push(kirpitch_app::PinInput {
+        number: "9".into(),
+        name: "NC".into(),
+        electrical_type: "no_connect".into(),
+        group: None,
+        page: None,
+        region: None,
+    });
+    let view = kirpitch_app::set_pins(&path, pins).unwrap();
+    let names: Vec<&str> = view.pins.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "OUT", "TRIG", "RESET", "CONT", "THRES", "DISCH", "VCC", "NC"
+        ]
+    );
+    assert_eq!(view.pins[7].source, "no source");
+    // Pin 1 lost its pin and pin 9 has no pad: the pinout shows errors.
+    assert!(view.gates[0].errors >= 1);
+    assert!(view.findings.iter().any(|f| f.check == "pin_pad_match"));
+}
+
+#[test]
+fn an_invalid_list_is_saved_and_shown_as_findings() {
+    let tmp = TempDir::new("app-edit-dup");
+    let path = copy_of("ne555-soic8", &tmp);
+    let mut pins = inputs(&open_spec(&path).unwrap());
+    pins[1].number = "1".into();
+    let view = kirpitch_app::set_pins(&path, pins).unwrap();
+    assert!(
+        view.findings
+            .iter()
+            .any(|f| f.check == "pin_number" && f.gate == "pinout")
+    );
+    assert!(approve_stage(&path, "pinout", None, now_rfc3339()).is_err());
+}
+
+#[test]
+fn a_wrong_type_name_saves_nothing() {
+    let tmp = TempDir::new("app-edit-type");
+    let path = copy_of("ne555-soic8", &tmp);
+    let before = fs::read_to_string(&path).unwrap();
+    let mut pins = inputs(&open_spec(&path).unwrap());
+    pins[0].electrical_type = "wobbly".into();
+    let err = kirpitch_app::set_pins(&path, pins).unwrap_err();
+    assert!(err.contains("pin 1") && err.contains("wobbly"), "{err}");
+    assert_eq!(fs::read_to_string(&path).unwrap(), before);
+}
+
+#[test]
+fn editing_a_pin_reopens_an_approved_pinout() {
+    let tmp = TempDir::new("app-edit-stale");
+    let path = copy_of("ne555-soic8", &tmp);
+    approve_stage(&path, "pinout", None, now_rfc3339()).unwrap();
+    let mut pins = inputs(&open_spec(&path).unwrap());
+    pins[2].name = "OUTPUT".into();
+    let view = kirpitch_app::set_pins(&path, pins).unwrap();
+    assert_eq!(view.gates[0].status, "stale");
+}

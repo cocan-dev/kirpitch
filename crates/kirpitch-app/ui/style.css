@@ -140,3 +140,10 @@ svg .spin.sel .pname, svg .spin.sel .pnum { fill: var(--brick); font-weight: 700
 .pick h4 { margin: 0 0 4px; font-size: 14px; }
 .pick textarea { width: 100%; font: 12px/1.4 ui-monospace, Consolas, monospace; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px; tab-size: 14; white-space: pre; }
 .pick-actions { display: flex; gap: 8px; margin-top: 6px; }
+td.edit { padding: 2px 4px; }
+td.edit input, td.edit select { width: 100%; padding: 3px 5px; font-size: 13px; }
+td.edit.num-in input { width: 4.2em; }
+.pin-actions { white-space: nowrap; }
+.pin-actions button { padding: 1px 6px; font-size: 12px; }
+.add-pin { margin-top: 8px; }
+.edit-hint { margin: 4px 0 0; }
