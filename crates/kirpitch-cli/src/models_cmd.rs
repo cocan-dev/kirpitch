@@ -206,6 +206,7 @@ pub fn build_cmd(args: BuildArgs, out: &mut dyn Write, err: &mut dyn Write) -> R
         second_read: args.second_read,
         pdf_sha256: Some(hex(&bytes)),
         datasheet_url: args.datasheet_url,
+        ..Default::default()
     };
     let report = build(&config, transport(), &cache, &pages, &options);
     print_models(&report, out).map_err(|e| e.to_string())?;

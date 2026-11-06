@@ -563,3 +563,48 @@ fn extraction_options_are_saved_only_when_changed_and_checked() {
     assert!(Config::from_toml_str("[extraction]\ntimeout_secs = 5\n").is_err());
     assert!(Config::from_toml_str("[extraction]\nmax_tokens_pins = 10\n").is_err());
 }
+
+#[test]
+fn text_the_person_points_at_is_read_as_it_is_and_nothing_else_is_sent() {
+    // Three steps, each given its own small piece of text.
+    let only = |page: u32, text: &str| {
+        vec![PageLines {
+            page,
+            lines: vec![line(text, 0.2)],
+        }]
+    };
+    let options = BuildOptions {
+        given: kirpitch_models::GivenText {
+            metadata: Some(only(1, "TITLE-ONLY-LM358DR dual amplifier")),
+            pins: Some(only(48, "PINS-ONLY 1 OUT1 output")),
+            package: Some(only(50, "PACKAGE-ONLY pitch 1.27")),
+        },
+        ..Default::default()
+    };
+    let m = mock(&[metadata_answer(), pins_answer(), package_answer()]);
+    run(&m, &options);
+    let requests = m.requests();
+    assert_eq!(requests.len(), 3);
+    let user = |i: usize| {
+        let b: Value = serde_json::from_str(&requests[i].body).unwrap();
+        b["messages"][1]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    assert!(user(0).contains("TITLE-ONLY") && !user(0).contains("Pin Configuration"));
+    assert!(user(1).contains("PINS-ONLY") && !user(1).contains("Package outline"));
+    assert!(user(1).contains("[page 48]"));
+    assert!(user(2).contains("PACKAGE-ONLY") && !user(2).contains("Pin Configuration"));
+}
+
+#[test]
+fn pages_are_suggested_by_the_same_keywords_the_search_uses() {
+    let all = pages();
+    let pins = kirpitch_models::suggest_pages(&all, "pins", None);
+    assert_eq!(pins.first().map(|p| p.0), Some(3), "{pins:?}");
+    let package = kirpitch_models::suggest_pages(&all, "package", Some("SOIC"));
+    assert_eq!(package.first().map(|p| p.0), Some(5), "{package:?}");
+    let metadata = kirpitch_models::suggest_pages(&all, "metadata", None);
+    assert_eq!(metadata.iter().map(|p| p.0).collect::<Vec<_>>(), [1, 3]);
+}

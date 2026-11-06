@@ -52,6 +52,7 @@ function buildBegin(second) {
   $("ds-progress").hidden = false;
   $("ds-dialog").classList.add("running");
   $("pg-title").textContent = "Reading the datasheet";
+  ["gd-back", "gd-next", "gd-skip"].forEach((id) => ($(id).hidden = true));
   resetLog();
   paintBuild();
   build.clock = setInterval(paintBuild, 250);
@@ -115,7 +116,10 @@ async function buildEnd(ok, problems, error) {
   run.finished = true;
   run.ok = ok && !problems;
   // A part that did not work goes back to the form so it can be tried again.
-  if (!ok) $("ds-dialog").classList.remove("running");
+  if (!ok) {
+    $("ds-dialog").classList.remove("running");
+    if (typeof gdShow === "function") gdShow(5); // back to the last step to change something and try again
+  }
   const now = Date.now();
   for (const s of run.steps) {
     if (s.state === "running") {

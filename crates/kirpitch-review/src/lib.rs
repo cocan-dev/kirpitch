@@ -8,6 +8,7 @@
 //! a window; `main.rs` only connects these functions to the web view.
 
 mod eval;
+mod guide;
 mod parts;
 mod settings;
 
@@ -21,6 +22,11 @@ pub use eval::{
     CaseResult, CaseView, EvalEvent, EvalInput, EvalRun, EvalStatus, EvalTools, MyCase,
     ResolvedCase, Totals, UsedModel, add_case, delete_run, eval_dir, list_cases, list_cases_in,
     list_runs, remove_case, resolve_cases, run_eval, set_case_pdf,
+};
+
+pub use guide::{
+    GuideInput, Preview, RegionInput, StepSize, Suggested, Suggestions, preview_selection,
+    suggest_pages_for, text_of_regions,
 };
 
 pub use parts::{

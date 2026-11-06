@@ -113,3 +113,24 @@ The footprint templates cover SOIC, SSOP, TSSOP, MSOP, SOT-23, DIP and QFN. For
 anything else (LQFP, TQFP, BGA, SOT-223 ...) the package step answers `other`
 with the package name. Kirpitch then stops that step at once instead of asking
 again, says which package it is, and still saves the pins it read as a CSV file.
+
+## The guided way (recommended)
+
+Letting the program search a long datasheet is the weakest part: it scores pages
+by keywords, and a 200 page datasheet has hundreds of pages that mention pins.
+The **guided** dialog replaces the search by your knowledge:
+
+1. **Datasheet:** the PDF, where to save the part, an optional hint.
+2. **Part number:** the page or a box with the title and description.
+3. **Pins:** draw a box around the pin table (one box per page when it
+   continues). The pages the program would have looked at are offered as
+   suggestions, best first.
+4. **Package:** a box around the dimension table and the package name.
+5. **Build:** a summary with how much text will be sent.
+
+The models then read exactly the text inside the boxes (the text of the PDF
+inside the rectangle, not a picture), and nothing else is sent. Under each
+step the window shows how many characters that is, against what the automatic
+search would have sent. A step you do not point at is searched for as before,
+and **Skip the guide** on the first step does the whole build that way. The
+`Model output` panel shows what each call received.

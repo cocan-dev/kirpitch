@@ -41,6 +41,74 @@ pub struct TextLine {
     pub right: f64,
 }
 
+/// Words that mark the pages of a pin table, with their weights.
+pub const PIN_KEYWORDS: &[(&str, i32)] = &[
+    ("pin functions", 8),
+    ("pin configuration", 8),
+    ("pin description", 8),
+    ("pinout", 4),
+    ("pin", 1),
+    ("terminal", 1),
+    ("tape and reel", -6),
+    ("orderable", -3),
+];
+
+/// Words that mark the pages of a package drawing, with their weights.
+pub const PACKAGE_KEYWORDS: &[(&str, i32)] = &[
+    ("package outline", 6),
+    ("mechanical data", 4),
+    ("seating plane", 6),
+    ("dimensions are in millimeters", 8),
+    ("dimensions are in", 3),
+    ("typ", 1),
+    ("bsc", 2),
+    ("max", 1),
+    ("min", 1),
+    ("pitch", 2),
+    ("tape", -4),
+    ("reel", -4),
+    ("dimension limits", 6),
+    ("millimeters", 2),
+    ("product identification", -10),
+    ("revision history", -10),
+    ("ordering information", -5),
+    ("orderable", -5),
+];
+
+/// The pages the automatic search would look at for a step, best first, with
+/// their scores. The guided flow shows them as suggestions.
+pub fn suggest_pages(pages: &[PageLines], step: &str, hint: Option<&str>) -> Vec<(u32, i32)> {
+    if step == "metadata" {
+        return pages.iter().take(2).map(|p| (p.page, 1)).collect();
+    }
+    let keywords = if step == "package" {
+        PACKAGE_KEYWORDS
+    } else {
+        PIN_KEYWORDS
+    };
+    let n = pages.len().max(1);
+    let texts: Vec<String> = pages
+        .iter()
+        .map(|p| p.as_text().to_ascii_lowercase())
+        .collect();
+    let mut all: Vec<(String, i32)> = keywords.iter().map(|(k, w)| (k.to_string(), *w)).collect();
+    for w in hint_words(hint) {
+        let df = texts.iter().filter(|t| t.contains(&w)).count();
+        if df > 0 && df * 4 <= n {
+            all.push((w, (3 * (n - df) as i32 / n as i32).max(1)));
+        }
+    }
+    let all_ref: Vec<(&str, i32)> = all.iter().map(|(k, w)| (k.as_str(), *w)).collect();
+    let mut scored: Vec<(u32, i32)> = pages
+        .iter()
+        .map(|p| (p.page, p.score(&all_ref)))
+        .filter(|(_, s)| *s > 0)
+        .collect();
+    scored.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    scored.truncate(6);
+    scored
+}
+
 /// Half the height of a line of text, as a fraction of the page.
 const HALF_LINE: f64 = 0.008;
 
@@ -214,6 +282,20 @@ pub struct Ctx<'a> {
     pub options: &'a crate::config::Extraction,
     /// Told of each call to a model.
     pub obs: &'a dyn Fn(&CallRecord),
+    /// Which steps were given the text to read by the person (so the pages
+    /// are not searched for).
+    pub pinned: Pinned,
+}
+
+/// Which steps read exactly the text they were given.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Pinned {
+    /// Part number, maker, description.
+    pub metadata: bool,
+    /// Pin table.
+    pub pins: bool,
+    /// Package drawing.
+    pub package: bool,
 }
 
 /// Totals over a run.
@@ -528,7 +610,11 @@ pub fn extract_metadata(
     ctx: &Ctx<'_>,
 ) -> Result<MetadataAnswer, TaskError> {
     let prompts = ctx.prompts;
-    let first: Vec<&PageLines> = pages.iter().take(2).collect();
+    let first: Vec<&PageLines> = if ctx.pinned.metadata {
+        pages.iter().collect()
+    } else {
+        pages.iter().take(2).collect()
+    };
     let schema = json!({
         "type": "object",
         "properties": {
@@ -732,17 +818,19 @@ pub fn extract_pins(
     ctx: &Ctx<'_>,
 ) -> Result<PinsResult, TaskError> {
     let prompts = ctx.prompts;
-    let keywords = [
-        ("pin functions", 8),
-        ("pin configuration", 8),
-        ("pin description", 8),
-        ("pinout", 4),
-        ("pin", 1),
-        ("terminal", 1),
-        ("tape and reel", -6),
-        ("orderable", -3),
-    ];
-    let chosen = select_with_hint(pages, &keywords, hint, 3, 4, ctx.options.pin_pages_chars());
+    let chosen: Vec<&PageLines> = if ctx.pinned.pins {
+        // The person pointed at the text: it is used as it is.
+        pages.iter().collect()
+    } else {
+        select_with_hint(
+            pages,
+            PIN_KEYWORDS,
+            hint,
+            3,
+            4,
+            ctx.options.pin_pages_chars(),
+        )
+    };
     if chosen.is_empty() {
         return Err(TaskError::Unusable(
             "no page of the datasheet text mentions pins".into(),
@@ -1081,34 +1169,18 @@ pub fn extract_package(
     ctx: &Ctx<'_>,
 ) -> Result<PackageAnswer, TaskError> {
     let prompts = ctx.prompts;
-    let keywords = [
-        ("package outline", 6),
-        ("mechanical data", 4),
-        ("seating plane", 6),
-        ("dimensions are in millimeters", 8),
-        ("dimensions are in", 3),
-        ("typ", 1),
-        ("bsc", 2),
-        ("max", 1),
-        ("min", 1),
-        ("pitch", 2),
-        ("tape", -4),
-        ("reel", -4),
-        ("dimension limits", 6),
-        ("millimeters", 2),
-        ("product identification", -10),
-        ("revision history", -10),
-        ("ordering information", -5),
-        ("orderable", -5),
-    ];
-    let chosen = select_with_hint(
-        pages,
-        &keywords,
-        hint,
-        8,
-        3,
-        ctx.options.package_pages_chars(),
-    );
+    let chosen: Vec<&PageLines> = if ctx.pinned.package {
+        pages.iter().collect()
+    } else {
+        select_with_hint(
+            pages,
+            PACKAGE_KEYWORDS,
+            hint,
+            8,
+            3,
+            ctx.options.package_pages_chars(),
+        )
+    };
     if chosen.is_empty() {
         return Err(TaskError::Unusable(
             "no page of the datasheet text describes the package".into(),

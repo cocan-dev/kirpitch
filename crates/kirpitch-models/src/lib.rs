@@ -21,8 +21,8 @@ pub mod tasks;
 pub mod transport;
 
 pub use build::{
-    BuildOptions, BuildReport, Progress, Score, StageState, assemble, build, build_with_keys,
-    build_with_progress, score, template_from_answer,
+    BuildOptions, BuildReport, GivenText, Progress, Score, StageState, assemble, build,
+    build_with_keys, build_with_progress, score, template_from_answer,
 };
 pub use client::{ChatRequest, ChatResponse, Client, ModelError, Usage};
 pub use config::{
@@ -33,5 +33,5 @@ pub use discover::{FoundModel, ListRequest, list_models};
 pub use keys::{KeyError, KeyStore, MemoryKeyStore, OsKeyStore};
 pub use probe::{ProbeResult, probe};
 pub use prompts::{PROMPT_LIST, PromptInfo, Prompts};
-pub use tasks::{Cache, CallRecord, PageLines, Stats, TaskError, TextLine};
+pub use tasks::{Cache, CallRecord, PageLines, Stats, TaskError, TextLine, suggest_pages};
 pub use transport::{CurlTransport, MockTransport, Reply, Request, Transport, TransportError};

@@ -353,6 +353,7 @@ function openDatasheetDialog(pdf) {
   if (pdf) $("ds-pdf").value = pdf;
   // The default of "read twice" is a setting.
   if (typeof appSettings !== "undefined" && appSettings && appSettings.extraction && !$("ds-dialog").dataset.touched) $("ds-second").checked = !!appSettings.extraction.second_read;
+  if (typeof gdReset === "function") gdReset();
   $("ds-dialog").showModal();
 }
 
@@ -400,6 +401,7 @@ $("ds-form").addEventListener("submit", async (ev) => {
       hint: $("ds-hint").value,
       second_read: $("ds-second").checked,
       config: "",
+      guide: typeof guidedInput === "function" ? guidedInput() : null,
     };
     const outcome = await invoke("build_part", { input });
     buildEnd(!!outcome.view, outcome.failures.length);
