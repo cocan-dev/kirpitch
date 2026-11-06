@@ -17,6 +17,8 @@ of them, and a shared S-expression writer was missing from the list.
 - Crates are created when they get code: `kirpitch-core`, `kirpitch-kicad`,
   `kirpitch-gen-symbol`, `kirpitch-gen-footprint` and `kirpitch-cli` in
   milestone 1. Empty crates are not created.
+- Two helper members are not part of the product: `kirpitch-golden` (tests of
+  the golden set only, ADR 0013) and `xtask` (development commands).
 - `publish = false` everywhere until the maintainers decide otherwise.
 - Every `.rs` file starts with the SPDX licence line; a test enforces it.
 

@@ -8,7 +8,23 @@ from one shared specification, and you approve each stage before the next one
 is built. It is written in Rust and runs locally, with any LLM (large language
 model) you have, or with none at all.
 
-**Status:** early development. Nothing is usable yet.
+**Status:** early development. Milestone 1 is done: from a hand-written
+PartSpec (Kirpitch's JSON description of a part) the command line tool writes a
+symbol and a footprint for SOIC-8 packages that load in KiCad 8, 9 and 10.
+Extraction from datasheets, the desktop app and 3D models are not built yet.
+
+## Try it
+
+You need Rust (stable). KiCad is optional.
+
+```sh
+cargo run -p kirpitch-cli -- check testdata/golden/lm358-soic8/partspec.json
+cargo run -p kirpitch-cli -- gen all testdata/golden/lm358-soic8/partspec.json -o out
+```
+
+This writes `out/LM358DR.kicad_sym` and `out/kirpitch.pretty/SOIC-8_3.9x4.9mm_P1.27mm.kicad_mod`.
+Use `--target 8`, `9` or `10` to choose the KiCad version; the default is the
+installed one. `kirpitch schema` prints the JSON schema of a PartSpec.
 
 ## Documentation
 
@@ -16,6 +32,8 @@ model) you have, or with none at all.
   for scope and design.
 - [Contributing](CONTRIBUTING.md): how we work, including checks, commits and
   pull requests.
+- [Decisions](docs/decisions): short records of design decisions.
+- [Changelog](CHANGELOG.md)
 
 ## License
 
