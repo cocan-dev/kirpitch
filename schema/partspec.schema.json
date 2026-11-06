@@ -138,6 +138,17 @@
       "description": "Size of the package body.",
       "type": "object",
       "properties": {
+        "center": {
+          "description": "Where the centre of the body is, relative to the footprint origin.\nSurface-mount footprints have their origin at the centre (leave this\nout); through-hole footprints have it at pin 1.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Point"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "height_max": {
           "description": "Maximum height above the board.",
           "$ref": "#/$defs/Mm"
@@ -456,6 +467,21 @@
           ],
           "format": "double"
         },
+        "drill": {
+          "description": "Diameter of the hole of a through-hole pad.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Mm"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "description": "Surface-mount (default) or through-hole.",
+          "$ref": "#/$defs/PadKind"
+        },
         "number": {
           "description": "Pad number; matches a pin number. Several pads may share a number.",
           "type": "string"
@@ -516,6 +542,21 @@
         "y",
         "size_x",
         "size_y"
+      ]
+    },
+    "PadKind": {
+      "description": "How a pad is mounted.",
+      "oneOf": [
+        {
+          "description": "Surface-mount pad on the top layer.",
+          "type": "string",
+          "const": "smd"
+        },
+        {
+          "description": "Through-hole pad with a drill, on all copper layers.",
+          "type": "string",
+          "const": "thru_hole"
+        }
       ]
     },
     "PadRole": {
@@ -610,6 +651,25 @@
         "number",
         "name",
         "electrical_type"
+      ]
+    },
+    "Point": {
+      "description": "A position in footprint coordinates (x right, y down), in millimetres.",
+      "type": "object",
+      "properties": {
+        "x": {
+          "description": "Horizontal position.",
+          "$ref": "#/$defs/Mm"
+        },
+        "y": {
+          "description": "Vertical position.",
+          "$ref": "#/$defs/Mm"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y"
       ]
     },
     "Rect": {

@@ -59,5 +59,7 @@ follows [Semantic Versioning](https://semver.org/).
   pattern out, matching KiCad's official SOIC-8, SOIC-16 and TSSOP-14 pads.
 - SOT-23 template (3, 5 and 6 leads) matching KiCad's pin positions and SOT-23-5 pads;
   footprints made from templates load in KiCad 8, 9 and 10.
+- Through-hole pads (`kind: thru_hole`, `drill`), body centre, the `drill` check, the DIP
+  template and through-hole footprints (silkscreen between the rows, pin 1 notch).
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.

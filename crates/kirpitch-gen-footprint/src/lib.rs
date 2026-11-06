@@ -15,7 +15,7 @@
 //! the courtyard. The rule numbers of the KLC are not cited because they have
 //! not been checked against the current KLC text yet.
 
-use kirpitch_core::partspec::{Pad, PadRole, PadShape};
+use kirpitch_core::partspec::{Pad, PadKind, PadRole, PadShape};
 use kirpitch_core::{FabProfile, Finding, PartSpec, has_errors, validate};
 use kirpitch_kicad::{KicadTarget, List, list};
 use thiserror::Error;
@@ -110,9 +110,19 @@ pub fn generate(spec: &PartSpec, options: &Options) -> Result<String, GenerateEr
 
     let body_half_x = spec.package.body.width.get() / 2.0;
     let body_half_y = spec.package.body.length.get() / 2.0;
-    let courtyard = courtyard(spec, body_half_x, body_half_y);
+    // Surface-mount footprints have their origin at the body centre; through-hole
+    // ones at pin 1, so the body is somewhere else.
+    let (cx, cy) = spec
+        .package
+        .body
+        .center
+        .map_or((0.0, 0.0), |c| (c.x.get(), c.y.get()));
+    let courtyard = courtyard(spec, (cx, cy), body_half_x, body_half_y);
+    let text_x = (courtyard.x_min + courtyard.x_max) / 2.0;
     let ref_y = courtyard.y_min - TEXT_DISTANCE;
     let value_y = courtyard.y_max + TEXT_DISTANCE;
+    let all_through_hole = pads.iter().all(|p| p.kind == PadKind::ThruHole);
+    let all_smd = pads.iter().all(|p| p.kind == PadKind::Smd);
 
     let mut fp = list("footprint")
         .string(&spec.package.name)
@@ -121,9 +131,22 @@ pub fn generate(spec: &PartSpec, options: &Options) -> Result<String, GenerateEr
         .child(list("layer").string("F.Cu"))
         .child(list("descr").string(&description(spec)))
         .child(list("tags").string(&tags(spec)))
-        .child(text_property("Reference", "REF**", ref_y, "F.SilkS"))
-        .child(text_property("Value", &spec.package.name, value_y, "F.Fab"))
-        .child(list("attr").atom("smd"))
+        .child(text_property(
+            "Reference",
+            "REF**",
+            text_x,
+            ref_y,
+            "F.SilkS",
+        ))
+        .child(text_property(
+            "Value",
+            &spec.package.name,
+            text_x,
+            value_y,
+            "F.Fab",
+        ))
+        .child_opt(all_smd.then(|| list("attr").atom("smd")))
+        .child_opt(all_through_hole.then(|| list("attr").atom("through_hole")))
         .child_opt(
             options
                 .target
@@ -131,20 +154,37 @@ pub fn generate(spec: &PartSpec, options: &Options) -> Result<String, GenerateEr
                 .then(|| list("duplicate_pad_numbers_are_jumpers").atom("no")),
         );
 
-    for (a, b) in silk_segments(pads, body_half_x + SILK_OFFSET, body_half_y + SILK_OFFSET) {
-        fp = fp.child(line(a, b, SILK_WIDTH, "F.SilkS"));
+    if all_through_hole {
+        fp = tht_silk(fp, pads, (cx, cy), body_half_x, body_half_y);
+    } else {
+        for (a, b) in silk_segments(
+            pads,
+            (cx, cy),
+            body_half_x + SILK_OFFSET,
+            body_half_y + SILK_OFFSET,
+        ) {
+            fp = fp.child(line(a, b, SILK_WIDTH, "F.SilkS"));
+        }
+        if pin_one.kind == PadKind::Smd {
+            fp = fp.child(pin_one_marker(pin_one, options.target));
+        }
     }
-    fp = fp.child(pin_one_marker(pin_one, options.target));
     fp = fp.child(courtyard_rect(&courtyard));
-    fp = fp.child(fab_outline(body_half_x, body_half_y, pin_one));
+    fp = fp.child(fab_outline(
+        (cx, cy),
+        body_half_x,
+        body_half_y,
+        pin_one,
+        options.target,
+    ));
     fp = fp.child(
         list("fp_text")
             .atom("user")
             .string("${REFERENCE}")
             .child(
                 list("at")
-                    .num(0.0)
-                    .num(0.0)
+                    .num(cx)
+                    .num(cy)
                     .num(if body_half_y > body_half_x { 90.0 } else { 0.0 }),
             )
             .child(list("layer").string("F.Fab"))
@@ -189,7 +229,7 @@ struct Box2 {
     y_max: f64,
 }
 
-fn courtyard(spec: &PartSpec, body_half_x: f64, body_half_y: f64) -> Box2 {
+fn courtyard(spec: &PartSpec, center: (f64, f64), body_half_x: f64, body_half_y: f64) -> Box2 {
     if let Some(r) = &spec.land_pattern.courtyard {
         return Box2 {
             x_min: r.x_min.get(),
@@ -199,10 +239,10 @@ fn courtyard(spec: &PartSpec, body_half_x: f64, body_half_y: f64) -> Box2 {
         };
     }
     let mut b = Box2 {
-        x_min: -body_half_x,
-        y_min: -body_half_y,
-        x_max: body_half_x,
-        y_max: body_half_y,
+        x_min: center.0 - body_half_x,
+        y_min: center.1 - body_half_y,
+        x_max: center.0 + body_half_x,
+        y_max: center.1 + body_half_y,
     };
     for pad in &spec.land_pattern.pads {
         let (x0, y0, x1, y1) = pad.bounds();
@@ -230,11 +270,11 @@ fn effects() -> List {
     )
 }
 
-fn text_property(name: &str, value: &str, y: f64, layer: &str) -> List {
+fn text_property(name: &str, value: &str, x: f64, y: f64, layer: &str) -> List {
     list("property")
         .string(name)
         .string(value)
-        .child(list("at").num(0.0).num(y).num(0.0))
+        .child(list("at").num(x).num(y).num(0.0))
         .child(list("layer").string(layer))
         .child(effects())
 }
@@ -263,9 +303,24 @@ fn courtyard_rect(c: &Box2) -> List {
 }
 
 /// Body outline on the fab layer with the corner nearest to pin 1 cut off.
-fn fab_outline(half_x: f64, half_y: f64, pin_one: &Pad) -> List {
-    let sx = if pin_one.x.get() > 0.0 { 1.0 } else { -1.0 };
-    let sy = if pin_one.y.get() > 0.0 { 1.0 } else { -1.0 };
+fn fab_outline(
+    center: (f64, f64),
+    half_x: f64,
+    half_y: f64,
+    pin_one: &Pad,
+    target: KicadTarget,
+) -> List {
+    let _ = target;
+    let sx = if pin_one.x.get() > center.0 {
+        1.0
+    } else {
+        -1.0
+    };
+    let sy = if pin_one.y.get() > center.1 {
+        1.0
+    } else {
+        -1.0
+    };
     let c = CHAMFER_MAX.min(half_x * 2.0 / 4.0).min(half_y * 2.0 / 4.0);
     let points = [
         (sx * (half_x - c), sy * half_y),
@@ -276,7 +331,7 @@ fn fab_outline(half_x: f64, half_y: f64, pin_one: &Pad) -> List {
     ];
     let mut pts = list("pts");
     for (x, y) in points {
-        pts = pts.child(list("xy").num(x).num(y));
+        pts = pts.child(list("xy").num(center.0 + x).num(center.1 + y));
     }
     list("fp_poly")
         .child(pts)
@@ -306,7 +361,12 @@ fn pin_one_marker(pad: &Pad, target: KicadTarget) -> List {
 }
 
 /// The parts of the silkscreen rectangle that keep their distance from pads.
-fn silk_segments(pads: &[Pad], half_x: f64, half_y: f64) -> Vec<((f64, f64), (f64, f64))> {
+fn silk_segments(
+    pads: &[Pad],
+    center: (f64, f64),
+    half_x: f64,
+    half_y: f64,
+) -> Vec<((f64, f64), (f64, f64))> {
     let grow = SILK_CLEARANCE + SILK_WIDTH / 2.0;
     let blocks: Vec<Box2> = pads
         .iter()
@@ -324,27 +384,91 @@ fn silk_segments(pads: &[Pad], half_x: f64, half_y: f64) -> Vec<((f64, f64), (f6
     let mut out = Vec::new();
 
     // Horizontal edges (top, then bottom), then vertical edges (left, right).
-    for y in [-half_y, half_y] {
+    let (cx, cy) = center;
+    for y in [cy - half_y, cy + half_y] {
         let cuts: Vec<(f64, f64)> = blocks
             .iter()
             .filter(|b| b.y_min + eps < y && y < b.y_max - eps)
             .map(|b| (b.x_min, b.x_max))
             .collect();
-        for (a, b) in free_intervals(-half_x, half_x, cuts) {
+        for (a, b) in free_intervals(cx - half_x, cx + half_x, cuts) {
             out.push(((a, y), (b, y)));
         }
     }
-    for x in [-half_x, half_x] {
+    for x in [cx - half_x, cx + half_x] {
         let cuts: Vec<(f64, f64)> = blocks
             .iter()
             .filter(|b| b.x_min + eps < x && x < b.x_max - eps)
             .map(|b| (b.y_min, b.y_max))
             .collect();
-        for (a, b) in free_intervals(-half_y, half_y, cuts) {
+        for (a, b) in free_intervals(cy - half_y, cy + half_y, cuts) {
             out.push(((x, a), (x, b)));
         }
     }
     out
+}
+
+/// Silkscreen of a through-hole package: the pads sit outside the body, so a
+/// rectangle between the two rows is drawn, with a half circle at the end of
+/// pin 1 as the pin 1 mark. The lines keep their distance from the pads.
+fn tht_silk(mut fp: List, pads: &[Pad], center: (f64, f64), half_x: f64, half_y: f64) -> List {
+    let grow = SILK_CLEARANCE + SILK_WIDTH / 2.0;
+    let (cx, cy) = center;
+    let left: Vec<&Pad> = pads.iter().filter(|p| p.x.get() < cx).collect();
+    let right: Vec<&Pad> = pads.iter().filter(|p| p.x.get() > cx).collect();
+    let x_left = left
+        .iter()
+        .map(|p| p.bounds().2 + grow)
+        .fold(cx - half_x, f64::max);
+    let x_right = right
+        .iter()
+        .map(|p| p.bounds().0 - grow)
+        .fold(cx + half_x, f64::min);
+    let y_top = pads
+        .iter()
+        .map(|p| p.bounds().1 - grow)
+        .fold(cy - half_y - SILK_WIDTH / 2.0, f64::min);
+    let y_bottom = pads
+        .iter()
+        .map(|p| p.bounds().3 + grow)
+        .fold(cy + half_y + SILK_WIDTH / 2.0, f64::max);
+    let notch = 1.0f64.min((x_right - x_left) / 4.0);
+    let layer = "F.SilkS";
+    fp = fp
+        .child(line((x_left, y_top), (x_left, y_bottom), SILK_WIDTH, layer))
+        .child(line(
+            (x_left, y_bottom),
+            (x_right, y_bottom),
+            SILK_WIDTH,
+            layer,
+        ))
+        .child(line(
+            (cx - notch, y_top),
+            (x_left, y_top),
+            SILK_WIDTH,
+            layer,
+        ))
+        .child(line(
+            (x_right, y_top),
+            (cx + notch, y_top),
+            SILK_WIDTH,
+            layer,
+        ))
+        .child(line(
+            (x_right, y_bottom),
+            (x_right, y_top),
+            SILK_WIDTH,
+            layer,
+        ))
+        .child(
+            list("fp_arc")
+                .child(list("start").num(cx + notch).num(y_top))
+                .child(list("mid").num(cx).num(y_top + notch))
+                .child(list("end").num(cx - notch).num(y_top))
+                .child(stroke(SILK_WIDTH))
+                .child(list("layer").string(layer)),
+        );
+    fp
 }
 
 /// The parts of `[from, to]` not covered by any of the `cuts`.
@@ -380,6 +504,26 @@ fn pad_node(pad: &Pad, target: KicadTarget) -> List {
     let mut at = list("at").num(pad.x.get()).num(pad.y.get());
     if pad.rotation_deg != 0.0 {
         at = at.num(pad.rotation_deg);
+    }
+    if pad.kind == PadKind::ThruHole {
+        let mut node = list("pad")
+            .string(&pad.number)
+            .atom("thru_hole")
+            .atom(shape)
+            .child(at)
+            .child(list("size").num(pad.size_x.get()).num(pad.size_y.get()));
+        if let Some(d) = pad.drill {
+            node = node.child(list("drill").num(d.get()));
+        }
+        node = node
+            .child(list("layers").string("*.Cu").string("*.Mask"))
+            .child(list("remove_unused_layers").atom("no"));
+        if pad.shape == PadShape::RoundRect {
+            node = node.child(
+                list("roundrect_rratio").num(pad.corner_ratio.unwrap_or(DEFAULT_CORNER_RATIO)),
+            );
+        }
+        return node;
     }
     let mut layers = list("layers").string("F.Cu");
     if pad.paste && target.footprint_paste_layer_before_mask() {

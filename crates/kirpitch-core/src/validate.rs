@@ -12,7 +12,7 @@ use crate::electrical::ElectricalType;
 use crate::fab::FabProfile;
 use crate::ipc;
 use crate::names;
-use crate::partspec::{Origin, Pad, PadRole, PartSpec, SCHEMA_VERSION};
+use crate::partspec::{Origin, Pad, PadKind, PadRole, PartSpec, SCHEMA_VERSION};
 use crate::source::Source;
 use crate::units::LengthUnit;
 
@@ -60,6 +60,8 @@ pub enum Check {
     OverrideUnknown,
     /// The datasheet land pattern and the IPC-7351 result agree.
     TwoSources,
+    /// Through-hole pads have a hole that is smaller than the pad.
+    Drill,
 }
 
 impl Check {
@@ -82,6 +84,7 @@ impl Check {
             Check::ExposedPad => "exposed_pad",
             Check::OverrideUnknown => "override_unknown",
             Check::TwoSources => "two_sources",
+            Check::Drill => "drill",
         }
     }
 }
@@ -126,6 +129,7 @@ pub fn validate(spec: &PartSpec, fab: &FabProfile) -> Vec<Finding> {
     v.exposed_pad(spec);
     v.overrides(spec);
     v.two_sources(spec);
+    v.drills(spec);
     let mut findings = v.out;
     for f in &mut findings {
         if f.level == Level::Warning {
@@ -425,7 +429,7 @@ fn pad_gap(a: &Pad, b: &Pad) -> f64 {
 }
 
 /// Every check id that can appear in an override.
-const ALL_CHECKS: [Check; 16] = [
+const ALL_CHECKS: [Check; 17] = [
     Check::SchemaVersion,
     Check::PinCount,
     Check::PinNumber,
@@ -442,6 +446,7 @@ const ALL_CHECKS: [Check; 16] = [
     Check::ExposedPad,
     Check::OverrideUnknown,
     Check::TwoSources,
+    Check::Drill,
 ];
 
 /// Pads with a paste area above this size count as large exposed pads.
@@ -662,6 +667,46 @@ impl Validator {
                     differences.join("; ")
                 ),
             );
+        }
+    }
+}
+
+impl Validator {
+    /// Through-hole pads need a drill smaller than the pad; surface-mount pads
+    /// must not have one.
+    fn drills(&mut self, spec: &PartSpec) {
+        for (i, pad) in spec.land_pattern.pads.iter().enumerate() {
+            let path = format!("land_pattern.pads[{i}].drill");
+            match (pad.kind, pad.drill) {
+                (PadKind::ThruHole, None) => self.add(
+                    Check::Drill,
+                    Level::Error,
+                    path,
+                    "a through-hole pad needs a drill",
+                ),
+                (PadKind::ThruHole, Some(d)) => {
+                    let smallest = pad.size_x.get().min(pad.size_y.get());
+                    if d.get() <= 0.0 || d.get() >= smallest {
+                        self.add(
+                            Check::Drill,
+                            Level::Error,
+                            path,
+                            format!(
+                                "the drill ({} mm) must be greater than 0 and smaller than the pad ({} mm)",
+                                d.get(),
+                                smallest
+                            ),
+                        );
+                    }
+                }
+                (PadKind::Smd, Some(_)) => self.add(
+                    Check::Drill,
+                    Level::Error,
+                    path,
+                    "a surface-mount pad cannot have a drill; set kind to thru_hole",
+                ),
+                (PadKind::Smd, None) => {}
+            }
         }
     }
 }
