@@ -118,6 +118,28 @@ impl KicadCli {
         }
     }
 
+    /// Looks for `kicad-cli`: first the `KIRPITCH_KICAD_CLI` variable, then the
+    /// `PATH`, then the default install places of KiCad (newest version first).
+    /// Nothing is changed on the system. Returns `None` when none works.
+    pub fn discover() -> Option<KicadCli> {
+        if let Some(cli) = KicadCli::from_env() {
+            return Some(cli);
+        }
+        let mut candidates: Vec<PathBuf> = vec![PathBuf::from("kicad-cli")];
+        for major in [11, 10, 9, 8] {
+            candidates.push(PathBuf::from(format!(
+                "C:\\Program Files\\KiCad\\{major}.0\\bin\\kicad-cli.exe"
+            )));
+        }
+        candidates.push(PathBuf::from(
+            "/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli",
+        ));
+        candidates
+            .into_iter()
+            .map(KicadCli::new)
+            .find(|cli| cli.version().is_ok())
+    }
+
     /// The executable path.
     pub fn path(&self) -> &Path {
         &self.path
