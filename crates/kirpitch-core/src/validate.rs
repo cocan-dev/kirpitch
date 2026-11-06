@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::electrical::ElectricalType;
 use crate::fab::FabProfile;
+use crate::names;
 use crate::partspec::{Origin, Pad, PadRole, PartSpec, SCHEMA_VERSION};
 use crate::source::Source;
 use crate::units::LengthUnit;
@@ -48,6 +49,14 @@ pub enum Check {
     SourceValid,
     /// Values that were read from a datasheet carry a source.
     SourceRequired,
+    /// Supply and ground pins have power types and there is a ground pin.
+    PowerPins,
+    /// The pins of a row fit inside the package body.
+    PitchFit,
+    /// A large exposed pad has one big paste area that should be reviewed.
+    ExposedPad,
+    /// An override refers to a check that does not exist.
+    OverrideUnknown,
 }
 
 impl Check {
@@ -65,6 +74,10 @@ impl Check {
             Check::PositiveValue => "positive_value",
             Check::SourceValid => "source_valid",
             Check::SourceRequired => "source_required",
+            Check::PowerPins => "power_pins",
+            Check::PitchFit => "pitch_fit",
+            Check::ExposedPad => "exposed_pad",
+            Check::OverrideUnknown => "override_unknown",
         }
     }
 }
@@ -104,6 +117,10 @@ pub fn validate(spec: &PartSpec, fab: &FabProfile) -> Vec<Finding> {
     v.tolerances_and_units(spec);
     v.pad_clearance(spec, fab);
     v.sources(spec);
+    v.power_pins(spec);
+    v.pitch_fit(spec);
+    v.exposed_pad(spec);
+    v.overrides(spec);
     let mut findings = v.out;
     for f in &mut findings {
         if f.level == Level::Warning {
@@ -400,4 +417,156 @@ fn pad_gap(a: &Pad, b: &Pad) -> f64 {
     let dx = (ax0 - bx1).max(bx0 - ax1).max(0.0);
     let dy = (ay0 - by1).max(by0 - ay1).max(0.0);
     dx.hypot(dy)
+}
+
+/// Every check id that can appear in an override.
+const ALL_CHECKS: [Check; 15] = [
+    Check::SchemaVersion,
+    Check::PinCount,
+    Check::PinNumber,
+    Check::PinName,
+    Check::PinPadMatch,
+    Check::ToleranceOrder,
+    Check::Units,
+    Check::PadClearance,
+    Check::PositiveValue,
+    Check::SourceValid,
+    Check::SourceRequired,
+    Check::PowerPins,
+    Check::PitchFit,
+    Check::ExposedPad,
+    Check::OverrideUnknown,
+];
+
+/// Pads with a paste area above this size count as large exposed pads.
+const EXPOSED_PAD_AREA_MM2: f64 = 4.0;
+
+impl Validator {
+    fn power_pins(&mut self, spec: &PartSpec) {
+        let mut has_power_pin = false;
+        let mut has_ground = false;
+        for (i, pin) in spec.pins.iter().enumerate() {
+            let is_power = pin.electrical_type.is_power();
+            has_power_pin |= is_power;
+            let ground = names::looks_like_ground(&pin.name);
+            has_ground |= is_power && ground;
+            if !is_power && (ground || names::looks_like_supply(&pin.name)) {
+                self.add(
+                    Check::PowerPins,
+                    Level::Warning,
+                    format!("pins[{i}].electrical_type"),
+                    format!(
+                        "pin `{}` looks like a supply pin but its type is `{}`; use power_in or power_out",
+                        pin.name,
+                        pin.electrical_type.as_str()
+                    ),
+                );
+            }
+        }
+        if has_power_pin && !has_ground {
+            self.add(
+                Check::PowerPins,
+                Level::Warning,
+                "pins",
+                "no ground pin: no power pin has a name like GND or VSS",
+            );
+        }
+    }
+
+    /// `(pins in a row - 1) x pitch` must fit inside the body length (rows on
+    /// the left and right) or width (rows at the top and bottom).
+    fn pitch_fit(&mut self, spec: &PartSpec) {
+        let pitch = spec.package.pitch.get();
+        if pitch <= 0.0 {
+            return; // reported by the positive value check
+        }
+        let eps = 1e-6;
+        // Positions along each row, by side.
+        let mut rows: [Vec<f64>; 4] = Default::default();
+        for pad in &spec.land_pattern.pads {
+            if pad.role != PadRole::Signal {
+                continue;
+            }
+            let (x, y) = (pad.x.get(), pad.y.get());
+            // Pads near the centre (an exposed pad) belong to no row.
+            let (row, along) =
+                if x.abs() >= y.abs() && x.abs() > spec.package.body.width.get() / 4.0 {
+                    (usize::from(x > 0.0), y)
+                } else if y.abs() > spec.package.body.length.get() / 4.0 {
+                    (2 + usize::from(y > 0.0), x)
+                } else {
+                    continue;
+                };
+            if !rows[row].iter().any(|v| (v - along).abs() < eps) {
+                rows[row].push(along);
+            }
+        }
+        for (row, positions) in rows.iter().enumerate() {
+            if positions.len() < 2 {
+                continue;
+            }
+            let limit = if row < 2 {
+                spec.package.body.length.get()
+            } else {
+                spec.package.body.width.get()
+            };
+            let span = (positions.len() - 1) as f64 * pitch;
+            if span > limit + eps {
+                self.add(
+                    Check::PitchFit,
+                    Level::Error,
+                    "package.pitch",
+                    format!(
+                        "{} pins in a row at a pitch of {pitch} mm need {span:.3} mm, but the body is {limit} mm",
+                        positions.len()
+                    ),
+                );
+                return; // one finding is enough
+            }
+        }
+    }
+
+    fn exposed_pad(&mut self, spec: &PartSpec) {
+        for (i, pad) in spec.land_pattern.pads.iter().enumerate() {
+            let area = pad.size_x.get() * pad.size_y.get();
+            if pad.paste && area > EXPOSED_PAD_AREA_MM2 {
+                self.add(
+                    Check::ExposedPad,
+                    Level::Warning,
+                    format!("land_pattern.pads[{i}].paste"),
+                    format!(
+                        "pad `{}` is {area:.1} mm2 with one paste area; large exposed pads usually need split paste windows",
+                        pad.number
+                    ),
+                );
+            }
+        }
+    }
+
+    fn overrides(&mut self, spec: &PartSpec) {
+        for (i, o) in spec.overrides.iter().enumerate() {
+            if !ALL_CHECKS.iter().any(|c| c.id() == o.check) {
+                self.add(
+                    Check::OverrideUnknown,
+                    Level::Warning,
+                    format!("overrides[{i}].check"),
+                    format!("there is no check called `{}`", o.check),
+                );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn check_ids_are_unique_and_listed() {
+        let mut ids: Vec<&str> = ALL_CHECKS.iter().map(|c| c.id()).collect();
+        ids.sort_unstable();
+        let before = ids.len();
+        ids.dedup();
+        assert_eq!(before, ids.len());
+    }
 }

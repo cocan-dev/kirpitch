@@ -287,7 +287,9 @@ fn pin_node(p: &Placed<'_>, target: KicadTarget) -> List {
 /// Which side of the symbol a pin belongs on.
 fn side_of(pin: &Pin) -> Side {
     match pin.electrical_type {
-        ElectricalType::PowerIn if is_ground(&pin.name) => Side::Bottom,
+        ElectricalType::PowerIn if kirpitch_core::names::looks_like_ground(&pin.name) => {
+            Side::Bottom
+        }
         ElectricalType::PowerIn => Side::Top,
         ElectricalType::PowerOut
         | ElectricalType::Output
@@ -297,17 +299,6 @@ fn side_of(pin: &Pin) -> Side {
         | ElectricalType::OpenEmitter => Side::Right,
         _ => Side::Left,
     }
-}
-
-/// True for names of ground and negative supply pins.
-fn is_ground(name: &str) -> bool {
-    let n = name.to_ascii_uppercase();
-    n.contains("GND")
-        || n.starts_with("VSS")
-        || n.starts_with("VEE")
-        || n.starts_with("V-")
-        || n == "-V"
-        || n == "0V"
 }
 
 /// Number of visible characters; the overbar markup `~{...}` is not counted.
@@ -524,16 +515,6 @@ fn round_up(value: f64, step: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn ground_names() {
-        for n in ["GND", "AGND", "VSS", "V-", "VEE", "-V", "PGND2"] {
-            assert!(is_ground(n), "{n}");
-        }
-        for n in ["VCC", "VDD", "V+", "VIN"] {
-            assert!(!is_ground(n), "{n}");
-        }
-    }
 
     #[test]
     fn overbar_is_not_counted() {

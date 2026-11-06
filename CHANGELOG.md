@@ -49,5 +49,6 @@ follows [Semantic Versioning](https://semver.org/).
 - PartSpec `origin` (hand, region, llm): values read from a datasheet must carry a
   source with page and region, and a confidence when a model read them
   (`source_required` check, ADR 0004).
+- More checks: `power_pins`, `pitch_fit`, `exposed_pad` (ADR 0019) and `override_unknown`.
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.

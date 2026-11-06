@@ -311,3 +311,87 @@ fn origin_round_trips_in_json() {
     assert!(text.contains("\"origin\": \"llm\""));
     assert_eq!(PartSpec::from_json_str(&text).unwrap().origin, Origin::Llm);
 }
+
+#[test]
+fn supply_pins_need_power_types_and_there_must_be_a_ground() {
+    let mut spec = load();
+    // Pin 8 is VCC.
+    spec.pins[7].electrical_type = kirpitch_core::ElectricalType::Input;
+    let f = findings(&spec);
+    assert!(f.contains(&(
+        Check::PowerPins,
+        Level::Warning,
+        "pins[7].electrical_type".into()
+    )));
+
+    let mut spec = load();
+    spec.pins[3].name = "X".into(); // the only ground pin
+    let f = findings(&spec);
+    assert!(f.contains(&(Check::PowerPins, Level::Warning, "pins".into())));
+
+    // A part without any power pin is not asked for a ground.
+    let mut spec = load();
+    spec.pins[3].electrical_type = kirpitch_core::ElectricalType::Passive;
+    spec.pins[7].electrical_type = kirpitch_core::ElectricalType::Passive;
+    assert!(!findings(&spec).contains(&(Check::PowerPins, Level::Warning, "pins".into())));
+}
+
+#[test]
+fn pins_of_a_row_must_fit_in_the_body() {
+    let mut spec = load();
+    // 4 pins per side at 1.27 mm need 3.81 mm; the body is 4.9 mm long.
+    assert_eq!(findings(&spec), vec![]);
+    spec.package.body.length = mm(3.5);
+    assert_eq!(
+        findings(&spec),
+        vec![(Check::PitchFit, Level::Error, "package.pitch".into())]
+    );
+}
+
+#[test]
+fn a_large_exposed_pad_with_paste_gets_a_warning() {
+    let mut spec = load();
+    let mut ep = spec.land_pattern.pads[0].clone();
+    ep.number = "EP".into();
+    ep.x = mm(0.0);
+    ep.y = mm(0.0);
+    ep.size_x = mm(2.2);
+    ep.size_y = mm(2.2);
+    spec.land_pattern.pads.push(ep);
+    let mut pin = spec.pins[3].clone();
+    pin.number = "EP".into();
+    pin.name = "EP".into();
+    pin.electrical_type = kirpitch_core::ElectricalType::Passive;
+    spec.pins.push(pin);
+    spec.package.pin_count = 9;
+    let f = findings(&spec);
+    assert_eq!(
+        f,
+        vec![(
+            Check::ExposedPad,
+            Level::Warning,
+            "land_pattern.pads[8].paste".into()
+        )]
+    );
+    // The warning can be accepted with a note, or the pad given no paste.
+    spec.land_pattern.pads[8].paste = false;
+    assert_eq!(findings(&spec), vec![]);
+}
+
+#[test]
+fn an_override_for_a_missing_check_is_reported() {
+    let mut spec = load();
+    spec.overrides.push(kirpitch_core::partspec::Override {
+        check: "pin_cuont".into(),
+        path: String::new(),
+        note: "typo".into(),
+    });
+    assert_eq!(
+        findings(&spec),
+        vec![(
+            Check::OverrideUnknown,
+            Level::Warning,
+            "overrides[0].check".into()
+        )]
+    );
+}
