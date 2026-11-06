@@ -38,5 +38,7 @@ follows [Semantic Versioning](https://semver.org/).
   (KiCad target from `--target`, the installed KiCad, or the newest supported).
 - CI job that runs the `kicad-cli` tests in the official KiCad 10 container, with
   `scripts/kicad-cli-docker.sh` as the wrapper.
+- KiCad 9 writers for symbols and footprints (`--target 9`), with expected files
+  per KiCad version and a KiCad 9 job in the `kicad-cli` workflow.
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.

@@ -24,10 +24,20 @@ fn output() -> String {
 
 #[test]
 fn matches_the_snapshot() {
-    assert_snapshot(
-        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/soic8_example.kicad_mod"),
-        &output(),
-    );
+    for &target in KicadTarget::ALL {
+        let options = Options {
+            target,
+            ..Default::default()
+        };
+        let text = generate(&spec(), &options).expect("generates");
+        assert_snapshot(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
+                "tests/snapshots/soic8_example.kicad{}.kicad_mod",
+                target.major()
+            )),
+            &text,
+        );
+    }
 }
 
 #[test]
@@ -201,5 +211,12 @@ fn kicad_loads_the_footprint() {
     let Some(cli) = kicad_cli_or_skip() else {
         return;
     };
-    assert_footprint_loads(&cli, "gen-fp", &output(), &file_name(&spec()));
+    for &target in KicadTarget::ALL {
+        let options = Options {
+            target,
+            ..Default::default()
+        };
+        let text = generate(&spec(), &options).unwrap();
+        assert_footprint_loads(&cli, target, "gen-fp", &text, &file_name(&spec()));
+    }
 }

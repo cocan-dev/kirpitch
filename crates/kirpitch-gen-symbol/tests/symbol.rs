@@ -24,10 +24,20 @@ fn output() -> String {
 
 #[test]
 fn matches_the_snapshot() {
-    assert_snapshot(
-        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/soic8_example.kicad_sym"),
-        &output(),
-    );
+    for &target in KicadTarget::ALL {
+        let options = Options {
+            target,
+            ..Default::default()
+        };
+        let text = generate(&spec(), &options).expect("generates");
+        assert_snapshot(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
+                "tests/snapshots/soic8_example.kicad{}.kicad_sym",
+                target.major()
+            )),
+            &text,
+        );
+    }
 }
 
 #[test]
@@ -171,7 +181,14 @@ fn kicad_loads_the_symbol() {
     let Some(cli) = kicad_cli_or_skip() else {
         return;
     };
-    check_with_kicad(&cli, "gen-sym", &output(), &file_name(&spec()));
+    for &target in KicadTarget::ALL {
+        let options = Options {
+            target,
+            ..Default::default()
+        };
+        let text = generate(&spec(), &options).unwrap();
+        check_with_kicad(&cli, target, "gen-sym", &text, &file_name(&spec()));
+    }
 }
 
 #[test]
@@ -180,10 +197,22 @@ fn kicad_loads_the_symbol_with_stacked_pins() {
         return;
     };
     let s = stacked_spec();
-    let text = generate(&s, &Options::default()).unwrap();
-    check_with_kicad(&cli, "gen-sym-stacked", &text, &file_name(&s));
+    for &target in KicadTarget::ALL {
+        let options = Options {
+            target,
+            ..Default::default()
+        };
+        let text = generate(&s, &options).unwrap();
+        check_with_kicad(&cli, target, "gen-sym-stacked", &text, &file_name(&s));
+    }
 }
 
-fn check_with_kicad(cli: &kirpitch_kicad::KicadCli, label: &str, text: &str, file_name: &str) {
-    assert_symbol_loads(cli, label, text, file_name);
+fn check_with_kicad(
+    cli: &kirpitch_kicad::KicadCli,
+    target: KicadTarget,
+    label: &str,
+    text: &str,
+    file_name: &str,
+) {
+    assert_symbol_loads(cli, target, label, text, file_name);
 }
