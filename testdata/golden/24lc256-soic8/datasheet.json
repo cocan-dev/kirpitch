@@ -1,0 +1,19 @@
+{
+  "manufacturer": "Microchip Technology",
+  "part": "24LC256",
+  "title": "24AA256/24LC256/24FC256 256 Kbit I2C Serial EEPROM",
+  "url": "https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/24AA256-24LC256-24FC256-256-Kbit-I2C-Serial-EEPROM-20001203X.pdf",
+  "sha256": "362d63fbe6daedc73acf7bfecb82952b0c757d99027293b4102dd2b1bc117d7e",
+  "size_bytes": 937765,
+  "revision": "DS20001203X",
+  "checked_on": "2026-11-06",
+  "package": "8-Lead SOIC (SN), 3.90 mm body, Microchip drawing C04-057-SN (JEDEC MS-012)",
+  "pages": {
+    "pinout": 1,
+    "pin_table": 7,
+    "package_outline": 26,
+    "land_pattern": 27
+  },
+  "notes": "The pinout is read from the SOIC column of the package diagram on page 1; the pin table on page 7 repeats it. Only the SN (SOIC) package is described here.",
+  "partspec_review": "Drafted by an AI assistant from the pages listed above; needs review by a maintainer before it is relied on."
+}

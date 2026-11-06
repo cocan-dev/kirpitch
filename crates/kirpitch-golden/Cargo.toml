@@ -1,0 +1,18 @@
+[package]
+name = "kirpitch-golden"
+description = "Golden test set: hand-checked PartSpecs and their expected KiCad files"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+kirpitch-core = { path = "../kirpitch-core" }
+kirpitch-kicad = { path = "../kirpitch-kicad" }
+kirpitch-gen-symbol = { path = "../kirpitch-gen-symbol" }
+kirpitch-gen-footprint = { path = "../kirpitch-gen-footprint" }
+serde_json = "1.0.154"

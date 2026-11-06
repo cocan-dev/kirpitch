@@ -1,0 +1,18 @@
+{
+  "manufacturer": "Texas Instruments",
+  "part": "LM358DR",
+  "title": "LM2904, LM358 and related: Industry-Standard Dual Operational Amplifiers",
+  "url": "https://www.ti.com/lit/ds/symlink/lm358.pdf",
+  "sha256": "8277dff7b89138c63b3582d37f378065a1dea3cae5ed1e2926ddc2779eb7e3a2",
+  "size_bytes": 4150801,
+  "revision": "SLOS068AB, revised October 2024",
+  "checked_on": "2026-11-06",
+  "package": "SOIC-8, TI drawing D0008A (JEDEC MS-012, variation AA)",
+  "pages": {
+    "pinout": 3,
+    "package_outline": 63,
+    "land_pattern": 64
+  },
+  "notes": "The datasheet covers several packages and devices; only the SOIC (D) package is described here. The land pattern is the example board layout of the TI drawing.",
+  "partspec_review": "Drafted by an AI assistant from the pages listed above; needs review by a maintainer before it is relied on."
+}

@@ -1,0 +1,18 @@
+{
+  "manufacturer": "Texas Instruments",
+  "part": "NE555DR",
+  "title": "NA555, NE555, SA555, SE555: xx555 Precision Timers",
+  "url": "https://www.ti.com/lit/ds/symlink/ne555.pdf",
+  "sha256": "a3756e59fd06d0ba736edf9ffe71d99d2aae33fb7e49fedc86165a241179f4a6",
+  "size_bytes": 2258813,
+  "revision": "SLFS022K, revised March 2026",
+  "checked_on": "2026-11-06",
+  "package": "SOIC-8, TI drawing D0008A (JEDEC MS-012, variation AA)",
+  "pages": {
+    "pinout": 3,
+    "package_outline": 30,
+    "land_pattern": 31
+  },
+  "notes": "Same TI package drawing as the LM358; the datasheet covers several packages. The land pattern is the example board layout of the TI drawing.",
+  "partspec_review": "Drafted by an AI assistant from the pages listed above; needs review by a maintainer before it is relied on."
+}
