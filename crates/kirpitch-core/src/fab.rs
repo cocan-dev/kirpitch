@@ -37,7 +37,7 @@ impl FabProfile {
             name: "generic".to_string(),
             min_copper_gap: mm(0.20),
             min_mask_web: mm(0.10),
-            min_silk_width: mm(0.15),
+            min_silk_width: mm(0.12),
             min_silk_text_height: mm(0.80),
         }
     }
@@ -62,7 +62,7 @@ mod tests {
         let p = FabProfile::generic();
         assert_eq!(p.min_copper_gap.format(), "0.2");
         assert_eq!(p.min_mask_web.format(), "0.1");
-        assert_eq!(p.min_silk_width.format(), "0.15");
+        assert_eq!(p.min_silk_width.format(), "0.12");
         assert_eq!(p.min_silk_text_height.format(), "0.8");
     }
 }
