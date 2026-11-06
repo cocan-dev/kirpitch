@@ -29,9 +29,13 @@ fn export(path: String, out_dir: String, target: Option<u32>) -> Result<Vec<Stri
     export_files(path.trim(), out_dir.trim(), target)
 }
 
+/// Rendering a page takes a moment, so it runs off the thread of the window
+/// (the viewer asks for many pages while you scroll).
 #[tauri::command]
-fn page_image(pdf: String, page: u32, width: u32) -> Result<PageImage, String> {
-    render_datasheet_page(pdf.trim(), page, width)
+async fn page_image(pdf: String, page: u32, width: u32) -> Result<PageImage, String> {
+    tauri::async_runtime::spawn_blocking(move || render_datasheet_page(pdf.trim(), page, width))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

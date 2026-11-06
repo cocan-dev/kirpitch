@@ -100,18 +100,25 @@ async function gdGo(step) {
       gd.loading = false;
     }
   }
-  gd.step = step;
-  gd.visited.add(step);
-  if (gdIsPick(step)) {
-    // Start on the first place already chosen, else on the best suggestion.
-    const key = GD_STEPS[step - 1].key;
-    const chosen = gd.regions[key][0];
-    const best = gd.suggestions && gd.suggestions[key][0];
-    gd.page = chosen ? chosen.page : best ? best.page : 1;
+  try {
+    if (gdIsPick(step)) {
+      // Start on the first place already chosen, else on the best suggestion.
+      const key = GD_STEPS[step - 1].key;
+      const chosen = gd.regions[key][0];
+      const best = ((gd.suggestions && gd.suggestions[key]) || [])[0];
+      gd.page = chosen ? chosen.page : best ? best.page : 1;
+    }
+    gd.step = step;
+    gd.visited.add(step);
+    gd.extending = false;
+    gdShow(step);
+    if (gdIsPick(step)) await gdLoadPage();
+    if (step === GD_LAST) await gdUpdatePreview();
+  } catch (e) {
+    // Whatever went wrong, the screen shows the step that is current.
+    gdError(String(e));
+    gdShow(gd.step);
   }
-  gdShow(step);
-  if (gdIsPick(step)) await gdLoadPage();
-  if (step === GD_LAST) await gdUpdatePreview();
 }
 
 function gdShow(step) {
@@ -155,48 +162,153 @@ function gdPaintStepper() {
   );
 }
 
-// ---- The page viewer -----------------------------------------------------------------------
+// ---- The page viewer: the whole document, scrolling ---------------------------------------------
+//
+// Every page has its place in one long column; a page is drawn when it comes
+// near the window and let go when it is far away, so a 200 page datasheet costs
+// no more than a few pages. Boxes are drawn on the page under the pointer.
 
-async function gdLoadPage() {
-  if (!gd.pdf) return;
+const GD_WIDTH = 900;
+const GD_KEEP = 14; // pages kept drawn at the same time
+let gdObserver = null;
+let gdQueue = [];
+let gdBusy = 0;
+const gdDrawn = new Set();
+
+function gdWrap() {
+  return $("gd-wrap");
+}
+
+function gdPageEl(p) {
+  return $("gd-pages").children[p - 1];
+}
+
+function gdBuildPages() {
+  const box = $("gd-pages");
+  if (box.dataset.pdf === gd.pdf && box.children.length === gd.count) return;
+  box.dataset.pdf = gd.pdf;
+  if (gdObserver) gdObserver.disconnect();
+  gdDrawn.clear();
+  gdQueue = [];
+  box.replaceChildren();
+  gd.ratio = 1.414;
+  for (let p = 1; p <= gd.count; p++) {
+    const d = el("div", { class: "gd-pg", "data-page": String(p) });
+    d.style.aspectRatio = "1 / " + gd.ratio;
+    d.append(el("canvas"), el("span", { class: "gd-pg-no", text: "page " + p }));
+    box.append(d);
+  }
+  gdObserver = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) if (e.isIntersecting) gdWant(Number(e.target.dataset.page));
+    },
+    { root: gdWrap(), rootMargin: "900px 0px" }
+  );
+  [...box.children].forEach((c) => gdObserver.observe(c));
+}
+
+function gdWant(p) {
+  if (gdDrawn.has(p) || gdQueue.includes(p)) return;
+  gdQueue.push(p);
+  gdPump();
+}
+
+function gdPump() {
+  while (gdBusy < 2 && gdQueue.length) {
+    // The pages nearest to the one in view first.
+    gdQueue.sort((x, y) => Math.abs(x - gd.page) - Math.abs(y - gd.page));
+    const p = gdQueue.shift();
+    gdBusy++;
+    gdDraw(p).finally(() => {
+      gdBusy--;
+      gdPump();
+    });
+  }
+}
+
+async function gdDraw(p) {
+  const pdf = gd.pdf;
   try {
-    const image = await invoke("page_image", { pdf: gd.pdf, page: gd.page, width: 900 });
-    const canvas = $("gd-canvas");
+    const image = await invoke("page_image", { pdf, page: p, width: GD_WIDTH });
+    const el1 = gdPageEl(p);
+    if (pdf !== gd.pdf || !el1) return;
+    const canvas = el1.querySelector("canvas");
     canvas.width = image.width;
     canvas.height = image.height;
     canvas.getContext("2d").putImageData(new ImageData(decodeBase64(image.rgba_base64), image.width, image.height), 0, 0);
-    gd.count = image.page_count;
-    gd.page = Math.min(Math.max(gd.page, 1), image.page_count);
-    $("gd-page").value = gd.page;
-    $("gd-page").max = image.page_count;
-    $("gd-count").textContent = "of " + image.page_count;
-    gdPaintOverlay();
-    gdPaintSuggestions();
+    // The real shape of the page, so what is drawn and what is clicked agree.
+    el1.style.aspectRatio = image.width + " / " + image.height;
+    el1.classList.add("ready");
+    gdDrawn.add(p);
+    // Let go of the pages that are far away.
+    if (gdDrawn.size > GD_KEEP) {
+      const far = [...gdDrawn].sort((x, y) => Math.abs(y - gd.page) - Math.abs(x - gd.page))[0];
+      const old = gdPageEl(far);
+      if (old && far !== p) {
+        const c = old.querySelector("canvas");
+        c.width = 0;
+        c.height = 0;
+        old.classList.remove("ready");
+        gdDrawn.delete(far);
+      }
+    }
   } catch (e) {
     gdError(String(e));
   }
 }
 
-function gdGoPage(page) {
-  gd.page = Math.min(Math.max(Number(page) || 1, 1), gd.count || 1);
-  gdLoadPage();
+async function gdLoadPage() {
+  if (!gd.pdf) return;
+  gdBuildPages();
+  gdGoPage(gd.page);
+  gdPaintOverlay();
 }
 
+function gdGoPage(page) {
+  gd.page = Math.min(Math.max(Number(page) || 1, 1), gd.count || 1);
+  const e = gdPageEl(gd.page);
+  if (e) gdWrap().scrollTop = e.offsetTop - 6;
+  gdWant(gd.page);
+  gdShowPage();
+}
+
+// The page in the middle of the window is the current page.
+function gdShowPage() {
+  $("gd-page").value = gd.page;
+  $("gd-page").max = gd.count;
+  $("gd-count").textContent = "of " + gd.count;
+  gdPaintSuggestions();
+}
+
+let gdScrollTimer = 0;
+$("gd-wrap").addEventListener("scroll", () => {
+  if (gdScrollTimer) return;
+  gdScrollTimer = setTimeout(() => {
+    gdScrollTimer = 0;
+    const r = gdWrap().getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    const pg = hit && hit.closest && hit.closest(".gd-pg");
+    if (pg && Number(pg.dataset.page) !== gd.page) {
+      gd.page = Number(pg.dataset.page);
+      gdShowPage();
+    }
+  }, 60);
+});
+
 function gdPaintOverlay() {
-  const o = $("gd-overlay");
-  const regions = gd.regions[gdKey()] || [];
-  o.replaceChildren(
-    ...regions
-      .filter((r) => r.page === gd.page)
-      .map((r) => {
-        const b = el("div", { class: "gd-box" });
-        b.style.left = r.bbox[0] * 100 + "%";
-        b.style.top = r.bbox[1] * 100 + "%";
-        b.style.width = (r.bbox[2] - r.bbox[0]) * 100 + "%";
-        b.style.height = (r.bbox[3] - r.bbox[1]) * 100 + "%";
-        return b;
-      })
-  );
+  document.querySelectorAll("#gd-pages .gd-box:not(.draft)").forEach((b) => b.remove());
+  const key = gdKey();
+  if (!key) return;
+  for (const r of gd.regions[key]) {
+    const pg = gdPageEl(r.page);
+    if (!pg) continue;
+    const b = el("div", { class: "gd-box" });
+    b.style.left = r.bbox[0] * 100 + "%";
+    b.style.top = r.bbox[1] * 100 + "%";
+    b.style.width = (r.bbox[2] - r.bbox[0]) * 100 + "%";
+    b.style.height = (r.bbox[3] - r.bbox[1]) * 100 + "%";
+    pg.append(b);
+  }
 }
 
 function gdPaintSuggestions() {
@@ -213,25 +325,40 @@ function gdPaintSuggestions() {
   });
 }
 
+// Runs of boxes on following pages with the same columns are shown as one.
+function gdGroups(regions) {
+  const groups = [];
+  for (const r of regions) {
+    const last = groups[groups.length - 1];
+    const prev = last && last[last.length - 1];
+    if (prev && r.page === prev.page + 1 && Math.abs(r.bbox[0] - prev.bbox[0]) < 1e-6 && Math.abs(r.bbox[2] - prev.bbox[2]) < 1e-6) last.push(r);
+    else groups.push([r]);
+  }
+  return groups;
+}
+
 function gdPaintRegions() {
   const key = gdKey();
   const box = $("gd-regions");
   const regions = gd.regions[key] || [];
+  $("gd-extend").disabled = !regions.length;
   if (!regions.length) {
-    box.replaceChildren(el("span", { class: "muted small", text: "Nothing chosen yet. Drag on the page to draw a box, or use the whole page." }));
+    box.replaceChildren(el("span", { class: "muted small", text: "Nothing chosen yet. Drag on a page to draw a box, or use the whole page." }));
     return;
   }
   box.replaceChildren(
-    ...regions.map((r, i) => {
-      const whole = r.bbox[0] <= 0.001 && r.bbox[1] <= 0.001 && r.bbox[2] >= 0.999 && r.bbox[3] >= 0.999;
+    ...gdGroups(regions).map((group) => {
+      const first = group[0];
+      const last = group[group.length - 1];
+      const whole = group.length === 1 && first.bbox[0] <= 0.001 && first.bbox[1] <= 0.001 && first.bbox[2] >= 0.999 && first.bbox[3] >= 0.999;
+      const label = group.length > 1 ? "pages " + first.page + "–" + last.page : "page " + first.page + (whole ? ", whole page" : ", box");
       const chip = el("span", { class: "chip chosen" });
-      const go = el("button", { type: "button", class: "chip-go", text: "page " + r.page + (whole ? ", whole page" : ", box") });
-      go.addEventListener("click", () => gdGoPage(r.page));
+      const go = el("button", { type: "button", class: "chip-go", text: label });
+      go.addEventListener("click", () => gdGoPage(first.page));
       const rm = el("button", { type: "button", class: "chip-x", "aria-label": "Remove", text: "✕" });
       rm.addEventListener("click", () => {
-        regions.splice(i, 1);
+        regions.splice(regions.indexOf(first), group.length);
         gdChanged();
-        gdPaintOverlay();
       });
       chip.append(go, rm);
       return chip;
@@ -295,54 +422,98 @@ async function gdShowText(region) {
   }
 }
 
-// Dragging a box on the page adds it to the places of this step.
+// ---- Drawing a box, and continuing a table over several pages ------------------------------------
+
+function gdSetExtending(on) {
+  gd.extending = on;
+  $("gd-wrap").classList.toggle("extending", on);
+  $("gd-hint").hidden = !on;
+  $("gd-extend").textContent = on ? "Cancel" : "Continue the table to…";
+  if (on) $("gd-hint").textContent = "Scroll to the page where the table ends and click on its last row. Every page in between is added with the same columns.";
+}
+
+// Adds the pages from the last box down to the point that was clicked.
+function gdExtendTo(page, y) {
+  const list = gd.regions[gdKey()];
+  const last = list[list.length - 1];
+  if (!last) return;
+  if (page < last.page || (page === last.page && y <= last.bbox[1] + 0.01)) {
+    gdError("Click further down than the box: on a later page, or lower on the same page.");
+    return;
+  }
+  gdError("");
+  const [x0, , x1] = last.bbox;
+  if (page === last.page) {
+    last.bbox[3] = Math.max(y, last.bbox[3]);
+  } else {
+    // On its own page the table runs to the bottom, then whole pages, then down to the click.
+    last.bbox[3] = 1;
+    for (let p = last.page + 1; p < page; p++) list.push({ page: p, bbox: [x0, 0, x1, 1] });
+    list.push({ page, bbox: [x0, 0, x1, Math.min(Math.max(y, 0.02), 1)] });
+  }
+  gdSetExtending(false);
+  gdChanged();
+}
+
 (() => {
   const wrap = $("gd-wrap");
-  const draft = el("div", { class: "gd-box draft" });
-  draft.hidden = true;
-  // Boxes are placed inside the page itself, not the scrolling frame around it.
-  $("gd-inner").append(draft);
-  const frac = (ev) => {
-    const r = $("gd-canvas").getBoundingClientRect();
+  const frac = (pg, ev) => {
+    const r = pg.getBoundingClientRect();
     return [Math.min(Math.max((ev.clientX - r.left) / r.width, 0), 1), Math.min(Math.max((ev.clientY - r.top) / r.height, 0), 1)];
   };
-  const place = (a, b) => {
+  const place = (box, a, b) => {
     const l = Math.min(a[0], b[0]), r = Math.max(a[0], b[0]), t = Math.min(a[1], b[1]), bo = Math.max(a[1], b[1]);
-    draft.hidden = false;
-    draft.style.left = l * 100 + "%";
-    draft.style.top = t * 100 + "%";
-    draft.style.width = (r - l) * 100 + "%";
-    draft.style.height = (bo - t) * 100 + "%";
+    box.style.left = l * 100 + "%";
+    box.style.top = t * 100 + "%";
+    box.style.width = (r - l) * 100 + "%";
+    box.style.height = (bo - t) * 100 + "%";
     return [l, t, r, bo];
   };
   wrap.addEventListener("pointerdown", (ev) => {
     if (ev.button !== 0 || !gdKey()) return;
-    gd.drag = frac(ev);
+    const pg = ev.target.closest(".gd-pg");
+    if (!pg) return;
+    const draft = el("div", { class: "gd-box draft" });
+    pg.append(draft);
+    gd.drag = { pg, draft, page: Number(pg.dataset.page), start: frac(pg, ev) };
+    place(draft, gd.drag.start, gd.drag.start);
     wrap.setPointerCapture(ev.pointerId);
-    place(gd.drag, gd.drag);
   });
   wrap.addEventListener("pointermove", (ev) => {
-    if (gd.drag) place(gd.drag, frac(ev));
+    const d = gd.drag;
+    if (d) place(d.draft, d.start, frac(d.pg, ev));
   });
-  wrap.addEventListener("pointerup", async (ev) => {
-    if (!gd.drag) return;
-    const bbox = place(gd.drag, frac(ev));
+  wrap.addEventListener("pointerup", (ev) => {
+    const d = gd.drag;
+    if (!d) return;
     gd.drag = null;
-    draft.hidden = true;
-    if (bbox[2] - bbox[0] < 0.01 || bbox[3] - bbox[1] < 0.01) return; // a click
-    const region = { page: gd.page, bbox };
+    const end = frac(d.pg, ev);
+    const bbox = place(d.draft, d.start, end);
+    d.draft.remove();
+    if (bbox[2] - bbox[0] < 0.01 || bbox[3] - bbox[1] < 0.01) {
+      // A click, not a drag.
+      if (gd.extending) gdExtendTo(d.page, end[1]);
+      return;
+    }
+    const region = { page: d.page, bbox };
     gd.regions[gdKey()].push(region);
     gdChanged();
     gdShowText(region);
   });
   $("gd-whole").addEventListener("click", () => {
-    const region = { page: gd.page, bbox: [0, 0, 1, 1] };
-    gd.regions[gdKey()].push(region);
+    gd.regions[gdKey()].push({ page: gd.page, bbox: [0, 0, 1, 1] });
     gdChanged();
   });
+  $("gd-extend").addEventListener("click", () => gdSetExtending(!gd.extending));
   $("gd-prev").addEventListener("click", () => gdGoPage(gd.page - 1));
   $("gd-nextpage").addEventListener("click", () => gdGoPage(gd.page + 1));
   $("gd-page").addEventListener("change", () => gdGoPage($("gd-page").value));
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && gd.extending) {
+      ev.stopPropagation();
+      gdSetExtending(false);
+    }
+  });
 })();
 
 // ---- The last step -------------------------------------------------------------------------
