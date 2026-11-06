@@ -10,9 +10,11 @@ let draft = null; // what is on the screen, possibly changed
 let settingsReturn = null; // the part to go back to
 let activePane = "models";
 const testResults = {}; // model name -> result of the last test
+const discovered = new WeakMap(); // draft model -> { state: "loading" | "done" | "error", models, error }
 
 const PRESETS_MODELS = [
   { label: "Ollama on this computer", name: "ollama-local", provider: "ollama", base_url: "", model: "qwen3-vl:7b", keychain: false },
+  { label: "Ollama cloud (ollama.com)", name: "ollama-cloud", provider: "ollama", base_url: "https://ollama.com", model: "", keychain: true },
   { label: "Anthropic Claude", name: "claude", provider: "anthropic", base_url: "", model: "claude-sonnet", keychain: true },
   { label: "OpenAI", name: "openai", provider: "openai", base_url: "", model: "gpt-5", keychain: true },
   { label: "LM Studio on this computer", name: "lm-studio", provider: "openai-compatible", base_url: "http://localhost:1234/v1", model: "local-model", keychain: false },
@@ -161,7 +163,7 @@ function modelCard(m, index) {
         renderSettings();
       })
     ),
-    field("Model", textInput(m.model, (v) => (m.model = v.trim()), { placeholder: "claude-sonnet" }), "The name the server knows it by."),
+    modelPicker(m),
     field("Address", textInput(m.base_url, (v) => (m.base_url = v.trim()), { placeholder: providerInfo(m.provider).default_url || "http://localhost:8000/v1" }), providerInfo(m.provider).default_url ? "Leave empty for the usual address." : "Needed for this kind of server.")
   );
   card.append(grid);
@@ -218,6 +220,105 @@ function modelCard(m, index) {
   return card;
 }
 
+// ---- Finding the models a server offers ---------------------------------------------
+
+function money(x) {
+  return x === 0 ? "free" : "$" + (x >= 100 ? x.toFixed(0) : x >= 1 ? x.toFixed(2).replace(/\.?0+$/, "") : x.toPrecision(2));
+}
+
+function ctxText(n) {
+  return n >= 1000000 ? (n / 1000000).toFixed(n % 1000000 ? 1 : 0) + "M" : Math.round(n / 1000) + "k";
+}
+
+function foundLine(f) {
+  const bits = [];
+  if (f.label && f.label !== f.id) bits.push(f.label);
+  if (f.price_in != null && f.price_out != null) bits.push(money(f.price_in) + " in / " + money(f.price_out) + " out per million");
+  if (f.context) bits.push(ctxText(f.context) + " context");
+  if (f.vision === true) bits.push("reads images");
+  return bits.join(" · ");
+}
+
+async function discoverModels(m) {
+  discovered.set(m, { state: "loading", models: [], error: "" });
+  renderSettings();
+  try {
+    const models = await invoke("find_models", {
+      input: {
+        name: m.name,
+        old_name: m.old_name,
+        provider: m.provider,
+        base_url: m.base_url,
+        api_key_env: m.api_key_env,
+        api_key_header: m.api_key_header,
+        keychain: m.keychain,
+        new_key: m.newKey || "",
+      },
+    });
+    discovered.set(m, { state: "done", models, error: "" });
+    if (!m.model && models.length === 1) applyFound(m, models[0]);
+  } catch (e) {
+    discovered.set(m, { state: "error", models: [], error: String(e) });
+  }
+  renderSettings();
+}
+
+function applyFound(m, f) {
+  m.model = f.id;
+  if (f.price_in != null && f.price_out != null) {
+    m.price_in = f.price_in;
+    m.price_out = f.price_out;
+  }
+  if (f.vision != null) m.vision = f.vision;
+  updateDirty();
+}
+
+function modelPicker(m) {
+  const found = discovered.get(m);
+  const row = el("div", { class: "pick-row" });
+  const input = textInput(m.model, (v) => (m.model = v.trim()), { placeholder: "name, or press Find models" });
+  const listId = "found-" + Math.random().toString(36).slice(2);
+  if (found && found.state === "done") {
+    input.setAttribute("list", listId);
+    const list = el("datalist", { id: listId });
+    found.models.forEach((f) => list.append(el("option", { value: f.id, label: foundLine(f), text: foundLine(f) })));
+    row.append(list);
+  }
+  // Choosing from the list (or typing a name that is in it) fills in the prices.
+  input.addEventListener("change", () => {
+    const f = found && found.models.find((x) => x.id === input.value.trim());
+    if (f) {
+      applyFound(m, f);
+      renderSettings();
+    }
+  });
+  const find = el("button", { type: "button", text: found && found.state === "loading" ? "Looking…" : "Find models" });
+  find.disabled = !!(found && found.state === "loading");
+  find.addEventListener("click", () => discoverModels(m));
+  row.prepend(input);
+  row.append(find);
+  let help = "The name the server knows it by. Find models asks the server for its list.";
+  const wrap = field("Model", row, help);
+  const note = el("span", { class: "help" });
+  if (found && found.state === "error") {
+    note.className = "help err-text";
+    note.textContent = found.error;
+    wrap.append(note);
+  } else if (found && found.state === "done") {
+    const f = found.models.find((x) => x.id === m.model);
+    let text = found.models.length + " models found. Start typing to narrow the list.";
+    if (f) {
+      const line = foundLine(f);
+      text = (line || "This model is on the server.") + (f.price_source === "OpenRouter list" ? " (price from the OpenRouter list; check your plan)" : "");
+    } else if (m.model) {
+      text = "This name is not in the server's list of " + found.models.length + " models.";
+    }
+    note.textContent = text;
+    wrap.append(note);
+  }
+  return wrap;
+}
+
 function chip(ok, label) {
   const c = el("span", { class: "pill " + (ok === true ? "good" : ok === false ? "bad" : ""), text: label + (ok === true ? " ✓" : ok === false ? " ✗" : " (not tested)") });
   return c;
@@ -249,6 +350,8 @@ function renderModels() {
     draft.models.push({ name, old_name: null, new: true, newKey: "", provider: p.provider, base_url: p.base_url, effective_url: "", model: p.model, api_key_env: "", keychain: p.keychain, has_key: false, env_set: false, api_key_header: "", think: null, price_in: null, price_out: null, local: p.provider === "ollama" || p.base_url.includes("localhost") });
     renderSettings();
     updateDirty();
+    const added = draft.models[draft.models.length - 1];
+    if (!added.keychain) discoverModels(added);
   });
   add.append(select);
   const intro = el("p", { class: "muted", text: draft.models.length ? "Each model can do some or all of the tasks. Choose which under Tasks and privacy." : "No models yet. Without one, Kirpitch still works by hand: New part, then import the pins. Add a model to read datasheets automatically." });
@@ -381,7 +484,9 @@ async function saveSettings() {
   try {
     appSettings = await invoke("put_settings", { input: toInput() });
     for (const k of typedKeys) appSettings = await invoke("put_api_key", { name: k.name, key: k.key });
+    const kept = new Map(draft.models.filter((m) => discovered.has(m)).map((m) => [m.name, discovered.get(m)]));
     draft = toDraft(appSettings);
+    for (const m of draft.models) if (kept.has(m.name)) discovered.set(m, kept.get(m.name));
     renderSettings();
     show("Settings saved.", "ok");
     return true;
@@ -393,8 +498,11 @@ async function saveSettings() {
 
 async function saveKey(m) {
   if (!m.newKey.trim()) return show("Paste the key first.", "error");
+  const name = m.name;
   if (!(await saveSettings())) return;
   show("Key stored in the system keychain.", "ok");
+  const saved = draft.models.find((x) => x.name === name);
+  if (saved) discoverModels(saved);
 }
 
 async function deleteKey(m) {

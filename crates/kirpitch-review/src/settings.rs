@@ -484,3 +484,80 @@ pub fn user_folders() -> Folders {
         .map(|c| c.folders)
         .unwrap_or_default()
 }
+
+// ---- Finding the models a server offers -------------------------------------------
+
+/// What the screen knows about a model when it asks for the server's list.
+#[derive(Debug, Clone, Deserialize)]
+pub struct FindInput {
+    /// The model's name now.
+    #[serde(default)]
+    pub name: String,
+    /// The name it is saved under, when it is saved.
+    #[serde(default)]
+    pub old_name: Option<String>,
+    /// `anthropic`, `openai`, `openai-compatible` or `ollama`.
+    pub provider: String,
+    /// Address; empty for the usual one.
+    #[serde(default)]
+    pub base_url: String,
+    /// Environment variable with the key.
+    #[serde(default)]
+    pub api_key_env: String,
+    /// Header for the key.
+    #[serde(default)]
+    pub api_key_header: String,
+    /// The key is kept in the keychain.
+    #[serde(default)]
+    pub keychain: bool,
+    /// A key typed on the screen and not saved yet.
+    #[serde(default)]
+    pub new_key: String,
+}
+
+/// Asks the server of a model which models it offers, with what is known about
+/// their prices. The key is the one typed on the screen, else the environment
+/// variable, else the keychain. It goes only to the model's own server.
+///
+/// # Errors
+///
+/// The kind of server is unknown, a key that is needed is missing, or the
+/// server cannot be reached or refuses.
+pub fn find_models(
+    input: &FindInput,
+    transport: &dyn Transport,
+    keys: &dyn KeyStore,
+) -> Result<Vec<kirpitch_models::FoundModel>, String> {
+    let provider: Provider =
+        serde_json::from_value(serde_json::Value::String(input.provider.clone()))
+            .map_err(|_| format!("unknown kind of server `{}`", input.provider))?;
+    let typed = input.new_key.trim();
+    let from_env = (!input.api_key_env.is_empty())
+        .then(|| std::env::var(&input.api_key_env).ok())
+        .flatten()
+        .filter(|v| !v.is_empty());
+    let from_keychain = if input.keychain && typed.is_empty() && from_env.is_none() {
+        let account = input.old_name.as_deref().unwrap_or(&input.name);
+        keys.get(account)
+            .map_err(|e| e.to_string())?
+            .filter(|k| !k.is_empty())
+    } else {
+        None
+    };
+    let key = (!typed.is_empty())
+        .then(|| typed.to_string())
+        .or(from_env)
+        .or(from_keychain);
+    let base = input.base_url.trim().to_string();
+    let header = input.api_key_header.trim();
+    kirpitch_models::list_models(
+        &kirpitch_models::ListRequest {
+            provider,
+            base_url: &base,
+            key: key.as_deref(),
+            key_header: (!header.is_empty()).then_some(header),
+        },
+        transport,
+    )
+    .map_err(|e| e.to_string())
+}

@@ -5,10 +5,10 @@
 // Do not open a console window on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use kirpitch_models::{CurlTransport, OsKeyStore, active_config_path};
+use kirpitch_models::{CurlTransport, FoundModel, OsKeyStore, active_config_path};
 use kirpitch_review::{
-    DatasheetInput, DatasheetOutcome, Example, ImportOutcome, ModelTest, NewPartInput, PageImage,
-    PinInput, RegionTable, SettingsInput, SettingsView, SpecView, approve_stage,
+    DatasheetInput, DatasheetOutcome, Example, FindInput, ImportOutcome, ModelTest, NewPartInput,
+    PageImage, PinInput, RegionTable, SettingsInput, SettingsView, SpecView, approve_stage,
     build_from_datasheet, export_files, import_pins, list_examples, new_part, now_rfc3339,
     open_example, open_spec, read_region, render_datasheet_page, save_copy, set_pins,
 };
@@ -162,6 +162,15 @@ async fn check_model(name: String) -> Result<ModelTest, String> {
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+async fn find_models(input: FindInput) -> Result<Vec<FoundModel>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        kirpitch_review::find_models(&input, &CurlTransport, &OsKeyStore)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -184,7 +193,8 @@ fn main() {
             put_settings,
             put_api_key,
             remove_api_key,
-            check_model
+            check_model,
+            find_models
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Kirpitch app");

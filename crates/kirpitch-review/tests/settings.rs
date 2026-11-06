@@ -8,8 +8,8 @@ use std::sync::Arc;
 use kirpitch_kicad::testing::TempDir;
 use kirpitch_models::{KeyStore, MemoryKeyStore, MockTransport};
 use kirpitch_review::{
-    ModelInput, SettingsInput, delete_api_key, save_settings, set_api_key, settings_view,
-    test_model,
+    FindInput, ModelInput, SettingsInput, delete_api_key, find_models, save_settings, set_api_key,
+    settings_view, test_model,
 };
 use serde_json::json;
 
@@ -199,4 +199,43 @@ fn a_saved_model_can_be_tested_and_a_cloud_model_is_refused_in_local_only_mode()
     let err = test_model(&path, "cloud", t.clone(), &keys).unwrap_err();
     assert!(err.contains("local_only"), "{err}");
     assert!(t.requests().is_empty());
+}
+
+fn find(extra: serde_json::Value) -> FindInput {
+    let mut base = json!({ "provider": "ollama", "base_url": "https://ollama.com" });
+    base.as_object_mut()
+        .unwrap()
+        .extend(extra.as_object().unwrap().clone());
+    serde_json::from_value(base).unwrap()
+}
+
+#[test]
+fn the_list_uses_the_typed_key_before_the_keychain() {
+    let keys = MemoryKeyStore::default();
+    keys.set("cloud", "saved-key").unwrap();
+    let transport = MockTransport::new();
+    transport.push_ok(r#"{"models":[{"name":"gpt-oss:120b-cloud"}]}"#);
+    transport.push_ok(r#"{"models":[]}"#);
+
+    let typed = find(
+        json!({ "name": "cloud", "old_name": "cloud", "keychain": true, "new_key": "typed-key" }),
+    );
+    let found = find_models(&typed, &transport, &keys).unwrap();
+    assert_eq!(found[0].id, "gpt-oss:120b-cloud");
+    assert_eq!(transport.requests()[0].headers[0].1, "Bearer typed-key");
+
+    let saved = find(json!({ "name": "renamed", "old_name": "cloud", "keychain": true }));
+    find_models(&saved, &transport, &keys).unwrap();
+    assert_eq!(transport.requests()[1].headers[0].1, "Bearer saved-key");
+}
+
+#[test]
+fn the_list_refuses_an_unknown_kind_of_server() {
+    let e = find_models(
+        &find(json!({ "provider": "nope" })),
+        &MockTransport::new(),
+        &MemoryKeyStore::default(),
+    )
+    .unwrap_err();
+    assert!(e.contains("unknown kind"), "{e}");
 }

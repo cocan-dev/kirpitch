@@ -52,6 +52,9 @@ pub enum TransportError {
 pub trait Transport: Send + Sync {
     /// Sends `request` and waits at most `timeout_secs`.
     fn post(&self, request: &Request, timeout_secs: u64) -> Result<Reply, TransportError>;
+
+    /// Fetches `request.url` with GET (the body is ignored).
+    fn get(&self, request: &Request, timeout_secs: u64) -> Result<Reply, TransportError>;
 }
 
 /// Sends requests with the system `curl`.
@@ -93,28 +96,45 @@ impl Transport for CurlTransport {
         ));
         std::fs::write(&file, request.body.as_bytes())
             .map_err(|e| TransportError::Failed(format!("{}: {e}", file.display())))?;
-        let result = run_curl(request, &file, timeout_secs);
+        let result = run_curl(request, Some(&file), timeout_secs);
         let _ = std::fs::remove_file(&file);
         result
+    }
+
+    fn get(&self, request: &Request, timeout_secs: u64) -> Result<Reply, TransportError> {
+        let has_break = |s: &str| s.contains('\n') || s.contains('\r');
+        if has_break(&request.url)
+            || request
+                .headers
+                .iter()
+                .any(|(k, v)| has_break(k) || has_break(v))
+        {
+            return Err(TransportError::BadRequest);
+        }
+        run_curl(request, None, timeout_secs)
     }
 }
 
 fn run_curl(
     request: &Request,
-    body_file: &std::path::Path,
+    body_file: Option<&std::path::Path>,
     timeout_secs: u64,
 ) -> Result<Reply, TransportError> {
     let mut config = String::new();
     config.push_str(&format!("url = {}\n", quote(&request.url)));
-    config.push_str("request = \"POST\"\n");
-    config.push_str("header = \"Content-Type: application/json\"\n");
+    if body_file.is_some() {
+        config.push_str("request = \"POST\"\n");
+        config.push_str("header = \"Content-Type: application/json\"\n");
+    }
     for (k, v) in &request.headers {
         config.push_str(&format!("header = {}\n", quote(&format!("{k}: {v}"))));
     }
-    config.push_str(&format!(
-        "data-binary = {}\n",
-        quote(&format!("@{}", body_file.display()))
-    ));
+    if let Some(body_file) = body_file {
+        config.push_str(&format!(
+            "data-binary = {}\n",
+            quote(&format!("@{}", body_file.display()))
+        ));
+    }
     let mut child = Command::new("curl")
         .args(["--silent", "--show-error", "--max-time"])
         .arg(timeout_secs.to_string())
@@ -193,6 +213,10 @@ impl MockTransport {
 }
 
 impl Transport for MockTransport {
+    fn get(&self, request: &Request, timeout_secs: u64) -> Result<Reply, TransportError> {
+        self.post(request, timeout_secs)
+    }
+
     fn post(&self, request: &Request, _timeout_secs: u64) -> Result<Reply, TransportError> {
         self.requests
             .lock()
