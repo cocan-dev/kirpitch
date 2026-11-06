@@ -24,3 +24,6 @@ rustc-ice-*.txt
 #.idea/
 
 CLAUDE.md
+
+# Downloaded datasheet PDFs are copyrighted and must never be committed.
+testdata/pdfs/
