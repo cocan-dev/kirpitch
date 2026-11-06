@@ -134,3 +134,15 @@ step the window shows how many characters that is, against what the automatic
 search would have sent. A step you do not point at is searched for as before,
 and **Skip the guide** on the first step does the whole build that way. The
 `Model output` panel shows what each call received.
+
+## Any package, and the footprint of the datasheet
+
+There is no list of supported packages. The package step reads the outline
+drawing (body, height, standoff A1, body thickness A2, lead thickness c, lead
+size) and names the shape: a dual-row or quad gull-wing shape, a no-lead shape,
+a ball grid (BGA, LGA, CSP), or `custom` for anything else. A new step then reads
+the **recommended footprint** (land pattern) of the datasheet and its pad sizes
+and distances replace the calculated ones; for a shape with no template its
+pads are drawn as they are. Without a recommended footprint the pads are
+calculated by the IPC-7351B formulas. The 3D model is built from the same
+drawing dimensions. See [ADR 0029](decisions/0029-any-package-from-the-datasheet.md).

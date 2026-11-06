@@ -378,6 +378,70 @@ pub struct QuadFlatNoLead {
 /// the right side and along the top from right to left. The exposed pad gets
 /// the number after the last terminal.
 pub fn quad_flat_no_lead(p: &QuadFlatNoLead, density: Density) -> Result<Template, TemplateError> {
+    quad_perimeter(p, None, density)
+}
+
+/// A quad package with gull-wing leads on all four sides (QFP, LQFP, TQFP,
+/// PQFP and relatives).
+#[derive(Debug, Clone, PartialEq)]
+pub struct QuadFlatGullWing {
+    /// Family name used in the footprint name, for example `LQFP`.
+    pub family: String,
+    /// Leads on each of the top and bottom sides.
+    pub pins_x: u32,
+    /// Leads on each of the left and right sides.
+    pub pins_y: u32,
+    /// Distance between lead centres (`e`).
+    pub pitch: f64,
+    /// Plastic body size along x (`D1`).
+    pub body_x: Range,
+    /// Plastic body size along y (`E1`).
+    pub body_y: Range,
+    /// Size over the lead tips along x (`D`).
+    pub span_x: Range,
+    /// Size over the lead tips along y (`E`).
+    pub span_y: Range,
+    /// Largest height (`A`).
+    pub height_max: f64,
+    /// Foot length (`L`).
+    pub lead_length: Range,
+    /// Lead width (`b`).
+    pub lead_width: Range,
+    /// Size of an exposed pad under the body, if there is one.
+    pub exposed_pad: Option<(f64, f64)>,
+}
+
+/// Fills the template of a quad gull-wing package. Pads are numbered like a
+/// QFN: pin 1 at the top of the left side, counter-clockwise.
+pub fn quad_flat_gull_wing(
+    p: &QuadFlatGullWing,
+    density: Density,
+) -> Result<Template, TemplateError> {
+    quad_perimeter(
+        &QuadFlatNoLead {
+            family: p.family.clone(),
+            pins_x: p.pins_x,
+            pins_y: p.pins_y,
+            pitch: p.pitch,
+            body_x: p.body_x,
+            body_y: p.body_y,
+            height_max: p.height_max,
+            lead_length: p.lead_length,
+            lead_width: p.lead_width,
+            exposed_pad: p.exposed_pad,
+        },
+        Some((p.span_x, p.span_y)),
+        density,
+    )
+}
+
+/// The pads of a quad package. `spans` are the sizes over the lead tips of a
+/// gull-wing package; without them the terminals end at the body edge (no-lead).
+fn quad_perimeter(
+    p: &QuadFlatNoLead,
+    spans: Option<(Range, Range)>,
+    density: Density,
+) -> Result<Template, TemplateError> {
     if p.pins_x == 0 || p.pins_y == 0 {
         return Err(TemplateError::PinCount(2 * (p.pins_x + p.pins_y)));
     }
@@ -391,19 +455,21 @@ pub fn quad_flat_no_lead(p: &QuadFlatNoLead, density: Density) -> Result<Templat
         center: None,
     };
     let row = |span: Range| {
-        ipc::flat_no_lead(
-            &ipc::GullWingInput {
-                lead_span: span,
-                lead_length: p.lead_length,
-                lead_width: p.lead_width,
-                pitch: p.pitch,
-            },
-            density,
-            &Tolerances::default(),
-        )
+        let input = ipc::GullWingInput {
+            lead_span: span,
+            lead_length: p.lead_length,
+            lead_width: p.lead_width,
+            pitch: p.pitch,
+        };
+        if spans.is_some() {
+            ipc::gull_wing(&input, density, &Tolerances::default())
+        } else {
+            ipc::flat_no_lead(&input, density, &Tolerances::default())
+        }
     };
-    let cx = row(p.body_x)?; // left and right sides
-    let cy = row(p.body_y)?; // top and bottom sides
+    let (span_x, span_y) = spans.unwrap_or((p.body_x, p.body_y));
+    let cx = row(span_x)?; // left and right sides
+    let cy = row(span_y)?; // top and bottom sides
     let ratio = CORNER_RATIO.min(MAX_CORNER_RADIUS / cx.x_max.min(cx.pad_length));
     let num = |v: f64| Mm::new(v).map_err(|_| TemplateError::BadValue("pad"));
     let pad = |number: usize,
@@ -496,8 +562,17 @@ pub fn quad_flat_no_lead(p: &QuadFlatNoLead, density: Density) -> Result<Templat
 
     let mut dimensions: BTreeMap<String, Sourced<Tolerance>> = BTreeMap::new();
     dimensions.insert("A".into(), dimension(Range::exact(p.height_max))?);
-    dimensions.insert("D".into(), dimension(p.body_x)?);
-    dimensions.insert("E".into(), dimension(p.body_y)?);
+    if spans.is_some() {
+        // A gull-wing package: D and E are over the lead tips, D1 and E1 are
+        // the plastic body.
+        dimensions.insert("D".into(), dimension(span_x)?);
+        dimensions.insert("E".into(), dimension(span_y)?);
+        dimensions.insert("D1".into(), dimension(p.body_x)?);
+        dimensions.insert("E1".into(), dimension(p.body_y)?);
+    } else {
+        dimensions.insert("D".into(), dimension(p.body_x)?);
+        dimensions.insert("E".into(), dimension(p.body_y)?);
+    }
     dimensions.insert("L".into(), dimension(p.lead_length)?);
     dimensions.insert("b".into(), dimension(p.lead_width)?);
     dimensions.insert("e".into(), dimension(Range::exact(p.pitch))?);
@@ -529,6 +604,272 @@ pub fn quad_flat_no_lead(p: &QuadFlatNoLead, density: Density) -> Result<Templat
             pitch,
             body,
             dimensions,
+            source: None,
+        },
+        land_pattern: LandPattern {
+            pads,
+            courtyard: None,
+            source: None,
+        },
+    })
+}
+
+/// A package with a grid of balls or lands under the body (BGA, LGA, CSP,
+/// WLCSP).
+#[derive(Debug, Clone, PartialEq)]
+pub struct GridArray {
+    /// Family name used in the footprint name, for example `BGA` or `LGA`.
+    pub family: String,
+    /// Rows of balls (letters A, B, C ...).
+    pub rows: u32,
+    /// Columns of balls (numbers 1, 2, 3 ...).
+    pub cols: u32,
+    /// Distance between ball centres (`e`).
+    pub pitch: f64,
+    /// Body size along x (`D`).
+    pub body_x: Range,
+    /// Body size along y (`E`).
+    pub body_y: Range,
+    /// Largest height (`A`).
+    pub height_max: f64,
+    /// Ball diameter (`b`).
+    pub ball_diameter: Range,
+    /// Height of the body above the board with the balls (`A1`), if known.
+    pub standoff: Option<f64>,
+}
+
+/// The letters of the rows of a ball grid. JEDEC leaves out I, O, Q, S, X and
+/// Z so that they cannot be mistaken for digits or each other; rows after Y are
+/// AA, AB, AC ... in the same alphabet.
+pub fn grid_row_name(index: usize) -> String {
+    const LETTERS: &[u8; 20] = b"ABCDEFGHJKLMNPRTUVWY";
+    let one = |i: usize| char::from(LETTERS[i % 20]);
+    if index < 20 {
+        one(index).to_string()
+    } else {
+        format!("{}{}", one(index / 20 - 1), one(index))
+    }
+}
+
+/// The row and column of a ball name such as `B12` or `AA3` (counting from 0),
+/// or `None` when it is not a ball name of this grid.
+pub fn grid_position(name: &str) -> Option<(usize, usize)> {
+    let split = name.find(|c: char| c.is_ascii_digit())?;
+    let (letters, digits) = name.split_at(split);
+    if letters.is_empty() || letters.len() > 2 {
+        return None;
+    }
+    let col: usize = digits.parse().ok()?;
+    if col == 0 {
+        return None;
+    }
+    (0..20 * 21)
+        .find(|i| grid_row_name(*i) == letters)
+        .map(|row| (row, col - 1))
+}
+
+/// Fills the template of a ball grid. Every position of the grid gets a pad,
+/// named like the ball (`A1` at the top left); balls a package does not have are
+/// removed afterwards, using the pin table.
+pub fn grid_array(p: &GridArray, density: Density) -> Result<Template, TemplateError> {
+    if p.rows == 0 || p.cols == 0 || u64::from(p.rows) * u64::from(p.cols) > 4096 {
+        return Err(TemplateError::BadValue("rows and columns"));
+    }
+    let pitch = mm(p.pitch, "pitch")?;
+    let nominal = |r: Range| (r.min + r.max) / 2.0;
+    let (bx, by) = (nominal(p.body_x), nominal(p.body_y));
+    let ball = nominal(p.ball_diameter);
+    mm(ball, "ball_diameter")?;
+    // IPC-7351B: the land of a collapsing ball is about 80 % of the ball
+    // (70 % for the least and 90 % for the most protrusion), in steps of
+    // 0.05 mm and never closer than 0.1 mm to the next land.
+    let factor = match density {
+        Density::Least => 0.7,
+        Density::Nominal => 0.8,
+        Density::Most => 0.9,
+    };
+    let diameter = ((ball * factor / 0.05).round() * 0.05)
+        .min(p.pitch - 0.1)
+        .max(0.1);
+    let num = |v: f64| Mm::new(v).map_err(|_| TemplateError::BadValue("pad"));
+    let mut pads = Vec::new();
+    for row in 0..p.rows as usize {
+        for col in 0..p.cols as usize {
+            pads.push(Pad {
+                number: format!("{}{}", grid_row_name(row), col + 1),
+                shape: PadShape::Circle,
+                x: num((col as f64 - (p.cols as f64 - 1.0) / 2.0) * p.pitch)?,
+                y: num((row as f64 - (p.rows as f64 - 1.0) / 2.0) * p.pitch)?,
+                size_x: num(diameter)?,
+                size_y: num(diameter)?,
+                rotation_deg: 0.0,
+                corner_ratio: None,
+                paste: true,
+                role: PadRole::Signal,
+                kind: PadKind::Smd,
+                drill: None,
+                source: None,
+            });
+        }
+    }
+    let mut dimensions: BTreeMap<String, Sourced<Tolerance>> = BTreeMap::new();
+    dimensions.insert("A".into(), dimension(Range::exact(p.height_max))?);
+    if let Some(a1) = p.standoff.filter(|v| *v > 0.0) {
+        dimensions.insert("A1".into(), dimension(Range::exact(a1))?);
+    }
+    dimensions.insert("D".into(), dimension(p.body_x)?);
+    dimensions.insert("E".into(), dimension(p.body_y)?);
+    dimensions.insert("b".into(), dimension(p.ball_diameter)?);
+    dimensions.insert("e".into(), dimension(Range::exact(p.pitch))?);
+    let name = format!(
+        "{}-{}_{}x{}mm_Layout{}x{}_P{}mm",
+        p.family,
+        pads.len(),
+        format_number(bx),
+        format_number(by),
+        p.cols,
+        p.rows,
+        format_number(p.pitch)
+    );
+    Ok(Template {
+        package: Package {
+            family: p.family.clone(),
+            name,
+            pin_count: pads.len() as u32,
+            pitch,
+            body: Body {
+                length: mm(by, "body_y")?,
+                width: mm(bx, "body_x")?,
+                height_max: mm(p.height_max, "height_max")?,
+                center: None,
+            },
+            dimensions,
+            source: None,
+        },
+        land_pattern: LandPattern {
+            pads,
+            courtyard: None,
+            source: None,
+        },
+    })
+}
+
+/// A run of equal pads in a line.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PadGroup {
+    /// Number of the first pad; the next ones count up by one.
+    pub first_number: u32,
+    /// How many pads.
+    pub count: u32,
+    /// Centre of the first pad, in millimetres from the footprint centre (x
+    /// right, y down).
+    pub x: f64,
+    /// See `x`.
+    pub y: f64,
+    /// Step to the next pad along x.
+    pub dx: f64,
+    /// Step to the next pad along y.
+    pub dy: f64,
+    /// Pad size along x.
+    pub size_x: f64,
+    /// Pad size along y.
+    pub size_y: f64,
+    /// Shape of the pads.
+    pub shape: PadShape,
+    /// Hole diameter when the pads are through-hole.
+    pub drill: Option<f64>,
+}
+
+/// Any package, drawn pad by pad from the recommended land pattern of the
+/// datasheet.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CustomPads {
+    /// Family name, for example `SOT-223` or `DPAK`.
+    pub family: String,
+    /// Body size along y.
+    pub body_length: f64,
+    /// Body size along x.
+    pub body_width: f64,
+    /// Largest height.
+    pub height_max: f64,
+    /// The runs of pads.
+    pub groups: Vec<PadGroup>,
+}
+
+/// Fills a template from groups of pads, for packages that have no template
+/// of their own.
+pub fn custom_pads(p: &CustomPads) -> Result<Template, TemplateError> {
+    let total: u64 = p.groups.iter().map(|g| u64::from(g.count)).sum();
+    if p.groups.is_empty() || p.groups.iter().any(|g| g.count == 0) || total > 2000 {
+        return Err(TemplateError::BadValue("pad groups"));
+    }
+    let num = |v: f64| Mm::new(v).map_err(|_| TemplateError::BadValue("pad"));
+    let mut pads = Vec::new();
+    let mut pitch = f64::INFINITY;
+    for g in &p.groups {
+        mm(g.size_x, "pad size")?;
+        mm(g.size_y, "pad size")?;
+        if g.count > 1 {
+            pitch = pitch.min(g.dx.hypot(g.dy));
+        }
+        for i in 0..g.count {
+            let step = f64::from(i);
+            pads.push(Pad {
+                number: (g.first_number + i).to_string(),
+                shape: g.shape,
+                x: num(g.x + g.dx * step)?,
+                y: num(g.y + g.dy * step)?,
+                size_x: num(g.size_x)?,
+                size_y: num(g.size_y)?,
+                rotation_deg: 0.0,
+                corner_ratio: (g.shape == PadShape::RoundRect).then_some(CORNER_RATIO),
+                paste: g.drill.is_none(),
+                role: PadRole::Signal,
+                kind: if g.drill.is_some() {
+                    PadKind::ThruHole
+                } else {
+                    PadKind::Smd
+                },
+                drill: g.drill.map(num).transpose()?,
+                source: None,
+            });
+        }
+    }
+    if !pitch.is_finite() || pitch <= 0.0 {
+        // No group has two pads: the nearest two pads give the pitch.
+        pitch = pads
+            .iter()
+            .enumerate()
+            .flat_map(|(i, a)| {
+                pads.iter()
+                    .skip(i + 1)
+                    .map(move |b| (a.x.get() - b.x.get()).hypot(a.y.get() - b.y.get()))
+            })
+            .fold(f64::INFINITY, f64::min);
+    }
+    if !pitch.is_finite() || pitch <= 0.0 {
+        pitch = 1.0;
+    }
+    let name = format!(
+        "{}-{}_{}x{}mm",
+        p.family,
+        pads.len(),
+        format_number(p.body_width),
+        format_number(p.body_length)
+    );
+    Ok(Template {
+        package: Package {
+            family: p.family.clone(),
+            name,
+            pin_count: pads.len() as u32,
+            pitch: mm(pitch, "pitch")?,
+            body: Body {
+                length: mm(p.body_length, "body_length")?,
+                width: mm(p.body_width, "body_width")?,
+                height_max: mm(p.height_max, "height_max")?,
+                center: None,
+            },
+            dimensions: BTreeMap::new(),
             source: None,
         },
         land_pattern: LandPattern {
@@ -652,5 +993,220 @@ mod tests {
             dual_row_gull_wing(&bad, Density::Nominal),
             Err(TemplateError::Ipc(_))
         ));
+    }
+
+    // ---- Quad gull-wing, grids and custom pads ----
+
+    /// LQFP-64, 10 x 10 mm body, 12 x 12 mm over the leads, pitch 0.5 mm
+    /// (JEDEC MS-026, variation BCD).
+    fn lqfp64() -> QuadFlatGullWing {
+        QuadFlatGullWing {
+            family: "LQFP".into(),
+            pins_x: 16,
+            pins_y: 16,
+            pitch: 0.5,
+            body_x: Range::new(9.9, 10.1),
+            body_y: Range::new(9.9, 10.1),
+            span_x: Range::new(11.8, 12.2),
+            span_y: Range::new(11.8, 12.2),
+            height_max: 1.6,
+            lead_length: Range::new(0.45, 0.75),
+            lead_width: Range::new(0.17, 0.27),
+            exposed_pad: None,
+        }
+    }
+
+    #[test]
+    fn lqfp64_has_the_official_name_numbering_and_roughly_the_official_pads() {
+        let t = quad_flat_gull_wing(&lqfp64(), Density::Nominal).unwrap();
+        assert_eq!(t.package.name, "LQFP-64_10x10mm_P0.5mm");
+        assert_eq!(t.package.pin_count, 64);
+        assert_eq!(t.land_pattern.pads.len(), 64);
+        // Pin 1 at the top of the left side, then down the left, along the
+        // bottom, up the right and back along the top, as in KiCad.
+        let (x1, y1) = at(&t, "1");
+        assert!(x1 < -5.0 && y1 < -3.5, "pin 1 at {x1}, {y1}");
+        let (x16, y16) = at(&t, "16");
+        assert!(x16 < -5.0 && y16 > 3.5 && (y1 + y16).abs() < 1e-9);
+        let (x17, y17) = at(&t, "17");
+        assert!(y17 > 5.0 && x17 < -3.5, "pin 17 at {x17}, {y17}");
+        let (x33, y33) = at(&t, "33");
+        assert!(x33 > 5.0 && y33 > 3.5);
+        let (x49, y49) = at(&t, "49");
+        assert!(y49 < -5.0 && x49 > 3.5);
+        // KiCad's LQFP-64_10x10mm_P0.5mm has pads 1.475 x 0.3 mm at 5.675 mm.
+        let p = &t.land_pattern.pads[0];
+        assert!((x1.abs() - 5.675).abs() < 0.2, "pad centre {x1}");
+        assert!(
+            (p.size_x.get() - 1.475).abs() < 0.25,
+            "pad length {}",
+            p.size_x.get()
+        );
+        assert!(
+            (p.size_y.get() - 0.3).abs() < 0.1,
+            "pad width {}",
+            p.size_y.get()
+        );
+        // The letters of the drawing are kept: D and E over the leads, D1 and
+        // E1 the body.
+        let d = &t.package.dimensions;
+        assert_eq!(d["D"].value.nom.get(), 12.0);
+        assert_eq!(d["D1"].value.nom.get(), 10.0);
+        assert_eq!(t.package.body.length.get(), 10.0);
+    }
+
+    #[test]
+    fn a_rectangular_quad_has_the_right_count_on_each_side() {
+        let mut p = lqfp64();
+        p.pins_x = 10;
+        p.pins_y = 20;
+        p.body_x = Range::new(9.9, 10.1);
+        p.body_y = Range::new(13.9, 14.1);
+        p.span_x = Range::new(11.8, 12.2);
+        p.span_y = Range::new(15.8, 16.2);
+        let t = quad_flat_gull_wing(&p, Density::Nominal).unwrap();
+        assert_eq!(t.land_pattern.pads.len(), 60);
+        // Left side has pins_y pads (1..=20), bottom has pins_x (21..=30).
+        assert!(at(&t, "20").0 < 0.0 && at(&t, "21").1 > 0.0);
+        assert!(
+            quad_flat_gull_wing(
+                &QuadFlatGullWing {
+                    pins_x: 0,
+                    ..lqfp64()
+                },
+                Density::Nominal
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn grid_rows_skip_the_letters_jedec_leaves_out() {
+        let names: Vec<String> = (0..21).map(grid_row_name).collect();
+        assert_eq!(names[..9].join(""), "ABCDEFGHJ"); // no I
+        assert_eq!(names[19], "Y");
+        assert_eq!(names[20], "AA");
+        assert_eq!(grid_row_name(21), "AB");
+        assert_eq!(grid_position("A1"), Some((0, 0)));
+        assert_eq!(grid_position("J10"), Some((8, 9)));
+        assert_eq!(grid_position("AA3"), Some((20, 2)));
+        assert_eq!(grid_position("I1"), None);
+        assert_eq!(grid_position("12"), None);
+        assert_eq!(grid_position("A0"), None);
+    }
+
+    #[test]
+    fn a_ball_grid_has_a_pad_for_every_position_with_a1_at_the_top_left() {
+        let p = GridArray {
+            family: "BGA".into(),
+            rows: 8,
+            cols: 8,
+            pitch: 1.0,
+            body_x: Range::new(8.9, 9.1),
+            body_y: Range::new(8.9, 9.1),
+            height_max: 1.4,
+            ball_diameter: Range::new(0.45, 0.55),
+            standoff: Some(0.3),
+        };
+        let t = grid_array(&p, Density::Nominal).unwrap();
+        assert_eq!(t.package.name, "BGA-64_9x9mm_Layout8x8_P1mm");
+        assert_eq!(t.land_pattern.pads.len(), 64);
+        assert_eq!(at(&t, "A1"), (-3.5, -3.5));
+        assert_eq!(at(&t, "H8"), (3.5, 3.5));
+        assert_eq!(at(&t, "A8"), (3.5, -3.5));
+        let pad = &t.land_pattern.pads[0];
+        assert_eq!(pad.shape, PadShape::Circle);
+        // 80 % of a 0.5 mm ball.
+        assert!(
+            (pad.size_x.get() - 0.4).abs() < 1e-9,
+            "{}",
+            pad.size_x.get()
+        );
+        assert!(
+            grid_array(
+                &GridArray {
+                    rows: 0,
+                    ..p.clone()
+                },
+                Density::Nominal
+            )
+            .is_err()
+        );
+        assert!(
+            grid_array(
+                &GridArray {
+                    rows: 100,
+                    cols: 100,
+                    ..p
+                },
+                Density::Nominal
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn pads_can_be_drawn_from_groups_for_any_package() {
+        // A SOT-223: three leads on one side and a wide tab on the other.
+        let p = CustomPads {
+            family: "SOT-223".into(),
+            body_length: 6.5,
+            body_width: 3.5,
+            height_max: 1.8,
+            groups: vec![
+                PadGroup {
+                    first_number: 1,
+                    count: 3,
+                    x: -3.15,
+                    y: -2.3,
+                    dx: 0.0,
+                    dy: 2.3,
+                    size_x: 2.0,
+                    size_y: 1.5,
+                    shape: PadShape::RoundRect,
+                    drill: None,
+                },
+                PadGroup {
+                    first_number: 4,
+                    count: 1,
+                    x: 3.15,
+                    y: 0.0,
+                    dx: 0.0,
+                    dy: 0.0,
+                    size_x: 2.0,
+                    size_y: 3.8,
+                    shape: PadShape::RoundRect,
+                    drill: None,
+                },
+            ],
+        };
+        let t = custom_pads(&p).unwrap();
+        assert_eq!(t.package.name, "SOT-223-4_3.5x6.5mm");
+        assert_eq!(t.land_pattern.pads.len(), 4);
+        assert_eq!(at(&t, "2"), (-3.15, 0.0));
+        assert_eq!(at(&t, "4"), (3.15, 0.0));
+        assert!((t.package.pitch.get() - 2.3).abs() < 1e-9);
+        assert!(
+            custom_pads(&CustomPads {
+                groups: vec![],
+                ..p.clone()
+            })
+            .is_err()
+        );
+        let mut zero = p.clone();
+        zero.groups[0].count = 0;
+        assert!(custom_pads(&zero).is_err());
+        // Through-hole groups get holes and no paste.
+        let mut th = p;
+        th.groups.truncate(1);
+        th.groups[0].drill = Some(0.9);
+        th.groups[0].shape = PadShape::Circle;
+        let t = custom_pads(&th).unwrap();
+        assert!(
+            t.land_pattern
+                .pads
+                .iter()
+                .all(|p| p.kind == PadKind::ThruHole && !p.paste)
+        );
     }
 }

@@ -246,7 +246,7 @@ fn changed_prompts_are_saved_shown_and_reset() {
     let path = tmp.path().join("kirpitch.toml");
     let keys = MemoryKeyStore::default();
     let default = settings_view(&path, &keys);
-    assert_eq!(default.prompts.len(), 5);
+    assert_eq!(default.prompts.len(), 6);
     assert!(default.prompts.iter().all(|p| p.text == p.default));
     let before = default.prompts_fingerprint.clone();
 

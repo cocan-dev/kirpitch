@@ -48,7 +48,19 @@ pub const DEFAULT_PACKAGE: &str = "Read the outline dimensions of the package in
 - D: body length (along the pin rows) and E1: body width (across the rows), E: lead span tip to tip. These are for SOIC, SSOP, TSSOP, MSOP, SOT-23.\n\
 - QFN: D and E are the two body sizes, D2 and E2 the exposed pad.\n\
 - L: lead or terminal length; b: lead or terminal width.\n\
-Leave out what the text does not give. Choose the family that fits the package name; when it is none of them (for example LQFP, TQFP, BGA, SOT-223) use `other` and write the package name in `package_name`.\n{hint}\n{pages}";
+- QFP, LQFP, TQFP (leads on four sides): family qfp, lqfp or tqfp; D and E are the sizes over the lead tips, D1 and E1 the plastic body; give pin_count (all leads) or pins_x and pins_y (leads on the top and bottom, and on the left and right).\n\
+- BGA, LGA, CSP (balls or lands under the body): family bga, lga or csp; D and E are the body sizes, b the ball diameter, rows and cols the size of the grid (rows are the letters A, B, C, columns the numbers).\n\
+- Also give, when the drawing has them: A1 (standoff, body to board), A2 (thickness of the body), c (thickness of a lead).\n\
+Leave out what the text does not give. Choose the family that fits the package name; when it is none of them (for example SOT-223, DPAK, a diode or an inductor) use `custom`, write the package name in `package_name` and give the body as D (length) and E1 (width) and the height A: the pads then come from the recommended footprint.\n{hint}\n{pages}";
+
+/// The recommended footprint of the package.
+pub const DEFAULT_FOOTPRINT: &str = "Read the recommended footprint (also called land pattern, solder pad pattern or PCB layout) of this package, in millimetres. Give only what the drawing or table states; leave out what it does not give. Use these names:\n\
+- pad_length: the size of a pad along the lead, pointing away from the body; pad_width: across it\n\
+- center_x: the distance between the centres of the left and the right row of pads; if only the distance from the outer edge of one row to the outer edge of the other is given, use outer_x instead. The same for the top and bottom rows: center_y or outer_y\n\
+- pitch: the distance between pad centres\n\
+- pad_diameter: for the round lands of a ball grid\n\
+- exposed_pad: width and height of the pad under the body, if there is one\n\
+If the pads do not follow rows or a grid (a tab, an unusual layout), list each run of equal pads in groups, from the centre of the footprint, x to the right and y down, pad 1 at the top left: first_number, count, x and y of the first pad, dx and dy to the next, size_x and size_y.\n{hint}\n{pages}";
 
 /// The prompts a person changed. `None` means the default.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,6 +81,9 @@ pub struct Prompts {
     /// Instruction for the package dimensions.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub package: Option<String>,
+    /// Instruction for the recommended footprint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub footprint: Option<String>,
 }
 
 /// A prompt that can be changed, for screens.
@@ -87,7 +102,7 @@ pub struct PromptInfo {
 }
 
 /// All prompts that can be changed, in the order of the extraction.
-pub const PROMPT_LIST: [PromptInfo; 5] = [
+pub const PROMPT_LIST: [PromptInfo; 6] = [
     PromptInfo {
         key: "system",
         title: "System prompt",
@@ -119,9 +134,16 @@ pub const PROMPT_LIST: [PromptInfo; 5] = [
     PromptInfo {
         key: "package",
         title: "Package dimensions",
-        about: "Asked of the pages that describe the package.",
+        about: "Asked of the pages that describe the package: its outline, leads and height. These make the package, the 3D model and, when there is no recommended footprint, the calculated land pattern.",
         placeholders: "{hint} {pages}",
         default: DEFAULT_PACKAGE,
+    },
+    PromptInfo {
+        key: "footprint",
+        title: "Recommended footprint",
+        about: "Asked of the pages with the recommended land pattern. Its pad sizes and row distances replace the calculated ones.",
+        placeholders: "{hint} {pages}",
+        default: DEFAULT_FOOTPRINT,
     },
 ];
 
@@ -134,6 +156,7 @@ impl Prompts {
             "pins" => (&self.pins, DEFAULT_PINS),
             "pins_second" => (&self.pins_second, DEFAULT_PINS_SECOND),
             "package" => (&self.package, DEFAULT_PACKAGE),
+            "footprint" => (&self.footprint, DEFAULT_FOOTPRINT),
             _ => return "",
         };
         changed.as_deref().unwrap_or(default)
@@ -162,6 +185,7 @@ impl Prompts {
             "metadata" => self.metadata = value,
             "pins" => self.pins = value,
             "pins_second" => self.pins_second = value,
+            "footprint" => self.footprint = value,
             _ => self.package = value,
         }
         Ok(())

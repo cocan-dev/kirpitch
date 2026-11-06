@@ -21,7 +21,7 @@ const ev = {
   poll: null,
 };
 
-const EV_STAGE = { read: "reading the PDF", metadata: "part number", pins: "pin table", package: "package", assemble: "checking", save: "saving" };
+const EV_STAGE = { read: "reading the PDF", metadata: "part number", pins: "pin table", package: "package outline", footprint: "recommended footprint", assemble: "checking", save: "saving" };
 
 async function evalLoad() {
   try {

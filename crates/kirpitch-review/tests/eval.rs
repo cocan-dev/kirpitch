@@ -170,7 +170,7 @@ fn a_case_is_run_scored_saved_compared_and_deleted() {
     assert!((run.totals.pinout - 1.0).abs() < 1e-9);
     assert!(run.totals.tokens > 0);
     assert_eq!(run.label, "first try");
-    assert_eq!(run.prompts.len(), 5);
+    assert_eq!(run.prompts.len(), 6);
     assert_eq!(run.prompts_fingerprint, config.prompts.fingerprint());
     assert_eq!(run.models.len(), 3);
     let ev = events.lock().unwrap();

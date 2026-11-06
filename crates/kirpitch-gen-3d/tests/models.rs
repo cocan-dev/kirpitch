@@ -6,8 +6,8 @@ use kirpitch_core::ElectricalType;
 use kirpitch_core::ipc::{Density, Range};
 use kirpitch_core::partspec::{Approvals, Metadata, Origin, PartSpec, Pin, SCHEMA_VERSION};
 use kirpitch_core::templates::{
-    DualRowGullWing, DualRowThroughHole, QuadFlatNoLead, Template, dual_row_gull_wing,
-    dual_row_through_hole, quad_flat_no_lead,
+    DualRowGullWing, DualRowThroughHole, GridArray, QuadFlatGullWing, QuadFlatNoLead, Template,
+    dual_row_gull_wing, dual_row_through_hole, grid_array, quad_flat_gull_wing, quad_flat_no_lead,
 };
 use kirpitch_gen_3d::{Material, View, build, check_fit, view_svg, write_step, write_vrml};
 
@@ -299,4 +299,132 @@ fn kicad_loads_the_models() {
             }
         }
     }
+}
+
+fn lqfp64() -> PartSpec {
+    part(
+        quad_flat_gull_wing(
+            &QuadFlatGullWing {
+                family: "LQFP".into(),
+                pins_x: 16,
+                pins_y: 16,
+                pitch: 0.5,
+                body_x: Range::new(9.9, 10.1),
+                body_y: Range::new(9.9, 10.1),
+                span_x: Range::new(11.8, 12.2),
+                span_y: Range::new(11.8, 12.2),
+                height_max: 1.6,
+                lead_length: Range::new(0.45, 0.75),
+                lead_width: Range::new(0.17, 0.27),
+                exposed_pad: None,
+            },
+            Density::Nominal,
+        )
+        .unwrap(),
+    )
+}
+
+fn bga64() -> PartSpec {
+    part(
+        grid_array(
+            &GridArray {
+                family: "BGA".into(),
+                rows: 8,
+                cols: 8,
+                pitch: 1.0,
+                body_x: Range::new(8.9, 9.1),
+                body_y: Range::new(8.9, 9.1),
+                height_max: 1.4,
+                ball_diameter: Range::new(0.45, 0.55),
+                standoff: Some(0.3),
+            },
+            Density::Nominal,
+        )
+        .unwrap(),
+    )
+}
+
+#[test]
+fn a_quad_gull_wing_package_has_legs_on_all_four_sides_and_passes_the_fit_check() {
+    let spec = lqfp64();
+    let m = build(&spec).unwrap();
+    assert!(
+        check_fit(&spec, &m).is_empty(),
+        "{:?}",
+        check_fit(&spec, &m)
+    );
+    let (lo, hi) = m.bounds();
+    // The legs reach out to the lead span (12 mm) on x and y.
+    assert!(
+        hi[0] > 5.5 && lo[0] < -5.5 && hi[1] > 5.5 && lo[1] < -5.5,
+        "{lo:?} {hi:?}"
+    );
+    let metal = m
+        .boxes
+        .iter()
+        .filter(|b| b.material == Material::Metal)
+        .count();
+    assert_eq!(metal, 64 * 3, "three boxes for each gull-wing leg");
+}
+
+#[test]
+fn the_dimensions_of_the_drawing_shape_the_model() {
+    // The lead thickness c and the body thickness A2 of the drawing are used.
+    let mut spec = lqfp64();
+    let plain = build(&spec).unwrap();
+    for (k, v) in [("c", 0.12), ("A2", 1.4), ("A1", 0.1)] {
+        let m = kirpitch_core::units::Mm::new(v).unwrap();
+        spec.package.dimensions.insert(
+            k.into(),
+            kirpitch_core::source::Sourced::unsourced(kirpitch_core::units::Tolerance {
+                min: None,
+                nom: m,
+                max: None,
+            }),
+        );
+    }
+    let shaped = build(&spec).unwrap();
+    // A thinner lead: the foot box is 0.12 mm thick instead of 0.2 mm.
+    let foot = |m: &kirpitch_gen_3d::Model| {
+        m.boxes
+            .iter()
+            .filter(|b| b.material == Material::Metal)
+            .map(|b| b.max[2] - b.min[2])
+            .fold(f64::INFINITY, f64::min)
+    };
+    assert!((foot(&plain) - 0.2).abs() < 1e-9 && (foot(&shaped) - 0.12).abs() < 1e-9);
+    // The body is A2 = 1.4 mm thick above the 0.1 mm standoff: 1.5 mm in all.
+    assert!(
+        (shaped.bounds().1[2] - 1.5).abs() < 1e-9,
+        "{:?}",
+        shaped.bounds()
+    );
+    assert!(check_fit(&spec, &shaped).is_empty());
+}
+
+#[test]
+fn a_ball_grid_has_a_ball_under_every_pad_and_none_sticking_out() {
+    let spec = bga64();
+    let m = build(&spec).unwrap();
+    assert!(
+        check_fit(&spec, &m).is_empty(),
+        "{:?}",
+        check_fit(&spec, &m)
+    );
+    let balls: Vec<_> = m
+        .boxes
+        .iter()
+        .filter(|b| b.material == Material::Metal)
+        .collect();
+    assert_eq!(balls.len(), 64);
+    let (lo, hi) = m.bounds();
+    // Nothing reaches past the 9 mm body, and the balls are 0.3 mm high.
+    assert!(hi[0] <= 4.5 + 1e-9 && lo[0] >= -4.5 - 1e-9);
+    assert!(balls.iter().all(|b| (b.max[2] - 0.3).abs() < 1e-9));
+    assert!(
+        balls
+            .iter()
+            .all(|b| (b.max[0] - b.min[0] - 0.5).abs() < 1e-9)
+    );
+    assert!(hi[2] <= 1.4 + 1e-9);
 }

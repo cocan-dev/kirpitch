@@ -12,16 +12,26 @@ const GD_STEPS = [
   { id: "file", label: "Datasheet" },
   { id: "metadata", label: "Part number", title: "Where are the part number and the description?", help: "Usually the first page: the title and the first lines of text. Draw a box around them, or use the whole page.", key: "metadata" },
   { id: "pins", label: "Pins", title: "Where is the pin table?", help: "Draw a box around the table that lists every pin: number, name and function. If it continues on the next page, go there and draw another box. Leave out long tables of alternate functions that are not needed.", key: "pins" },
-  { id: "package", label: "Package", title: "Where are the package dimensions?", help: "Draw a box around the drawing's dimension table (the letters A, D, E, e, b, L with their minimum and maximum), and the title line that names the package.", key: "package" },
+  { id: "package", label: "Package", title: "Where is the package outline?", help: "Draw a box around the package outline drawing and its dimension table: the body size, the height and, when the drawing has them, the standoff, the thickness of the body and of a lead, and the lead size. These make the package and its 3D model. Include the line that names the package.", key: "package" },
+  { id: "footprint", label: "Footprint", title: "Where is the recommended footprint?", help: "Most datasheets end with a recommended footprint (also called land pattern or PCB layout): the pads with their sizes and distances. Draw a box around it and its dimensions. The pads are then taken from it instead of being calculated. Skip this step if the datasheet has none.", key: "footprint" },
   { id: "build", label: "Build" },
 ];
+const GD_LAST = GD_STEPS.length;
+
+function gdIsPick(step) {
+  return !!GD_STEPS[step - 1].key;
+}
+
+function gdEmpty() {
+  return { metadata: [], pins: [], package: [], footprint: [] };
+}
 
 const gd = {
   step: 1,
   pdf: "",
   count: 0,
   page: 1,
-  regions: { metadata: [], pins: [], package: [] },
+  regions: gdEmpty(),
   suggestions: null,
   preview: null,
   visited: new Set([1]),
@@ -36,19 +46,19 @@ function gdKey() {
 
 function gdGuide() {
   const g = gd.regions;
-  return { metadata: g.metadata, pins: g.pins, package: g.package };
+  return { metadata: g.metadata, pins: g.pins, package: g.package, footprint: g.footprint };
 }
 
 // What the build gets: null when nothing was pointed at (the program searches).
 function guidedInput() {
   const g = gd.regions;
-  return g.metadata.length || g.pins.length || g.package.length ? gdGuide() : null;
+  return g.metadata.length || g.pins.length || g.package.length || g.footprint.length ? gdGuide() : null;
 }
 
 function gdReset() {
   const pdf = $("ds-pdf").value.trim();
   if (pdf !== gd.pdf) {
-    gd.regions = { metadata: [], pins: [], package: [] };
+    gd.regions = gdEmpty();
     gd.suggestions = null;
     gd.preview = null;
   }
@@ -71,7 +81,7 @@ async function gdGo(step) {
     if (!pdf) return gdError("Choose the datasheet PDF first.");
     if (!$("ds-out").value.trim()) return gdError("Choose where to save the part.");
     if (pdf !== gd.pdf) {
-      gd.regions = { metadata: [], pins: [], package: [] };
+      gd.regions = gdEmpty();
       gd.suggestions = null;
       gd.preview = null;
     }
@@ -92,7 +102,7 @@ async function gdGo(step) {
   }
   gd.step = step;
   gd.visited.add(step);
-  if (step >= 2 && step <= 4) {
+  if (gdIsPick(step)) {
     // Start on the first place already chosen, else on the best suggestion.
     const key = GD_STEPS[step - 1].key;
     const chosen = gd.regions[key][0];
@@ -100,23 +110,23 @@ async function gdGo(step) {
     gd.page = chosen ? chosen.page : best ? best.page : 1;
   }
   gdShow(step);
-  if (step >= 2 && step <= 4) await gdLoadPage();
-  if (step === 5) await gdUpdatePreview();
+  if (gdIsPick(step)) await gdLoadPage();
+  if (step === GD_LAST) await gdUpdatePreview();
 }
 
 function gdShow(step) {
   gd.step = step;
   const s = GD_STEPS[step - 1];
   $("gd-p1").hidden = step !== 1;
-  $("gd-pick").hidden = !(step >= 2 && step <= 4);
-  $("gd-p5").hidden = step !== 5;
+  $("gd-pick").hidden = !gdIsPick(step);
+  $("gd-p5").hidden = step !== GD_LAST;
   $("gd-back").hidden = step === 1;
-  $("gd-next").hidden = step === 5;
-  $("gd-skip").hidden = !(step >= 2 && step <= 4);
-  $("ds-run").hidden = step !== 5;
+  $("gd-next").hidden = step === GD_LAST;
+  $("gd-skip").hidden = !gdIsPick(step);
+  $("ds-run").hidden = step !== GD_LAST;
   $("gd-next").disabled = gd.loading;
-  $("gd-next").textContent = gd.loading ? "Reading the datasheet…" : step === 4 ? "Review" : "Next";
-  if (step >= 2 && step <= 4) {
+  $("gd-next").textContent = gd.loading ? "Reading the datasheet…" : step === GD_LAST - 1 ? "Review" : "Next";
+  if (gdIsPick(step)) {
     $("gd-pick-title").textContent = s.title;
     $("gd-pick-help").textContent = s.help;
     $("gd-skip").textContent = "Let the program search for this";
@@ -124,7 +134,7 @@ function gdShow(step) {
     gdPaintRegions();
     gdPaintSize();
   }
-  if (step === 5) gdPaintSummary();
+  if (step === GD_LAST) gdPaintSummary();
   gdPaintStepper();
 }
 
@@ -258,8 +268,8 @@ function gdChanged() {
   clearTimeout(gd.timer);
   gd.timer = setTimeout(async () => {
     await gdUpdatePreview();
-    if (gd.step >= 2 && gd.step <= 4) gdPaintSize();
-    if (gd.step === 5) gdPaintSummary();
+    if (gdIsPick(gd.step)) gdPaintSize();
+    if (gd.step === GD_LAST) gdPaintSummary();
   }, 300);
 }
 
@@ -347,7 +357,7 @@ function gdDescribe(regions) {
 }
 
 function gdPaintSummary() {
-  const rows = [["metadata", "Part number", 2], ["pins", "Pin table", 3], ["package", "Package", 4]].map(([key, label, step]) => {
+  const rows = [["metadata", "Part number", 2], ["pins", "Pin table", 3], ["package", "Package outline", 4], ["footprint", "Recommended footprint", 5]].map(([key, label, step]) => {
     const p = gd.preview && gd.preview[key];
     const row = el("li", { class: "gd-sum-row" });
     const edit = el("button", { type: "button", class: "link", text: "change" });
@@ -357,21 +367,22 @@ function gdPaintSummary() {
     return row;
   });
   $("gd-summary").replaceChildren(...rows);
-  const total = gd.preview ? ["metadata", "pins", "package"].reduce((a, k) => a + (gd.regions[k].length ? gd.preview[k].chosen : gd.preview[k].automatic), 0) : 0;
-  const auto = gd.preview ? ["metadata", "pins", "package"].reduce((a, k) => a + gd.preview[k].automatic, 0) : 0;
+  const keys = ["metadata", "pins", "package", "footprint"];
+  const total = gd.preview ? keys.reduce((a, k) => a + (gd.regions[k].length ? gd.preview[k].chosen : gd.preview[k].automatic), 0) : 0;
+  const auto = gd.preview ? keys.reduce((a, k) => a + gd.preview[k].automatic, 0) : 0;
   $("gd-total").textContent = gd.preview ? "About " + total.toLocaleString() + " characters will be sent in total" + (auto > total ? " instead of about " + auto.toLocaleString() + " when the program searches everything." : ".") : "";
 }
 
-$("gd-next").addEventListener("click", () => gdGo(Math.min(gd.step + 1, 5)));
+$("gd-next").addEventListener("click", () => gdGo(Math.min(gd.step + 1, GD_LAST)));
 $("gd-back").addEventListener("click", () => gdGo(Math.max(gd.step - 1, 1)));
 $("gd-skip").addEventListener("click", () => {
   gd.regions[gdKey()] = [];
   gdChanged();
-  gdGo(Math.min(gd.step + 1, 5));
+  gdGo(Math.min(gd.step + 1, GD_LAST));
 });
 $("gd-auto").addEventListener("click", () => {
   // Skip the guide: the program searches everything.
-  gd.regions = { metadata: [], pins: [], package: [] };
+  gd.regions = gdEmpty();
   gd.preview = null;
-  gdGo(5);
+  gdGo(GD_LAST);
 });

@@ -492,27 +492,6 @@ fn every_call_is_reported_with_what_the_model_said_and_thought() {
 }
 
 #[test]
-fn a_package_that_cannot_be_drawn_is_named_and_not_asked_again() {
-    let m = mock(&[
-        metadata_answer(),
-        pins_answer(),
-        json!({"family": "other", "package_name": "LQFP64", "pin_count": 64}),
-    ]);
-    let report = run(&m, &BuildOptions::default());
-    // One call for the package: asking again would not change the answer.
-    assert_eq!(m.requests().len(), 3);
-    assert!(report.spec.is_none());
-    assert!(report.pins.is_some(), "the pins are kept");
-    let failure = report
-        .failures
-        .iter()
-        .find(|f| f.starts_with("package"))
-        .unwrap();
-    assert!(failure.contains("LQFP64"), "{failure}");
-    assert!(failure.contains("not one of the shapes"), "{failure}");
-}
-
-#[test]
 fn the_options_set_the_tries_the_limits_and_the_time() {
     let mut config = config();
     config.extraction.attempts = Some(1);
@@ -578,6 +557,7 @@ fn text_the_person_points_at_is_read_as_it_is_and_nothing_else_is_sent() {
             metadata: Some(only(1, "TITLE-ONLY-LM358DR dual amplifier")),
             pins: Some(only(48, "PINS-ONLY 1 OUT1 output")),
             package: Some(only(50, "PACKAGE-ONLY pitch 1.27")),
+            footprint: None,
         },
         ..Default::default()
     };
@@ -607,4 +587,228 @@ fn pages_are_suggested_by_the_same_keywords_the_search_uses() {
     assert_eq!(package.first().map(|p| p.0), Some(5), "{package:?}");
     let metadata = kirpitch_models::suggest_pages(&all, "metadata", None);
     assert_eq!(metadata.iter().map(|p| p.0).collect::<Vec<_>>(), [1, 3]);
+}
+
+/// The pages of the test datasheet and a sixth with a recommended footprint.
+fn pages_with_footprint() -> Vec<PageLines> {
+    let mut p = pages();
+    p.push(PageLines {
+        page: 6,
+        lines: vec![
+            line("Recommended footprint (land pattern)", 0.1),
+            line(
+                "pad length 2.0 pad width 0.6 pitch 1.27 row centres 5.4",
+                0.2,
+            ),
+        ],
+    });
+    p
+}
+
+fn many_pins(names: &[String]) -> Value {
+    let pins: Vec<Value> = names
+        .iter()
+        .map(|n| json!({"number": n, "name": format!("P{n}"), "type": "passive", "page": 3, "confidence": 0.9}))
+        .collect();
+    json!({ "pins": pins })
+}
+
+fn run_with(
+    pages: &[PageLines],
+    answers: &[Value],
+) -> (Arc<MockTransport>, kirpitch_models::BuildReport) {
+    let m = mock(answers);
+    let report = build(
+        &config(),
+        m.clone(),
+        &Cache::none(),
+        pages,
+        &BuildOptions::default(),
+    );
+    (m, report)
+}
+
+fn is_valid(spec: &PartSpec) -> bool {
+    !has_errors(&validate(spec, &FabProfile::generic()))
+}
+
+#[test]
+fn the_recommended_footprint_of_the_datasheet_replaces_the_calculated_pads() {
+    let (m, report) = run_with(
+        &pages_with_footprint(),
+        &[
+            metadata_answer(),
+            pins_answer(),
+            package_answer(),
+            json!({"pad_length": 2.0, "pad_width": 0.6, "pitch": 1.27, "center_x": 5.4, "page": 6, "confidence": 0.9}),
+        ],
+    );
+    assert!(report.failures.is_empty(), "{:?}", report.failures);
+    assert_eq!(m.requests().len(), 4, "metadata, pins, package, footprint");
+    let spec = report.spec.unwrap();
+    let pad = &spec.land_pattern.pads[0];
+    assert_eq!((pad.size_x.get(), pad.size_y.get()), (2.0, 0.6));
+    assert!((pad.x.get().abs() - 2.7).abs() < 1e-9, "rows 5.4 mm apart");
+    assert_eq!(
+        pad.source.unwrap().page,
+        6,
+        "the pads come from the footprint page"
+    );
+    assert!(
+        report
+            .notes
+            .iter()
+            .any(|n| n.contains("follow the recommended footprint")),
+        "{:?}",
+        report.notes
+    );
+    assert!(is_valid(&spec));
+}
+
+#[test]
+fn a_footprint_that_cannot_be_read_falls_back_to_the_calculated_pads() {
+    // A footprint page, but no answer for it: the build still finishes.
+    let (_, report) = run_with(
+        &pages_with_footprint(),
+        &[metadata_answer(), pins_answer(), package_answer()],
+    );
+    assert!(report.spec.is_some(), "{:?}", report.failures);
+    assert!(report.failures.is_empty(), "{:?}", report.failures);
+    assert!(
+        report
+            .notes
+            .iter()
+            .any(|n| n.contains("recommended footprint could not be read")),
+        "{:?}",
+        report.notes
+    );
+}
+
+#[test]
+fn an_lqfp_is_built_from_its_drawing() {
+    let names: Vec<String> = (1..=64).map(|i| i.to_string()).collect();
+    let (_, report) = run_with(
+        &pages(),
+        &[
+            metadata_answer(),
+            many_pins(&names),
+            json!({"family": "lqfp", "pin_count": 64, "e": 0.5, "A": 1.6, "A1": 0.1, "A2": 1.4, "c": 0.15,
+                   "D": {"min": 11.8, "max": 12.2}, "E": {"min": 11.8, "max": 12.2},
+                   "D1": {"min": 9.9, "max": 10.1}, "E1": {"min": 9.9, "max": 10.1},
+                   "L": {"min": 0.45, "max": 0.75}, "b": {"min": 0.17, "max": 0.27}, "page": 5}),
+        ],
+    );
+    assert!(report.failures.is_empty(), "{:?}", report.failures);
+    let spec = report.spec.unwrap();
+    assert_eq!(spec.package.name, "LQFP-64_10x10mm_P0.5mm");
+    assert_eq!(spec.land_pattern.pads.len(), 64);
+    // The other dimensions of the drawing are kept for the 3D model.
+    assert_eq!(spec.package.dimensions["A2"].value.nom.get(), 1.4);
+    assert_eq!(spec.package.dimensions["c"].value.nom.get(), 0.15);
+    assert!(is_valid(&spec));
+}
+
+#[test]
+fn a_ball_grid_keeps_only_the_balls_the_pin_table_lists() {
+    let mut names = Vec::new();
+    for row in "ABCDEFGH".chars() {
+        for col in 1..=8 {
+            let n = format!("{row}{col}");
+            // The four balls in the middle are not there.
+            if !["D4", "D5", "E4", "E5"].contains(&n.as_str()) {
+                names.push(n);
+            }
+        }
+    }
+    let (_, report) = run_with(
+        &pages(),
+        &[
+            metadata_answer(),
+            many_pins(&names),
+            json!({"family": "bga", "rows": 8, "cols": 8, "e": 1.0, "A": 1.4, "A1": 0.3,
+                   "D": {"min": 8.9, "max": 9.1}, "E": {"min": 8.9, "max": 9.1},
+                   "b": {"min": 0.45, "max": 0.55}, "page": 5}),
+        ],
+    );
+    assert!(report.failures.is_empty(), "{:?}", report.failures);
+    let spec = report.spec.unwrap();
+    assert_eq!(spec.land_pattern.pads.len(), 60);
+    assert_eq!(spec.package.pin_count, 60);
+    assert!(spec.land_pattern.pads.iter().all(|p| p.number != "D4"));
+    assert!(
+        report.notes.iter().any(|n| n.contains("4 of the 64")),
+        "{:?}",
+        report.notes
+    );
+}
+
+#[test]
+fn a_package_without_a_template_is_drawn_from_the_pads_of_the_footprint() {
+    // A SOT-223: no template of its own, so the pads of the footprint are used.
+    let names: Vec<String> = (1..=4).map(|i| i.to_string()).collect();
+    let (m, report) = run_with(
+        &pages(),
+        &[
+            metadata_answer(),
+            many_pins(&names),
+            json!({"family": "other", "package_name": "SOT-223", "A": 1.8,
+                   "D": {"min": 6.3, "max": 6.7}, "E1": {"min": 3.3, "max": 3.7}, "page": 5}),
+            json!({"groups": [
+                {"first_number": 1, "count": 3, "x": -3.15, "y": -2.3, "dx": 0, "dy": 2.3,
+                 "size_x": 2.0, "size_y": 1.5, "shape": "roundrect"},
+                {"first_number": 4, "count": 1, "x": 3.15, "y": 0, "size_x": 2.0, "size_y": 3.8, "shape": "roundrect"}
+            ], "page": 6, "confidence": 0.8}),
+        ],
+    );
+    assert!(report.failures.is_empty(), "{:?}", report.failures);
+    assert_eq!(m.requests().len(), 4);
+    let spec = report.spec.unwrap();
+    assert_eq!(spec.package.name, "SOT-223-4_3.5x6.5mm");
+    assert_eq!(spec.land_pattern.pads.len(), 4);
+    assert!(is_valid(&spec));
+}
+
+#[test]
+fn a_package_without_a_template_and_without_a_footprint_says_what_is_missing() {
+    let (_, report) = run_with(
+        &pages(),
+        &[
+            metadata_answer(),
+            pins_answer(),
+            json!({"family": "other", "package_name": "SOT-223", "A": 1.8,
+                   "D": {"min": 6.3, "max": 6.7}, "E1": {"min": 3.3, "max": 3.7}}),
+        ],
+    );
+    assert!(report.spec.is_none());
+    assert!(report.pins.is_some(), "the pins are kept");
+    assert!(
+        report.failures.iter().any(|f| f.starts_with("footprint")),
+        "{:?}",
+        report.failures
+    );
+}
+
+#[test]
+fn the_footprint_answer_is_read_strictly() {
+    use kirpitch_models::tasks::footprint_from_json;
+    assert!(footprint_from_json(&json!({})).is_err());
+    assert!(
+        footprint_from_json(&json!({"pad_length": 1.0})).is_err(),
+        "a width is needed too"
+    );
+    assert!(footprint_from_json(&json!({"pad_diameter": 0.4})).is_ok());
+    let bad_shape =
+        json!({"groups": [{"x": 0, "y": 0, "size_x": 1, "size_y": 1, "shape": "star"}]});
+    assert!(
+        footprint_from_json(&bad_shape)
+            .unwrap_err()
+            .contains("shape")
+    );
+    let no_size = json!({"groups": [{"x": 0, "y": 0, "size_x": 0, "size_y": 1}]});
+    assert!(footprint_from_json(&no_size).is_err());
+    let ok = footprint_from_json(
+        &json!({"pad_length": 1.5, "pad_width": 0.3, "exposed_pad": {"width": 2.5, "height": 2.5}}),
+    )
+    .unwrap();
+    assert_eq!(ok.exposed_pad, Some((2.5, 2.5)));
 }

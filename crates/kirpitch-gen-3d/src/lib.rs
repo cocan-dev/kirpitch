@@ -137,6 +137,12 @@ enum Side {
     Bottom,
 }
 
+/// A ball grid or land grid: the terminals are under the body.
+fn is_grid(spec: &PartSpec) -> bool {
+    let family = spec.package.family.to_ascii_uppercase();
+    ["BGA", "LGA", "CSP"].iter().any(|f| family.contains(f))
+}
+
 fn is_no_lead(spec: &PartSpec) -> bool {
     let family = spec.package.family.to_ascii_uppercase();
     ["QFN", "DFN", "LGA", "SON"]
@@ -160,14 +166,33 @@ pub fn build(spec: &PartSpec) -> Result<Model, ModelError> {
     let top = body.height_max.get();
     let through_hole = pads.iter().all(|p| p.kind == PadKind::ThruHole);
     let no_lead = is_no_lead(spec);
+    let grid = is_grid(spec);
+    let land_grid = spec.package.family.to_ascii_uppercase().contains("LGA");
+    // The dimensions of the datasheet drawing are used wherever it gives them:
+    // A1 (the standoff), A2 (the thickness of the body), c (the thickness of a
+    // lead) and b (the width of a lead or the diameter of a ball).
+    let lead_t = nominal(spec, "c").map_or(LEAD_THICKNESS, |c| c.clamp(0.05, 0.5));
     let standoff = if through_hole {
         THT_STANDOFF
+    } else if land_grid {
+        0.05
+    } else if grid {
+        nominal(spec, "A1").unwrap_or_else(|| {
+            pads.first()
+                .map_or(0.3, |p| (p.size_x.get() * 0.7).clamp(0.1, 0.6))
+        })
     } else if no_lead {
         0.0
     } else {
         nominal(spec, "A1").unwrap_or(DEFAULT_STANDOFF)
     }
     .min(top / 2.0);
+    // The body is A2 thick when the drawing says so, else up to the maximum
+    // height.
+    let top = match nominal(spec, "A2") {
+        Some(a2) if !through_hole && !no_lead && !grid => (standoff + a2).min(top),
+        _ => top,
+    };
 
     // Model y is the footprint y flipped.
     let my = |y: f64| -y;
@@ -223,8 +248,19 @@ pub fn build(spec: &PartSpec) -> Result<Model, ModelError> {
                     ));
                     continue;
                 }
+                if grid {
+                    // A ball (or land) under the body at the place of the pad.
+                    let d = nominal(spec, "b").unwrap_or(sx).max(0.1);
+                    boxes.push(Cuboid::new(
+                        [px - d / 2.0, my(py) - d / 2.0, 0.0],
+                        [px + d / 2.0, my(py) + d / 2.0, standoff.max(0.05)],
+                        Material::Metal,
+                    ));
+                    continue;
+                }
                 let side = side_of(px - cx, py - cy, hx, hy);
                 boxes.extend(terminal(&Terminal {
+                    lead_t,
                     spec,
                     side,
                     pos: (px, py),
@@ -256,6 +292,8 @@ fn side_of(dx: f64, dy: f64, hx: f64, hy: f64) -> Side {
 
 /// Inputs for one SMD terminal, in footprint coordinates.
 struct Terminal<'a> {
+    /// Thickness of a lead.
+    lead_t: f64,
     spec: &'a PartSpec,
     side: Side,
     pos: (f64, f64),
@@ -290,18 +328,18 @@ fn terminal(t: &Terminal) -> Vec<Cuboid> {
     let mut parts: Vec<(f64, f64, f64, f64)> = Vec::new();
     if t.no_lead {
         let length = nominal(t.spec, "L").unwrap_or(pad_len * 0.5);
-        parts.push((body_edge - length, body_edge, 0.0, LEAD_THICKNESS.min(0.15)));
+        parts.push((body_edge - length, body_edge, 0.0, t.lead_t.min(0.15)));
     } else {
         let foot = nominal(t.spec, "L").unwrap_or(pad_len * 0.6);
         let tip = (pad_outer - 0.3).max(body_edge + foot.min(pad_len));
-        let foot_in = (tip - foot).max(body_edge + LEAD_THICKNESS).min(tip - 0.05);
+        let foot_in = (tip - foot).max(body_edge + t.lead_t).min(tip - 0.05);
         let shoulder_z = t.standoff + (t.body_top - t.standoff) * 0.5;
-        parts.push((foot_in, tip, 0.0, LEAD_THICKNESS));
-        parts.push((foot_in, foot_in + LEAD_THICKNESS, 0.0, shoulder_z));
+        parts.push((foot_in, tip, 0.0, t.lead_t));
+        parts.push((foot_in, foot_in + t.lead_t, 0.0, shoulder_z));
         parts.push((
             body_edge - 0.05,
-            foot_in + LEAD_THICKNESS,
-            shoulder_z - LEAD_THICKNESS,
+            foot_in + t.lead_t,
+            shoulder_z - t.lead_t,
             shoulder_z,
         ));
     }

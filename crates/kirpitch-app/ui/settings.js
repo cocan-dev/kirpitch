@@ -813,8 +813,10 @@ function extractionCard() {
     numberField("Answer limit, part number", "max_tokens_metadata", "The most the model may write for this step.", "tokens"),
     numberField("Answer limit, pin table", "max_tokens_pins", "A 100 pin table needs a few thousand tokens. A model that thinks needs far more, or turn its thinking off.", "tokens"),
     numberField("Answer limit, package", "max_tokens_package", "The most the model may write for this step.", "tokens"),
+    numberField("Answer limit, recommended footprint", "max_tokens_footprint", "The most the model may write for this step.", "tokens"),
     numberField("Page text for the pin table", "pin_pages_chars", "How much of the datasheet is sent for this step. More finds more, costs more and is slower.", "characters"),
-    numberField("Page text for the package", "package_pages_chars", "How much of the datasheet is sent for this step.", "characters")
+    numberField("Page text for the package", "package_pages_chars", "How much of the datasheet is sent for this step.", "characters"),
+    numberField("Page text for the recommended footprint", "footprint_pages_chars", "How much of the datasheet is sent for this step.", "characters")
   );
   card.append(head, el("p", { class: "muted small", text: "These apply to every build and to Evaluate. They are saved in the settings file." }), checks, grid);
   return card;

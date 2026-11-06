@@ -239,7 +239,7 @@ fn a_datasheet_is_built_into_a_part_with_recorded_answers() {
     .unwrap();
     // Every stage reports when it starts and when it ends, in order. The calls
     // to the models are reported in between: asked, then answered.
-    use StageState::{Call, Done, Started};
+    use StageState::{Call, Done, Skipped, Started};
     let all = events.lock().unwrap().clone();
     for stage in ["metadata", "pins", "package"] {
         let calls = all.iter().filter(|e| e.0 == stage && e.1 == Call).count();
@@ -257,6 +257,7 @@ fn a_datasheet_is_built_into_a_part_with_recorded_answers() {
             ("pins", Done),
             ("package", Started),
             ("package", Done),
+            ("footprint", Skipped),
             ("assemble", Started),
             ("assemble", Done),
             ("save", Started),

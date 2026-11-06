@@ -33,5 +33,7 @@ pub use discover::{FoundModel, ListRequest, list_models};
 pub use keys::{KeyError, KeyStore, MemoryKeyStore, OsKeyStore};
 pub use probe::{ProbeResult, probe};
 pub use prompts::{PROMPT_LIST, PromptInfo, Prompts};
-pub use tasks::{Cache, CallRecord, PageLines, Stats, TaskError, TextLine, suggest_pages};
+pub use tasks::{
+    Cache, CallRecord, FootprintAnswer, PageLines, Stats, TaskError, TextLine, suggest_pages,
+};
 pub use transport::{CurlTransport, MockTransport, Reply, Request, Transport, TransportError};

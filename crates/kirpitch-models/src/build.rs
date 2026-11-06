@@ -8,10 +8,13 @@ use std::sync::Arc;
 
 use kirpitch_core::ElectricalType;
 use kirpitch_core::ipc::{Density, Range};
-use kirpitch_core::partspec::{Approvals, Metadata, Origin, PartSpec, Pin, SCHEMA_VERSION};
+use kirpitch_core::partspec::{
+    Approvals, Metadata, Origin, PadShape, PartSpec, Pin, SCHEMA_VERSION,
+};
 use kirpitch_core::templates::{
-    DualRowGullWing, DualRowThroughHole, QuadFlatNoLead, Template, dual_row_gull_wing,
-    dual_row_through_hole, quad_flat_no_lead, sot23,
+    CustomPads, DualRowGullWing, DualRowThroughHole, GridArray, PadGroup, QuadFlatGullWing,
+    QuadFlatNoLead, Template, custom_pads, dual_row_gull_wing, dual_row_through_hole, grid_array,
+    quad_flat_gull_wing, quad_flat_no_lead, sot23,
 };
 use kirpitch_core::{BoundingBox, Confidence, Mm, Source, Sourced, Tolerance};
 
@@ -19,8 +22,9 @@ use crate::client::Client;
 use crate::config::{Config, Task};
 use crate::keys::{KeyStore, OsKeyStore};
 use crate::tasks::{
-    Cache, CallRecord, Ctx, MetadataAnswer, PackageAnswer, PageLines, Pinned, PinsResult, Span,
-    Stats, TaskError, extract_metadata, extract_package, extract_pins,
+    Cache, CallRecord, Ctx, FootprintAnswer, GRID_FAMILIES, MetadataAnswer, PackageAnswer,
+    PageLines, Pinned, PinsResult, QUAD_FAMILIES, Span, Stats, TaskError, extract_footprint,
+    extract_metadata, extract_package, extract_pins,
 };
 use crate::transport::Transport;
 
@@ -55,6 +59,8 @@ pub struct GivenText {
     pub pins: Option<Vec<PageLines>>,
     /// For the package drawing.
     pub package: Option<Vec<PageLines>>,
+    /// For the recommended footprint.
+    pub footprint: Option<Vec<PageLines>>,
 }
 
 /// What a build produced.
@@ -75,12 +81,83 @@ pub struct BuildReport {
 }
 
 /// Turns a package answer into a template.
-pub fn template_from_answer(a: &PackageAnswer) -> Result<Template, String> {
+pub fn template_from_answer(
+    a: &PackageAnswer,
+    footprint: Option<&FootprintAnswer>,
+) -> Result<Template, String> {
     let range = |s: Option<Span>, name: &str| {
         s.map(|s| Range::new(s.min, s.max))
             .ok_or_else(|| format!("`{name}` is missing"))
     };
     let made = match a.family.as_str() {
+        f if QUAD_FAMILIES.contains(&f) => quad_flat_gull_wing(
+            &QuadFlatGullWing {
+                family: f.to_ascii_uppercase(),
+                pins_x: a.pins_x.ok_or("`pins_x` is missing")?,
+                pins_y: a.pins_y.ok_or("`pins_y` is missing")?,
+                pitch: a.pitch,
+                body_x: range(a.body_x, "body_x")?,
+                body_y: range(a.body_y, "body_y")?,
+                span_x: range(a.span_x, "span_x")?,
+                span_y: range(a.span_y, "span_y")?,
+                height_max: a.height_max,
+                lead_length: range(a.lead_length, "lead_length")?,
+                lead_width: range(a.lead_width, "lead_width")?,
+                exposed_pad: a.exposed_pad,
+            },
+            Density::Nominal,
+        ),
+        f if GRID_FAMILIES.contains(&f) => grid_array(
+            &GridArray {
+                family: f.to_ascii_uppercase(),
+                rows: a.rows.ok_or("`rows` is missing")?,
+                cols: a.cols.ok_or("`cols` is missing")?,
+                pitch: a.pitch,
+                body_x: range(a.body_x, "body_x")?,
+                body_y: range(a.body_y, "body_y")?,
+                height_max: a.height_max,
+                ball_diameter: range(a.lead_width, "ball diameter")?,
+                standoff: a.standoff,
+            },
+            Density::Nominal,
+        ),
+        "custom" => {
+            let name = a.package_name.clone().unwrap_or_else(|| "PKG".into());
+            let groups: Vec<PadGroup> = footprint
+                .map(|f| f.groups.as_slice())
+                .unwrap_or_default()
+                .iter()
+                .map(|g| PadGroup {
+                    first_number: g.first_number,
+                    count: g.count,
+                    x: g.x,
+                    y: g.y,
+                    dx: g.dx,
+                    dy: g.dy,
+                    size_x: g.size_x,
+                    size_y: g.size_y,
+                    shape: match g.shape.as_str() {
+                        "roundrect" => PadShape::RoundRect,
+                        "oval" => PadShape::Oval,
+                        "circle" => PadShape::Circle,
+                        _ => PadShape::Rect,
+                    },
+                    drill: g.drill,
+                })
+                .collect();
+            if groups.is_empty() {
+                return Err(format!(
+                    "the package `{name}` has no template of its own and the recommended footprint gave no pads (groups) to draw it from"
+                ));
+            }
+            custom_pads(&CustomPads {
+                family: name,
+                body_length: a.body_length.ok_or("`body_length` is missing")?,
+                body_width: a.body_width.ok_or("`body_width` is missing")?,
+                height_max: a.height_max,
+                groups,
+            })
+        }
         "qfn" => quad_flat_no_lead(
             &QuadFlatNoLead {
                 family: "QFN".into(),
@@ -148,13 +225,50 @@ pub fn assemble(
     metadata: &MetadataAnswer,
     pins: &PinsResult,
     package: &PackageAnswer,
+    footprint: Option<&FootprintAnswer>,
     default_page: u32,
     options: &BuildOptions,
 ) -> Result<(PartSpec, Vec<String>), String> {
-    let mut template = template_from_answer(package)?;
+    let mut template = template_from_answer(package, footprint)?;
     let mut notes = Vec::new();
     let page = package.page.unwrap_or(default_page);
     let package_source = source(page, [0.0, 0.0, 1.0, 1.0], package.confidence);
+    // The pads: the recommended footprint of the datasheet wins over the
+    // calculated land pattern.
+    let mut land_source = package_source;
+    if let Some(f) = footprint
+        && package.family != "custom"
+    {
+        let changes = apply_footprint(&mut template, f);
+        if !changes.is_empty() {
+            land_source = source(f.page.unwrap_or(page), [0.0, 0.0, 1.0, 1.0], f.confidence);
+            notes.extend(changes);
+        }
+    } else if footprint.is_some() {
+        land_source = source(
+            footprint.and_then(|f| f.page).unwrap_or(page),
+            [0.0, 0.0, 1.0, 1.0],
+            footprint.map_or(0.7, |f| f.confidence),
+        );
+    }
+    // A ball grid has a pad for every position; the pin table says which balls
+    // the package really has.
+    if crate::tasks::GRID_FAMILIES.contains(&package.family.as_str()) {
+        let names: std::collections::BTreeSet<&str> =
+            pins.pins.iter().map(|p| p.pin.number.as_str()).collect();
+        let before = template.land_pattern.pads.len();
+        template
+            .land_pattern
+            .pads
+            .retain(|p| names.contains(p.number.as_str()));
+        let removed = before - template.land_pattern.pads.len();
+        if removed > 0 {
+            notes.push(format!(
+                "{removed} of the {before} positions of the ball grid are not in the pin table and have no pad (check the ball map)"
+            ));
+        }
+        template.package.pin_count = template.land_pattern.pads.len() as u32;
+    }
 
     let mut list: Vec<Pin> = pins
         .pins
@@ -221,12 +335,31 @@ pub fn assemble(
         }
     }
     template.package.source = Some(package_source);
+    // The outline drawing's other dimensions are kept: the 3D model uses them.
+    for (key, value) in [
+        ("A1", package.standoff),
+        ("A2", package.body_thickness),
+        ("c", package.lead_thickness),
+    ] {
+        if let Some(v) = value
+            && let Ok(mm) = Mm::new(v)
+        {
+            template.package.dimensions.insert(
+                key.to_string(),
+                Sourced::unsourced(Tolerance {
+                    min: None,
+                    nom: mm,
+                    max: None,
+                }),
+            );
+        }
+    }
     for dimension in template.package.dimensions.values_mut() {
         dimension.source = Some(package_source);
     }
-    template.land_pattern.source = Some(package_source);
+    template.land_pattern.source = Some(land_source);
     for pad in &mut template.land_pattern.pads {
-        pad.source = Some(package_source);
+        pad.source = Some(land_source);
     }
     let pick =
         |given: &Option<String>, read: &str| given.clone().unwrap_or_else(|| read.to_string());
@@ -260,9 +393,15 @@ fn model_client(
     let (name, model) = config.model_for(task).map_err(|e| e.to_string())?;
     let client =
         Client::connect(name, model, transport.clone(), keys).map_err(|e| e.to_string())?;
-    report
+    if !report
         .models
-        .push((task, name.to_string(), config.stays_local(task)));
+        .iter()
+        .any(|(t, n, _)| *t == task && n == name)
+    {
+        report
+            .models
+            .push((task, name.to_string(), config.stays_local(task)));
+    }
     Ok(client)
 }
 
@@ -311,6 +450,143 @@ fn asking(config: &Config, task: Task) -> String {
         Ok((name, _)) => format!("asking {name}"),
         Err(_) => "no model".to_string(),
     }
+}
+
+/// Puts the values of the recommended footprint of the datasheet over the
+/// calculated pads: the size of the pads, the distance between the rows (from
+/// centres or outer edges), the round lands of a ball grid and the pad under
+/// the body. Numbering and the other positions stay as the template made them.
+/// Returns the notes to show: what was replaced, and what does not agree.
+pub fn apply_footprint(template: &mut Template, fp: &FootprintAnswer) -> Vec<String> {
+    let mut notes = Vec::new();
+    let before: Vec<(f64, f64, f64, f64)> = template
+        .land_pattern
+        .pads
+        .iter()
+        .map(|p| (p.x.get(), p.y.get(), p.size_x.get(), p.size_y.get()))
+        .collect();
+    let family = template.package.family.to_ascii_uppercase();
+    let grid = ["BGA", "LGA", "CSP"].iter().any(|f| family.contains(f));
+    let mm = |v: f64| Mm::new(v).ok();
+    let is_center = |p: &kirpitch_core::partspec::Pad| {
+        p.x.get().abs() < 0.01
+            && p.y.get().abs() < 0.01
+            && p.size_x.get() >= 1.0
+            && p.size_y.get() >= 1.0
+    };
+    let mut changed = false;
+    if grid {
+        if let Some(d) = fp.pad_diameter.and_then(mm) {
+            for pad in &mut template.land_pattern.pads {
+                pad.size_x = d;
+                pad.size_y = d;
+            }
+            changed = true;
+        }
+    } else if let (Some(len), Some(wid)) = (fp.pad_length, fp.pad_width) {
+        // The distance of the rows from the centres, or from the outer edges.
+        let cx = fp.center_x.or(fp.outer_x.map(|o| o - len));
+        let cy = fp.center_y.or(fp.outer_y.map(|o| o - len));
+        let n = template.land_pattern.pads.len();
+        for pad in &mut template.land_pattern.pads {
+            if n > 2 && is_center(pad) {
+                continue; // the pad under the body
+            }
+            let (sx, sy) = (pad.size_x.get(), pad.size_y.get());
+            let sides = if (sx - sy).abs() > 1e-9 {
+                sx > sy
+            } else {
+                pad.x.get().abs() >= pad.y.get().abs()
+            };
+            let (Some(l), Some(w)) = (mm(len), mm(wid)) else {
+                continue;
+            };
+            if sides {
+                pad.size_x = l;
+                pad.size_y = w;
+                if let Some(c) = cx.and_then(|c| mm(pad.x.get().signum() * c / 2.0)) {
+                    pad.x = c;
+                }
+            } else {
+                pad.size_y = l;
+                pad.size_x = w;
+                if let Some(c) = cy.or(cx).and_then(|c| mm(pad.y.get().signum() * c / 2.0)) {
+                    pad.y = c;
+                }
+            }
+            changed = true;
+        }
+    }
+    if let Some((w, h)) = fp.exposed_pad {
+        let (Some(mw), Some(mh)) = (mm(w), mm(h)) else {
+            return notes;
+        };
+        if let Some(pad) = template.land_pattern.pads.iter_mut().find(|p| is_center(p)) {
+            pad.size_x = mw;
+            pad.size_y = mh;
+            changed = true;
+        } else if !grid && let (Some(zero), true) = (mm(0.0), template.land_pattern.pads.len() > 2)
+        {
+            // The datasheet draws a pad under the body that the outline did not
+            // list: add it after the last terminal.
+            let number = (template.package.pin_count + 1).to_string();
+            template
+                .land_pattern
+                .pads
+                .push(kirpitch_core::partspec::Pad {
+                    number,
+                    shape: PadShape::Rect,
+                    x: zero,
+                    y: zero,
+                    size_x: mw,
+                    size_y: mh,
+                    rotation_deg: 0.0,
+                    corner_ratio: None,
+                    paste: true,
+                    role: kirpitch_core::partspec::PadRole::Signal,
+                    kind: kirpitch_core::partspec::PadKind::Smd,
+                    drill: None,
+                    source: None,
+                });
+            template.package.pin_count += 1;
+            notes.push(format!(
+                "the recommended footprint has a pad of {w} x {h} mm under the body that the package drawing did not list; it was added as pin {}",
+                template.package.pin_count
+            ));
+            changed = true;
+        }
+    }
+    if let Some(pitch) = fp.pitch
+        && (pitch - template.package.pitch.get()).abs() > 0.01
+    {
+        notes.push(format!(
+            "the recommended footprint has a pitch of {pitch} mm but the package drawing says {} mm",
+            template.package.pitch.get()
+        ));
+    }
+    if changed {
+        // How far the datasheet's pads are from the calculated ones.
+        let mut worst = 0.0f64;
+        for (pad, old) in template.land_pattern.pads.iter().zip(&before) {
+            worst = worst
+                .max((pad.x.get() - old.0).abs())
+                .max((pad.y.get() - old.1).abs())
+                .max((pad.size_x.get() - old.2).abs())
+                .max((pad.size_y.get() - old.3).abs());
+        }
+        notes.insert(
+            0,
+            format!(
+                "the pads follow the recommended footprint of the datasheet; they differ from the calculated pads by up to {worst:.2} mm{}",
+                if worst > 0.25 {
+                    " (more than usual: check the footprint against the drawing)"
+                } else {
+                    ""
+                }
+            ),
+        );
+    }
+    notes
 }
 
 /// Runs the whole extraction: metadata, pins and package. A stage that fails
@@ -363,6 +639,7 @@ pub fn build_with_progress(
         let stage = match c.label.split(' ').next().unwrap_or("") {
             "metadata" => "metadata",
             "package" => "package",
+            "footprint" => "footprint",
             _ => "pins",
         };
         on(&Progress {
@@ -380,11 +657,13 @@ pub fn build_with_progress(
             metadata: options.given.metadata.is_some(),
             pins: options.given.pins.is_some(),
             package: options.given.package.is_some(),
+            footprint: options.given.footprint.is_some(),
         },
     };
     let metadata_pages = options.given.metadata.as_deref().unwrap_or(pages);
     let pin_pages = options.given.pins.as_deref().unwrap_or(pages);
     let package_pages = options.given.package.as_deref().unwrap_or(pages);
+    let footprint_pages = options.given.footprint.as_deref().unwrap_or(pages);
 
     let metadata = if options.mpn.is_some()
         && options.manufacturer.is_some()
@@ -485,6 +764,59 @@ pub fn build_with_progress(
         }
     };
 
+    // The recommended footprint of the datasheet: asked for when the person
+    // pointed at it or a page looks like one, and always for a package that
+    // has no template of its own.
+    let footprint = match &package {
+        None => {
+            note(on, "footprint", StageState::Skipped, "no package");
+            None
+        }
+        Some(k) => {
+            let custom = k.family == "custom";
+            let looks_there = options.given.footprint.is_some()
+                || !crate::tasks::suggest_pages(pages, "footprint", hint).is_empty();
+            if !custom && !looks_there {
+                note(
+                    on,
+                    "footprint",
+                    StageState::Skipped,
+                    "no recommended footprint found: the pads are calculated (IPC-7351)",
+                );
+                None
+            } else {
+                note(
+                    on,
+                    "footprint",
+                    StageState::Started,
+                    asking(config, Task::Drawings),
+                );
+                match model_client(config, Task::Drawings, &transport, keys, &mut report).and_then(
+                    |c| {
+                        extract_footprint(&c, cache, &mut stats, footprint_pages, hint, &ctx)
+                            .map_err(|e| e.to_string())
+                    },
+                ) {
+                    Ok(f) => {
+                        note(on, "footprint", StageState::Done, "pads read");
+                        Some(f)
+                    }
+                    Err(e) => {
+                        note(on, "footprint", StageState::Failed, e.clone());
+                        if custom {
+                            report.failures.push(format!("footprint: {e}"));
+                        } else {
+                            report.notes.push(format!(
+                                "the recommended footprint could not be read ({e}); the pads were calculated from the package dimensions"
+                            ));
+                        }
+                        None
+                    }
+                }
+            }
+        }
+    };
+
     if let (Some(m), Some(p), Some(k)) = (&metadata, &report.pins, &package) {
         note(
             on,
@@ -493,7 +825,7 @@ pub fn build_with_progress(
             "checking the pieces fit",
         );
         let default_page = pages.first().map_or(1, |p| p.page);
-        match assemble(m, p, k, default_page, options) {
+        match assemble(m, p, k, footprint.as_ref(), default_page, options) {
             Ok((spec, notes)) => {
                 note(on, "assemble", StageState::Done, "pins and package agree");
                 report.notes.extend(notes);

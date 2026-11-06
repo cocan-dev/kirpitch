@@ -154,6 +154,12 @@ pub struct Extraction {
     /// Longest answer for the package step, in tokens.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_tokens_package: Option<u32>,
+    /// Longest answer for the recommended footprint step, in tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens_footprint: Option<u32>,
+    /// Most characters of page text sent for the recommended footprint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub footprint_pages_chars: Option<usize>,
     /// Most characters of page text sent for the pin table.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pin_pages_chars: Option<usize>,
@@ -190,6 +196,14 @@ impl Extraction {
     pub fn max_tokens_package(&self) -> u32 {
         self.max_tokens_package.unwrap_or(4000)
     }
+    /// Longest answer of the recommended footprint step.
+    pub fn max_tokens_footprint(&self) -> u32 {
+        self.max_tokens_footprint.unwrap_or(2000)
+    }
+    /// Characters of footprint pages.
+    pub fn footprint_pages_chars(&self) -> usize {
+        self.footprint_pages_chars.unwrap_or(12_000)
+    }
     /// Characters of pin pages.
     pub fn pin_pages_chars(&self) -> usize {
         self.pin_pages_chars.unwrap_or(24_000)
@@ -213,6 +227,12 @@ impl Extraction {
             max_tokens_metadata: self
                 .max_tokens_metadata
                 .filter(|v| *v != d.max_tokens_metadata()),
+            max_tokens_footprint: self
+                .max_tokens_footprint
+                .filter(|v| *v != d.max_tokens_footprint()),
+            footprint_pages_chars: self
+                .footprint_pages_chars
+                .filter(|v| *v != d.footprint_pages_chars()),
             max_tokens_pins: self.max_tokens_pins.filter(|v| *v != d.max_tokens_pins()),
             max_tokens_package: self
                 .max_tokens_package
@@ -261,6 +281,10 @@ impl Extraction {
                 "the answer limit of the package step",
                 self.max_tokens_package(),
             ),
+            (
+                "the answer limit of the footprint step",
+                self.max_tokens_footprint(),
+            ),
         ] {
             range(
                 name,
@@ -271,6 +295,10 @@ impl Extraction {
         for (name, v) in [
             ("the page text for the pin table", self.pin_pages_chars()),
             ("the page text for the package", self.package_pages_chars()),
+            (
+                "the page text for the footprint",
+                self.footprint_pages_chars(),
+            ),
         ] {
             range(
                 name,
