@@ -11,9 +11,9 @@ mod parts;
 mod settings;
 
 pub use settings::{
-    FindInput, ModelInput, ModelTest, ModelView, ProviderInfo, SettingsInput, SettingsView,
-    config_from_input, current_settings, delete_api_key, find_models, save_settings, set_api_key,
-    settings_view, test_model, user_folders,
+    FindInput, ModelInput, ModelTest, ModelView, PromptView, ProviderInfo, SettingsInput,
+    SettingsView, config_from_input, current_settings, delete_api_key, find_models, save_settings,
+    set_api_key, settings_view, test_model, user_folders,
 };
 
 pub use parts::{

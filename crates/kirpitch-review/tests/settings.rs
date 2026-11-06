@@ -239,3 +239,54 @@ fn the_list_refuses_an_unknown_kind_of_server() {
     .unwrap_err();
     assert!(e.contains("unknown kind"), "{e}");
 }
+
+#[test]
+fn changed_prompts_are_saved_shown_and_reset() {
+    let tmp = TempDir::new("prompts");
+    let path = tmp.path().join("kirpitch.toml");
+    let keys = MemoryKeyStore::default();
+    let default = settings_view(&path, &keys);
+    assert_eq!(default.prompts.len(), 5);
+    assert!(default.prompts.iter().all(|p| p.text == p.default));
+    let before = default.prompts_fingerprint.clone();
+
+    let mut s = input(vec![]);
+    s.prompts
+        .insert("pins".into(), "Only list the pins.\n{pages}".into());
+    // A prompt sent as its own default is not stored as a change.
+    let package_default = default
+        .prompts
+        .iter()
+        .find(|p| p.key == "package")
+        .unwrap()
+        .default
+        .clone();
+    s.prompts.insert("package".into(), package_default);
+    let view = save_settings(&path, &s, &keys).unwrap();
+    let pins = view.prompts.iter().find(|p| p.key == "pins").unwrap();
+    assert_eq!(pins.text, "Only list the pins.\n{pages}");
+    assert_ne!(pins.text, pins.default);
+    assert_ne!(view.prompts_fingerprint, before);
+    let file = fs::read_to_string(&path).unwrap();
+    assert!(
+        file.contains("[prompts]") && file.contains("pins"),
+        "{file}"
+    );
+    assert!(!file.contains("package ="), "{file}");
+
+    // Sending the default text (or nothing) resets it.
+    let mut again = input(vec![]);
+    again.prompts.insert("pins".into(), String::new());
+    let reset = save_settings(&path, &again, &keys).unwrap();
+    assert_eq!(reset.prompts_fingerprint, before);
+    assert!(!fs::read_to_string(&path).unwrap().contains("[prompts]"));
+
+    // A mistake is named and nothing is written.
+    let mut bad = input(vec![]);
+    bad.prompts.insert("nope".into(), "x".into());
+    assert!(
+        save_settings(&path, &bad, &keys)
+            .unwrap_err()
+            .contains("unknown prompt")
+    );
+}

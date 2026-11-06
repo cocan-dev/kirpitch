@@ -138,3 +138,17 @@ button.danger { background: var(--err); border-color: var(--err); color: #fff; }
 /* The cards do not jump when a button is hovered inside the page. */
 .settings button:not(:disabled):hover { transform: none; }
 .settings { scroll-behavior: auto; overflow-anchor: none; }
+
+/* Prompts */
+.prompt-card { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; }
+.prompt-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.prompt-head h4 { margin: 0; font-size: 16px; }
+.prompt-head .ghost { margin-left: auto; }
+.prompt-card > p { margin: 0; }
+.prompt-text { width: 100%; box-sizing: border-box; min-height: 7em; resize: vertical; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: 13px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace; }
+.prompt-text:focus { border-color: var(--brick); box-shadow: 0 0 0 3px var(--glow); outline: none; }
+.prompt-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.prompt-notes { min-height: 0; }
+.prompt-notes p { margin: 2px 0 0; }
+.prompt-default { margin: 0; white-space: pre-wrap; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 8px; font: 12px/1.5 ui-monospace, Consolas, monospace; color: var(--muted); }
+.prompt-intro p { margin: 0 0 6px; }

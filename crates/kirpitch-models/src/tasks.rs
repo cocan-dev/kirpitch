@@ -394,11 +394,6 @@ Answer with only a JSON object that follows this JSON schema, with these exact f
     )))
 }
 
-const SYSTEM: &str = "You read electronic component datasheets and report what they say. \
-Answer only with a JSON object that follows the schema, without any explanation or reasoning. Use only what is written in the \
-text; never guess and never use what you remember about the part. Leave a value out (null) \
-when the text does not give it. The text shows page numbers as [page N].";
-
 // ------------------------------------------------------------------ metadata
 
 /// Part number, maker and description.
@@ -425,6 +420,7 @@ pub fn extract_metadata(
     cache: &Cache,
     stats: &mut Stats,
     pages: &[PageLines],
+    prompts: &Prompts,
 ) -> Result<MetadataAnswer, TaskError> {
     let first: Vec<&PageLines> = pages.iter().take(2).collect();
     let schema = json!({
@@ -437,11 +433,8 @@ pub fn extract_metadata(
         "required": ["mpn", "manufacturer", "description"]
     });
     let request = ChatRequest {
-        system: SYSTEM.into(),
-        user: format!(
-            "Give the part number, the manufacturer and a one-line description of this device.\n\n{}",
-            pages_text(&first)
-        ),
+        system: prompts.get("system").into(),
+        user: render(prompts.get("metadata"), None, &pages_text(&first)),
         images: vec![],
         schema: Some(schema),
         example: Some(
@@ -477,7 +470,7 @@ pub struct PinAnswer {
     pub confidence: f64,
 }
 
-const TYPE_HELP: &str = "input, output, bidirectional, tri_state, passive, power_in (supply and ground inputs), power_out, open_collector, open_emitter, no_connect, free, unspecified";
+use crate::prompts::{Prompts, TYPE_HELP, render};
 
 /// Replaces the minus signs and dashes that PDFs use by the plain hyphen, so
 /// that `IN1−` and `IN1-` are the same name.
@@ -630,6 +623,7 @@ pub fn extract_pins(
     pages: &[PageLines],
     hint: Option<&str>,
     second_read: bool,
+    prompts: &Prompts,
 ) -> Result<PinsResult, TaskError> {
     let keywords = [
         ("pin functions", 8),
@@ -668,20 +662,13 @@ pub fn extract_pins(
         },
         "required": ["pins"]
     });
-    let hint_text = hint.map(|h| format!("Hint: {h}\n")).unwrap_or_default();
     let ask = |variant: u8| ChatRequest {
-        system: SYSTEM.into(),
-        user: if variant == 0 {
-            format!(
-                "List every pin of the package, one entry per pin number, with the pin number as printed, the pin name as printed, and the electrical type (one of: {TYPE_HELP}). Ground and supply pins are power_in. If the datasheet shows several packages, use the package with the most common pin count unless the hint says otherwise.\n{hint_text}\n{}",
-                pages_text(&chosen)
-            )
-        } else {
-            format!(
-                "From the pin description in the text below, make a table of the pin numbers, names and electrical types (one of: {TYPE_HELP}). Every physical pin of the package must appear exactly once. Copy names exactly as printed.\n{hint_text}\n{}",
-                pages_text(&chosen)
-            )
-        },
+        system: prompts.get("system").into(),
+        user: render(
+            prompts.get(if variant == 0 { "pins" } else { "pins_second" }),
+            hint,
+            &pages_text(&chosen),
+        ),
         images: vec![],
         schema: Some(schema.clone()),
         example: Some(json!({"pins": [
@@ -970,6 +957,7 @@ pub fn extract_package(
     stats: &mut Stats,
     pages: &[PageLines],
     hint: Option<&str>,
+    prompts: &Prompts,
 ) -> Result<PackageAnswer, TaskError> {
     let keywords = [
         ("package outline", 6),
@@ -1022,18 +1010,9 @@ pub fn extract_package(
         },
         "required": ["family", "pin_count", "e", "A"]
     });
-    let hint_text = hint.map(|h| format!("Hint: {h}\n")).unwrap_or_default();
     let request = ChatRequest {
-        system: SYSTEM.into(),
-        user: format!(
-            "Read the outline dimensions of the package in millimetres (convert inches; datasheets often print both). Use the JEDEC letters of the drawing and give each range as min and max (if only one value is printed, use it for both):\n\
-- e: pitch; A: largest height\n\
-- D: body length (along the pin rows) and E1: body width (across the rows), E: lead span tip to tip. These are for SOIC, SSOP, TSSOP, MSOP, SOT-23.\n\
-- QFN: D and E are the two body sizes, D2 and E2 the exposed pad.\n\
-- L: lead or terminal length; b: lead or terminal width.\n\
-Leave out what the text does not give. Choose the family that fits the package name.\n{hint_text}\n{}",
-            pages_text(&chosen)
-        ),
+        system: prompts.get("system").into(),
+        user: render(prompts.get("package"), hint, &pages_text(&chosen)),
         images: vec![],
         schema: Some(schema),
         example: Some(json!({

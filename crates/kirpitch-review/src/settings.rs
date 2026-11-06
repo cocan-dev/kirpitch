@@ -84,6 +84,41 @@ pub struct SettingsView {
     pub pdfium_found: Option<String>,
     /// The ways to talk to a model, for the menu.
     pub providers: Vec<ProviderInfo>,
+    /// The prompts of the extraction, with their defaults.
+    pub prompts: Vec<PromptView>,
+    /// A short code naming this set of prompts.
+    pub prompts_fingerprint: String,
+}
+
+/// One prompt as the screen shows it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PromptView {
+    /// Name in the file.
+    pub key: String,
+    /// Short title.
+    pub title: String,
+    /// What it does.
+    pub about: String,
+    /// The placeholders it may use.
+    pub placeholders: String,
+    /// The default text.
+    pub default: String,
+    /// The text in use (the default when not changed).
+    pub text: String,
+}
+
+fn prompt_views(prompts: &kirpitch_models::Prompts) -> Vec<PromptView> {
+    kirpitch_models::PROMPT_LIST
+        .iter()
+        .map(|p| PromptView {
+            key: p.key.into(),
+            title: p.title.into(),
+            about: p.about.into(),
+            placeholders: p.placeholders.into(),
+            default: p.default.into(),
+            text: prompts.get(p.key).into(),
+        })
+        .collect()
 }
 
 /// A kind of server.
@@ -193,6 +228,8 @@ pub fn settings_view(path: &Path, keys: &dyn KeyStore) -> SettingsView {
         pdfium_dir: text(&config.folders.pdfium_dir),
         pdfium_found: crate::find_pdfium_dir().map(|d| d.display().to_string()),
         providers: providers(),
+        prompts: prompt_views(&config.prompts),
+        prompts_fingerprint: config.prompts.fingerprint(),
     }
 }
 
@@ -266,6 +303,10 @@ pub struct SettingsInput {
     /// The folder with pdfium.
     #[serde(default)]
     pub pdfium_dir: String,
+    /// Prompt texts by key; a prompt that is empty or equal to its default is
+    /// not saved.
+    #[serde(default)]
+    pub prompts: std::collections::BTreeMap<String, String>,
 }
 
 fn opt(s: &str) -> Option<String> {
@@ -329,6 +370,9 @@ pub fn config_from_input(input: &SettingsInput) -> Result<Config, String> {
     config.tasks.drawings = opt(&input.drawings);
     config.tasks.metadata = opt(&input.metadata);
     config.privacy.local_only = input.local_only;
+    for (key, text) in &input.prompts {
+        config.prompts.set(key, text)?;
+    }
     config.folders = Folders {
         parts: opt(&input.parts),
         output: opt(&input.output),

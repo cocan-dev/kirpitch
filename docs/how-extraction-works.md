@@ -63,3 +63,15 @@ a constraint; servers that cannot simply rely on the example.
 
 For Ollama (local or cloud) choose the **Ollama** kind, not "OpenAI-compatible":
 the native API lets Kirpitch turn thinking off and enforce the answer's shape.
+
+## Changing the prompts
+
+Every prompt above can be edited: in the app under **Settings, Extraction
+prompts**, or in the `[prompts]` section of `kirpitch.toml` (`system`,
+`metadata`, `pins`, `pins_second`, `package`). A prompt that is left out, or
+equal to the default, is the default. In the instructions, `{pages}` marks where
+the page text goes (it is added at the end if missing), `{hint}` your hint and
+`{types}` the electrical types.
+
+The settings screen shows a short **prompt set code**. It changes whenever any
+prompt changes, so a score can be tied to the prompts that produced it.

@@ -358,7 +358,8 @@ pub fn build_with_progress(
             asking(config, Task::Metadata),
         );
         match model_client(config, Task::Metadata, &transport, keys, &mut report).and_then(|c| {
-            extract_metadata(&c, cache, &mut stats, pages).map_err(|e: TaskError| e.to_string())
+            extract_metadata(&c, cache, &mut stats, pages, &config.prompts)
+                .map_err(|e: TaskError| e.to_string())
         }) {
             Ok(m) => {
                 note(
@@ -388,8 +389,16 @@ pub fn build_with_progress(
         ),
     );
     match model_client(config, Task::PinTables, &transport, keys, &mut report).and_then(|c| {
-        extract_pins(&c, cache, &mut stats, pages, hint, options.second_read)
-            .map_err(|e| e.to_string())
+        extract_pins(
+            &c,
+            cache,
+            &mut stats,
+            pages,
+            hint,
+            options.second_read,
+            &config.prompts,
+        )
+        .map_err(|e| e.to_string())
     }) {
         Ok(p) => {
             note(
@@ -416,7 +425,8 @@ pub fn build_with_progress(
 
     let package = match model_client(config, Task::Drawings, &transport, keys, &mut report)
         .and_then(|c| {
-            extract_package(&c, cache, &mut stats, pages, hint).map_err(|e| e.to_string())
+            extract_package(&c, cache, &mut stats, pages, hint, &config.prompts)
+                .map_err(|e| e.to_string())
         }) {
         Ok(p) => {
             note(on, "package", StageState::Done, "dimensions read");
