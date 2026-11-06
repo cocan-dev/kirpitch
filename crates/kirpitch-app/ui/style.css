@@ -134,3 +134,9 @@ svg .pname, svg .pnum { fill: var(--text); font-size: 1.1px; font-family: system
 svg .pnum { fill: var(--muted); font-size: .9px; }
 svg .spin.sel line { stroke: var(--brick); stroke-width: .5; }
 svg .spin.sel .pname, svg .spin.sel .pnum { fill: var(--brick); font-weight: 700; }
+.page-wrap { cursor: crosshair; user-select: none; }
+.region.draft { border-style: dashed; background: rgba(210, 104, 90, .12); }
+.pick { margin: 8px 0; padding: 8px; border: 1px solid var(--brick); border-radius: 6px; }
+.pick h4 { margin: 0 0 4px; font-size: 14px; }
+.pick textarea { width: 100%; font: 12px/1.4 ui-monospace, Consolas, monospace; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px; tab-size: 14; white-space: pre; }
+.pick-actions { display: flex; gap: 8px; margin-top: 6px; }

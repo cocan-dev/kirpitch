@@ -72,7 +72,17 @@
           <canvas id="page-canvas"></canvas>
           <div id="region" class="region" hidden></div>
         </div>
-        <p id="pdf-hint" class="muted small">The page of the selected pin is shown here, with a box around the region it was read from when the source has one.</p>
+        <section id="pick" class="pick" hidden aria-label="Selected region">
+          <h4>Selected region <span id="pick-where" class="muted"></span></h4>
+          <p class="muted small">This is the text found in the box, split into columns. Fix a cell here if the PDF text is wrong, then use it as the pin table.</p>
+          <textarea id="pick-text" rows="9" spellcheck="false" aria-label="Table read from the region"></textarea>
+          <div class="pick-actions">
+            <button type="button" id="pick-use" class="primary">Use as pin table</button>
+            <button type="button" id="pick-cancel">Cancel</button>
+          </div>
+          <ul id="pick-warnings" class="written"></ul>
+        </section>
+        <p id="pdf-hint" class="muted small">Drag on the page to select a table. The page of the selected pin is shown here, with a box around the region it was read from when the source has one.</p>
       </section>
     </div>
 

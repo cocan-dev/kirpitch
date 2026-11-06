@@ -6,7 +6,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use kirpitch_app::{
-    PageImage, SpecView, approve_stage, export_files, now_rfc3339, open_spec, render_datasheet_page,
+    ImportOutcome, PageImage, RegionTable, SpecView, approve_stage, export_files, import_pins,
+    now_rfc3339, open_spec, read_region, render_datasheet_page,
 };
 
 #[tauri::command]
@@ -29,9 +30,31 @@ fn page_image(pdf: String, page: u32, width: u32) -> Result<PageImage, String> {
     render_datasheet_page(pdf.trim(), page, width)
 }
 
+#[tauri::command]
+fn region_table(pdf: String, page: u32, region: [f64; 4]) -> Result<RegionTable, String> {
+    read_region(pdf.trim(), page, region)
+}
+
+#[tauri::command]
+fn pins_from_table(
+    path: String,
+    tsv: String,
+    page: u32,
+    region: Option<[f64; 4]>,
+) -> Result<ImportOutcome, String> {
+    import_pins(path.trim(), &tsv, page, region)
+}
+
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![open, approve, export, page_image])
+        .invoke_handler(tauri::generate_handler![
+            open,
+            approve,
+            export,
+            page_image,
+            region_table,
+            pins_from_table
+        ])
         .run(tauri::generate_context!())
         .expect("error while running the Kirpitch app");
 }

@@ -166,7 +166,7 @@ function renderFindings(view) {
   );
 }
 
-function render(view) {
+function render(view, keepSheet) {
   current = view;
   $("empty").hidden = true;
   $("work").hidden = false;
@@ -182,9 +182,11 @@ function render(view) {
   $("symbol").innerHTML = view.symbol_svg || '<p class="empty-note">Fix the errors of the pinout to see the symbol.</p>';
   $("pads-count").textContent = "(" + view.pads.length + ")";
   selected = null;
-  const saved = savedPdf(view.path);
-  $("pdf-path").value = saved;
-  if (saved) showPage(1).catch((e) => show(String(e), "error"));
+  if (!keepSheet) {
+    const saved = savedPdf(view.path);
+    $("pdf-path").value = saved;
+    if (saved) showPage(1).catch((e) => show(String(e), "error"));
+  }
 }
 
 $("open-form").addEventListener("submit", async (ev) => {
@@ -321,3 +323,88 @@ for (const id of ["symbol", "svg"]) {
 document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") selectPin(selected, false);
 });
+
+// ---- Selecting a region of the page by dragging ----------------------------
+
+let pick = null; // { page, region: [l, t, r, b] } after a drag
+
+function fraction(ev) {
+  const r = $("page-canvas").getBoundingClientRect();
+  return [Math.min(Math.max((ev.clientX - r.left) / r.width, 0), 1), Math.min(Math.max((ev.clientY - r.top) / r.height, 0), 1)];
+}
+
+function placeBox(box, a, b) {
+  const [l, r] = [Math.min(a[0], b[0]), Math.max(a[0], b[0])];
+  const [t, bo] = [Math.min(a[1], b[1]), Math.max(a[1], b[1])];
+  box.hidden = false;
+  box.style.left = l * 100 + "%";
+  box.style.top = t * 100 + "%";
+  box.style.width = (r - l) * 100 + "%";
+  box.style.height = (bo - t) * 100 + "%";
+  return [l, t, r, bo];
+}
+
+(() => {
+  const wrap = $("page-wrap");
+  const draft = el("div", { class: "region draft" });
+  draft.hidden = true;
+  wrap.append(draft);
+  let start = null;
+
+  wrap.addEventListener("pointerdown", (ev) => {
+    if (ev.button !== 0) return;
+    start = fraction(ev);
+    wrap.setPointerCapture(ev.pointerId);
+    placeBox(draft, start, start);
+  });
+  wrap.addEventListener("pointermove", (ev) => {
+    if (start) placeBox(draft, start, fraction(ev));
+  });
+  wrap.addEventListener("pointerup", async (ev) => {
+    if (!start) return;
+    const region = placeBox(draft, start, fraction(ev));
+    start = null;
+    if (region[2] - region[0] < 0.01 || region[3] - region[1] < 0.01) {
+      draft.hidden = true; // a click, not a drag
+      return;
+    }
+    try {
+      const table = await invoke("region_table", { pdf: pageState.path, page: pageState.page, region });
+      pick = { page: pageState.page, region };
+      $("pick-where").textContent = "page " + pageState.page;
+      $("pick-text").value = table.tsv;
+      $("pick-warnings").replaceChildren();
+      $("pick").hidden = false;
+      show("", "");
+    } catch (e) {
+      draft.hidden = true;
+      show(String(e), "error");
+    }
+  });
+
+  const close = () => {
+    pick = null;
+    draft.hidden = true;
+    $("pick").hidden = true;
+  };
+  $("pick-cancel").addEventListener("click", close);
+  $("pick-use").addEventListener("click", async () => {
+    if (!pick || !current) return;
+    try {
+      const out = await invoke("pins_from_table", {
+        path: current.path,
+        tsv: $("pick-text").value,
+        page: pick.page,
+        region: pick.region,
+      });
+      const kept = pick;
+      render(out.view, true);
+      show("Read " + out.view.pins.length + " pins from page " + kept.page + ". Check them, then approve the pinout.", "ok");
+      $("pick").hidden = false;
+      $("pick-where").textContent = "page " + kept.page;
+      $("pick-warnings").replaceChildren(...out.warnings.map((w) => el("li", { text: w })));
+    } catch (e) {
+      show(String(e), "error");
+    }
+  });
+})();

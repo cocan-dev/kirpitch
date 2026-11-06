@@ -82,5 +82,8 @@ follows [Semantic Versioning](https://semver.org/).
   pages are rendered with pdfium.
 - App: pin table, symbol, footprint and datasheet are always visible side by side; selecting
   a pin in any of them highlights it in all of them and shows its datasheet page.
+- App: drag on the datasheet page to select a table; the text is split into columns and
+  shown for correction, then "Use as pin table" imports the pins with page and region
+  as their source (guessed types are listed).
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.
