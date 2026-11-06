@@ -12,6 +12,8 @@
 //! Exit codes: 0 success; 1 a file or usage problem; 3 the PartSpec has
 //! validation errors. (clap itself uses 2 for command-line mistakes.)
 
+mod flow;
+
 use std::ffi::OsString;
 use std::fs;
 use std::io::Write;
@@ -48,6 +50,16 @@ enum Command {
         /// The PartSpec JSON file
         spec: PathBuf,
     },
+    /// Create or update a PartSpec from a package template
+    Template(flow::TemplateArgs),
+    /// Read the pins of a PartSpec from a pin table (CSV or pasted text)
+    Pins(flow::PinsArgs),
+    /// Show where each review stage stands
+    Status(flow::StatusArgs),
+    /// Look at a review stage and optionally edit it
+    Review(flow::ReviewArgs),
+    /// Approve a review stage
+    Approve(flow::ApproveArgs),
     /// Generate KiCad files from a PartSpec
     Gen {
         /// Which file to generate
@@ -105,7 +117,7 @@ where
     }
 }
 
-enum Failure {
+pub(crate) enum Failure {
     Message(String),
     /// The findings were already printed.
     Invalid,
@@ -123,6 +135,11 @@ fn execute(command: Command, out: &mut dyn Write, err: &mut dyn Write) -> Result
             write!(out, "{}", json_schema_string()).map_err(|e| e.to_string())?;
             Ok(())
         }
+        Command::Template(args) => flow::template(args, out),
+        Command::Pins(args) => flow::pins(args, out, err),
+        Command::Status(args) => flow::status(args, out),
+        Command::Review(args) => flow::review(args, out),
+        Command::Approve(args) => flow::approve_cmd(args, out, err),
         Command::Check { spec } => {
             let spec = load(&spec)?;
             let findings = validate(&spec, &FabProfile::generic());
@@ -151,12 +168,12 @@ fn execute(command: Command, out: &mut dyn Write, err: &mut dyn Write) -> Result
     }
 }
 
-fn load(path: &Path) -> Result<PartSpec, Failure> {
+pub(crate) fn load(path: &Path) -> Result<PartSpec, Failure> {
     let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     PartSpec::from_json_str(&text).map_err(|e| Failure::Message(format!("{}: {e}", path.display())))
 }
 
-fn print_findings(findings: &[Finding], out: &mut dyn Write) -> std::io::Result<()> {
+pub(crate) fn print_findings(findings: &[Finding], out: &mut dyn Write) -> std::io::Result<()> {
     for f in findings {
         let level = match f.level {
             Level::Error => "error",

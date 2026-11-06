@@ -63,5 +63,8 @@ follows [Semantic Versioning](https://semver.org/).
   template and through-hole footprints (silkscreen between the rows, pin 1 notch).
 - Pin table import (`kirpitch_core::pintable`): CSV, tab, semicolon, bar or space
   separated text with or without header; guessed types are reported.
+- Review flow without a model: `kirpitch template`, `pins`, `status`, `review`
+  (with `--edit`) and `approve`; approvals store a fingerprint so editing an
+  approved stage re-opens it and later stages (ADR 0022).
 - Project documentation: requirements, contributing guidelines and
   architecture decision records.
