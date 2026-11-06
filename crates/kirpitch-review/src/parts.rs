@@ -479,6 +479,7 @@ pub fn build_with_transport_progress(
             metadata: crate::text_of_regions(&bytes, &g.metadata)?,
             pins: crate::text_of_regions(&bytes, &g.pins)?,
             package: crate::text_of_regions(&bytes, &g.package)?,
+            footprint: crate::text_of_regions(&bytes, &g.footprint)?,
         },
         _ => kirpitch_models::GivenText::default(),
     };

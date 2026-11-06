@@ -37,12 +37,18 @@ pub struct GuideInput {
     /// Where the package drawing and its dimensions are.
     #[serde(default)]
     pub package: Vec<RegionInput>,
+    /// Where the recommended footprint (land pattern) is.
+    #[serde(default)]
+    pub footprint: Vec<RegionInput>,
 }
 
 impl GuideInput {
     /// True when no step has a place.
     pub fn is_empty(&self) -> bool {
-        self.metadata.is_empty() && self.pins.is_empty() && self.package.is_empty()
+        self.metadata.is_empty()
+            && self.pins.is_empty()
+            && self.package.is_empty()
+            && self.footprint.is_empty()
     }
 }
 
@@ -202,6 +208,8 @@ pub struct Preview {
     pub pins: StepSize,
     /// Package.
     pub package: StepSize,
+    /// Recommended footprint.
+    pub footprint: StepSize,
 }
 
 fn chars(pages: &[PageLines]) -> usize {
@@ -239,5 +247,6 @@ pub fn preview_selection(pdf: &str, guide: &GuideInput, hint: &str) -> Result<Pr
         metadata: step(&guide.metadata, "metadata", 2)?,
         pins: step(&guide.pins, "pins", 4)?,
         package: step(&guide.package, "package", 3)?,
+        footprint: step(&guide.footprint, "footprint", 2)?,
     })
 }

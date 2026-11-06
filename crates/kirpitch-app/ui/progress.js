@@ -10,7 +10,8 @@ const BUILD_STEPS = [
   { id: "read", label: "Read the text of the PDF" },
   { id: "metadata", label: "Part number, maker and description" },
   { id: "pins", label: "Pin table" },
-  { id: "package", label: "Package drawing" },
+  { id: "package", label: "Package outline" },
+  { id: "footprint", label: "Recommended footprint" },
   { id: "assemble", label: "Check that the pieces fit" },
   { id: "save", label: "Save the part" },
 ];

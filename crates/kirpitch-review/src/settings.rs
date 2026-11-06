@@ -109,6 +109,10 @@ pub struct ExtractionValues {
     pub max_tokens_pins: u32,
     /// Longest answer of the package step.
     pub max_tokens_package: u32,
+    /// Longest answer of the recommended footprint step.
+    pub max_tokens_footprint: u32,
+    /// Characters of page text for the recommended footprint.
+    pub footprint_pages_chars: usize,
     /// Characters of page text for the pin table.
     pub pin_pages_chars: usize,
     /// Characters of page text for the package.
@@ -126,6 +130,8 @@ impl ExtractionValues {
             max_tokens_metadata: e.max_tokens_metadata(),
             max_tokens_pins: e.max_tokens_pins(),
             max_tokens_package: e.max_tokens_package(),
+            max_tokens_footprint: e.max_tokens_footprint(),
+            footprint_pages_chars: e.footprint_pages_chars(),
             pin_pages_chars: e.pin_pages_chars(),
             package_pages_chars: e.package_pages_chars(),
             cache: e.cache(),
@@ -140,6 +146,8 @@ impl ExtractionValues {
             max_tokens_metadata: Some(self.max_tokens_metadata),
             max_tokens_pins: Some(self.max_tokens_pins),
             max_tokens_package: Some(self.max_tokens_package),
+            max_tokens_footprint: Some(self.max_tokens_footprint),
+            footprint_pages_chars: Some(self.footprint_pages_chars),
             pin_pages_chars: Some(self.pin_pages_chars),
             package_pages_chars: Some(self.package_pages_chars),
             cache: Some(self.cache),
