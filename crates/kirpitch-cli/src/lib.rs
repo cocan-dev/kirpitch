@@ -89,7 +89,10 @@ enum What {
     Symbol,
     /// A `.pretty` folder with the footprint
     Footprint,
-    /// Both
+    /// A `.3dshapes` folder with the 3D model (STEP and VRML)
+    #[value(name = "3d")]
+    Model3d,
+    /// All of them; the footprint links to the 3D model
     All,
 }
 
@@ -248,6 +251,9 @@ fn choose_target(explicit: Option<u32>, err: &mut dyn Write) -> Result<KicadTarg
     }
 }
 
+/// Folder (next to the `.pretty` folder) that holds the 3D models.
+const MODEL_FOLDER: &str = "kirpitch.3dshapes";
+
 fn generate(
     what: What,
     spec: &PartSpec,
@@ -265,12 +271,33 @@ fn generate(
         written.push(path);
     }
     if matches!(what, What::Footprint | What::All) {
-        let options = kirpitch_gen_footprint::Options { target, fab: fab() };
+        let (step_name, _) = kirpitch_gen_3d::file_names(spec);
+        let options = kirpitch_gen_footprint::Options {
+            target,
+            fab: fab(),
+            model: (what == What::All).then(|| format!("${{KIPRJMOD}}/{MODEL_FOLDER}/{step_name}")),
+        };
         let text = kirpitch_gen_footprint::generate(spec, &options).map_err(|e| e.to_string())?;
         let folder = dir.join("kirpitch.pretty");
         fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
         let path = folder.join(kirpitch_gen_footprint::file_name(spec));
         write_file(&path, &text)?;
+        written.push(path);
+    }
+    if matches!(what, What::Model3d | What::All) {
+        let model = kirpitch_gen_3d::build(spec).map_err(|e| e.to_string())?;
+        let issues = kirpitch_gen_3d::check_fit(spec, &model);
+        if let Some(issue) = issues.first() {
+            return Err(Failure::Message(format!("3D model: {}", issue.message)));
+        }
+        let (step_name, wrl_name) = kirpitch_gen_3d::file_names(spec);
+        let folder = dir.join(MODEL_FOLDER);
+        fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+        let path = folder.join(step_name);
+        write_file(&path, &kirpitch_gen_3d::write_step(&model))?;
+        written.push(path);
+        let path = folder.join(wrl_name);
+        write_file(&path, &kirpitch_gen_3d::write_vrml(&model))?;
         written.push(path);
     }
     for path in written {

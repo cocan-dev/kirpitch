@@ -177,4 +177,15 @@
 		(roundrect_rratio 0.0833)
 	)
 	(embedded_fonts no)
+	(model "${KIPRJMOD}/kirpitch.3dshapes/SOIC-8_3.9x4.9mm_P1.27mm.step"
+		(offset
+			(xyz 0 0 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 0)
+		)
+	)
 )

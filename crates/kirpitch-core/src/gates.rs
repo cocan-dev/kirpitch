@@ -27,6 +27,9 @@ pub enum Gate {
     Pinout,
     /// Gate 2: package dimensions and the land pattern.
     Footprint,
+    /// Gate 3: the 3D model, which is built from the package and land pattern
+    /// and has no values of its own.
+    Model3d,
 }
 
 /// Where a stage stands.
@@ -59,13 +62,14 @@ pub enum ApprovalError {
 
 impl Gate {
     /// All gates in review order.
-    pub const ALL: [Gate; 2] = [Gate::Pinout, Gate::Footprint];
+    pub const ALL: [Gate; 3] = [Gate::Pinout, Gate::Footprint, Gate::Model3d];
 
     /// The name used on the command line and in messages.
     pub fn name(self) -> &'static str {
         match self {
             Gate::Pinout => "pinout",
             Gate::Footprint => "footprint",
+            Gate::Model3d => "3d",
         }
     }
 
@@ -79,6 +83,7 @@ impl Gate {
         match self {
             Gate::Pinout => None,
             Gate::Footprint => Some(Gate::Pinout),
+            Gate::Model3d => Some(Gate::Footprint),
         }
     }
 
@@ -86,6 +91,7 @@ impl Gate {
         match self {
             Gate::Pinout => spec.approvals.pinout.as_ref(),
             Gate::Footprint => spec.approvals.footprint.as_ref(),
+            Gate::Model3d => spec.approvals.model_3d.as_ref(),
         }
     }
 
@@ -93,6 +99,7 @@ impl Gate {
         match self {
             Gate::Pinout => spec.approvals.pinout = Some(approval),
             Gate::Footprint => spec.approvals.footprint = Some(approval),
+            Gate::Model3d => spec.approvals.model_3d = Some(approval),
         }
     }
 
@@ -105,6 +112,8 @@ impl Gate {
         let content = match self {
             Gate::Pinout => serde_json::to_string(&spec.pins),
             Gate::Footprint => serde_json::to_string(&(&spec.package, &spec.land_pattern)),
+            // The model follows from the footprint, which is part of the chain.
+            Gate::Model3d => serde_json::to_string("model-3d-v1"),
         };
         hasher.update(
             content
@@ -135,6 +144,9 @@ impl Gate {
     /// True when a finding belongs to this stage. Checks about pins belong to
     /// the pinout, everything else to the footprint.
     pub fn owns(self, finding: &Finding) -> bool {
+        if finding.check.id() == "model_fit" {
+            return self == Gate::Model3d;
+        }
         let pinout = matches!(
             finding.check.id(),
             "pin_count" | "pin_number" | "pin_name" | "power_pins"
@@ -142,6 +154,7 @@ impl Gate {
         match self {
             Gate::Pinout => pinout,
             Gate::Footprint => !pinout,
+            Gate::Model3d => false,
         }
     }
 }

@@ -147,6 +147,10 @@ fn partspecs_have_no_findings() {
 fn footprint_for(spec: &PartSpec, target: KicadTarget) -> String {
     let options = kirpitch_gen_footprint::Options {
         target,
+        model: Some(format!(
+            "${{KIPRJMOD}}/kirpitch.3dshapes/{}",
+            kirpitch_gen_3d::file_names(spec).0
+        )),
         ..Default::default()
     };
     kirpitch_gen_footprint::generate(spec, &options).unwrap()
@@ -193,6 +197,24 @@ fn generated_files_match_the_expected_files() {
 }
 
 #[test]
+fn the_3d_files_match_the_expected_files() {
+    for dir in parts() {
+        let spec = load(&dir);
+        let model = kirpitch_gen_3d::build(&spec).unwrap();
+        assert_eq!(
+            kirpitch_gen_3d::check_fit(&spec, &model),
+            vec![],
+            "{}",
+            dir.display()
+        );
+        let (step, wrl) = kirpitch_gen_3d::file_names(&spec);
+        let expected = dir.join("expected").join("3d");
+        assert_snapshot(&expected.join(step), &kirpitch_gen_3d::write_step(&model));
+        assert_snapshot(&expected.join(wrl), &kirpitch_gen_3d::write_vrml(&model));
+    }
+}
+
+#[test]
 fn there_are_no_expected_files_for_unsupported_versions() {
     for dir in parts() {
         let mut found: Vec<String> = fs::read_dir(dir.join("expected"))
@@ -201,10 +223,11 @@ fn there_are_no_expected_files_for_unsupported_versions() {
             .map(|e| e.file_name().to_string_lossy().into_owned())
             .collect();
         found.sort();
-        let want: Vec<String> = KicadTarget::ALL
+        let mut want: Vec<String> = KicadTarget::ALL
             .iter()
             .map(|t| format!("kicad{}", t.major()))
             .collect();
+        want.push("3d".to_string());
         let mut want_sorted = want.clone();
         want_sorted.sort();
         assert_eq!(found, want_sorted, "{}", dir.display());

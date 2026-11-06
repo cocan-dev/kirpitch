@@ -167,4 +167,15 @@
 		(size 1.55 0.6)
 		(layers "F.Cu" "F.Paste" "F.Mask")
 	)
+	(model "${KIPRJMOD}/kirpitch.3dshapes/SOIC-8_3.9x4.9mm_P1.27mm.step"
+		(offset
+			(xyz 0 0 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 0)
+		)
+	)
 )

@@ -33,7 +33,13 @@ fn a_golden_part_is_shown_with_pins_pads_and_gates() {
     assert_eq!(view.pads.len(), 8);
     assert_eq!(view.pads[0].x, "-2.7");
     let names: Vec<&str> = view.gates.iter().map(|g| g.name.as_str()).collect();
-    assert_eq!(names, ["pinout", "footprint"]);
+    assert_eq!(names, ["pinout", "footprint", "3d"]);
+    assert_eq!(view.model_views.len(), 3);
+    assert!(
+        view.model_summary.contains("1.75 mm high"),
+        "{}",
+        view.model_summary
+    );
     assert!(
         view.gates
             .iter()
@@ -100,6 +106,8 @@ fn stages_are_approved_in_order_and_saved() {
     assert_eq!(view.gates[1].status, "open");
 
     let view = approve_stage(&path, "footprint", Some("  ".into()), now_rfc3339()).unwrap();
+    assert_eq!(view.gates[2].status, "open");
+    let view = approve_stage(&path, "3d", None, now_rfc3339()).unwrap();
     assert!(view.gates.iter().all(|g| g.status == "approved"));
     assert_eq!(view.gates[1].note, None, "a blank note is not saved");
 
@@ -159,8 +167,8 @@ fn bad_files_and_stages_give_readable_errors() {
     );
     let ok = copy_of("lm358-soic8", &tmp);
     assert_eq!(
-        approve_stage(&ok, "3d", None, now_rfc3339()).unwrap_err(),
-        "there is no stage called `3d`"
+        approve_stage(&ok, "spice", None, now_rfc3339()).unwrap_err(),
+        "there is no stage called `spice`"
     );
 }
 
@@ -170,7 +178,15 @@ fn files_are_written_for_the_chosen_kicad_version() {
     let path = copy_of("ne555-soic8", &tmp);
     let out = tmp.path().join("out");
     let written = export_files(&path, &out.to_string_lossy(), Some(9)).unwrap();
-    assert_eq!(written.len(), 2);
+    assert_eq!(written.len(), 4);
+    assert!(
+        out.join("kirpitch.3dshapes/SOIC-8_3.9x4.9mm_P1.27mm.step")
+            .is_file()
+    );
+    assert!(
+        out.join("kirpitch.3dshapes/SOIC-8_3.9x4.9mm_P1.27mm.wrl")
+            .is_file()
+    );
     let symbol = fs::read_to_string(out.join("NE555DR.kicad_sym")).unwrap();
     assert!(symbol.contains("(version 20241209)"));
     assert!(

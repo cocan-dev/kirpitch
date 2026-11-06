@@ -19,6 +19,7 @@ kirpitch-core = { path = "../kirpitch-core" }
 kirpitch-kicad = { path = "../kirpitch-kicad" }
 kirpitch-gen-symbol = { path = "../kirpitch-gen-symbol" }
 kirpitch-gen-footprint = { path = "../kirpitch-gen-footprint" }
+kirpitch-gen-3d = { path = "../kirpitch-gen-3d" }
 kirpitch-extract = { path = "../kirpitch-extract" }
 clap = { version = "4.6.7", features = ["derive"] }
 serde = { version = "1.0.229", features = ["derive"] }

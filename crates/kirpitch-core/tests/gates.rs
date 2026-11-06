@@ -133,5 +133,5 @@ fn gate_names_round_trip() {
     for gate in Gate::ALL {
         assert_eq!(Gate::parse(gate.name()), Some(gate));
     }
-    assert_eq!(Gate::parse("3d"), None);
+    assert_eq!(Gate::parse("spice"), None);
 }

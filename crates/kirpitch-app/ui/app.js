@@ -264,6 +264,17 @@ function render(view, keepSheet) {
   // The drawings are made by our own Rust code from numbers and escaped text.
   $("svg").innerHTML = view.footprint_svg;
   $("symbol").innerHTML = view.symbol_svg || '<p class="empty-note">Fix the errors of the pinout to see the symbol.</p>';
+  $("model-summary").textContent = view.model_summary;
+  const views = $("model-views");
+  views.replaceChildren();
+  // Made by our own Rust code from numbers.
+  view.model_views.forEach((v) => {
+    const fig = el("figure", {}, el("figcaption", { text: v.name }));
+    const holder = document.createElement("div");
+    holder.innerHTML = v.svg;
+    fig.append(holder);
+    views.append(fig);
+  });
   $("pads-count").textContent = "(" + view.pads.length + ")";
   selected = null;
   if (!keepSheet) {

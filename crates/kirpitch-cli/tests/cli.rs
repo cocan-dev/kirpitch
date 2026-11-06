@@ -82,7 +82,7 @@ fn gen_writes_exactly_the_expected_golden_files() {
             ]);
             assert!(out.status.success(), "{}", text(&out.stderr));
             let stdout = text(&out.stdout);
-            assert_eq!(stdout.lines().count(), 2, "{stdout}");
+            assert_eq!(stdout.lines().count(), 4, "{stdout}");
 
             let expected = golden(part).join("expected").join(folder);
             let mut checked = 0;
@@ -102,6 +102,19 @@ fn gen_writes_exactly_the_expected_golden_files() {
                 checked += 1;
             }
             assert_eq!(checked, 2);
+            // The 3D files do not depend on the KiCad version.
+            for entry in fs::read_dir(golden(part).join("expected/3d"))
+                .unwrap()
+                .flatten()
+            {
+                let got =
+                    fs::read_to_string(out_dir.join("kirpitch.3dshapes").join(entry.file_name()))
+                        .unwrap();
+                let want = fs::read_to_string(entry.path())
+                    .unwrap()
+                    .replace("\r\n", "\n");
+                assert_eq!(got, want, "{part}/{:?}", entry.file_name());
+            }
         }
     }
 }
