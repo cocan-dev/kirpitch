@@ -224,3 +224,11 @@ tr.sel td { animation: pulse-row 0.7s ease-out 1; }
 .gd-sum-row .link, #gd-p1 .link { background: none; border: 0; padding: 0; color: var(--brick); cursor: pointer; font: inherit; text-decoration: underline; }
 .dialog-actions { align-items: center; }
 .dialog-actions { position: sticky; bottom: -1rem; background: var(--panel); padding: 10px 0 4px; z-index: 2; border-top: 1px solid var(--line); }
+
+/* The page controls: one row, everything on the same line */
+.gd-pager { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.gd-pager label { flex-direction: row; align-items: center; gap: 8px; margin: 0; font-size: 14px; }
+.gd-pager input { width: 5.5em; height: 36px; box-sizing: border-box; padding: 0 10px; }
+.gd-pager #gd-prev, .gd-pager #gd-nextpage { width: 36px; height: 36px; padding: 0; display: grid; place-items: center; flex: none; }
+.gd-pager #gd-count { white-space: nowrap; }
+.gd-pager #gd-whole { margin-left: auto; height: 36px; padding: 0 14px; }
