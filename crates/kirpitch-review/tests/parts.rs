@@ -606,3 +606,47 @@ fn the_parts_in_a_folder_are_listed_with_what_a_person_looks_for() {
     assert!(p.footprint_svg.contains("<svg"));
     assert!(p.modified.is_some());
 }
+
+#[test]
+fn a_part_can_be_renamed_and_deleted_but_nothing_else() {
+    let tmp = TempDir::new("library-edit");
+    let dir = tmp.path();
+    let data = kirpitch_review::find_testdata().expect("testdata");
+    let golden = data
+        .join("golden")
+        .join("lm358-soic8")
+        .join("partspec.json");
+    let a = dir.join("a.partspec.json");
+    let b = dir.join("b.partspec.json");
+    std::fs::copy(&golden, &a).unwrap();
+    std::fs::copy(&golden, &b).unwrap();
+    let notes = dir.join("notes.json");
+    std::fs::write(&notes, r#"{"hello": 1}"#).unwrap();
+    let s = |p: &std::path::Path| p.to_string_lossy().into_owned();
+
+    // The ending is kept, and a given ending is not doubled.
+    let renamed = kirpitch_review::rename_part(&s(&a), " lm358 final ").unwrap();
+    assert!(renamed.ends_with("lm358 final.partspec.json"), "{renamed}");
+    assert!(!a.exists() && std::path::Path::new(&renamed).exists());
+    let again = kirpitch_review::rename_part(&renamed, "lm358-v2.partspec.json").unwrap();
+    assert!(again.ends_with("lm358-v2.partspec.json"), "{again}");
+
+    // Nothing is replaced, and bad names are refused.
+    let taken = kirpitch_review::rename_part(&s(&b), "lm358-v2").unwrap_err();
+    assert!(taken.contains("already"), "{taken}");
+    assert!(b.exists());
+    for bad in ["", "  ", "x/y", r"x\y", ".hidden", "a:b", "a*"] {
+        assert!(
+            kirpitch_review::rename_part(&s(&b), bad).is_err(),
+            "{bad:?}"
+        );
+    }
+    // A file that is not a part is not touched.
+    assert!(kirpitch_review::rename_part(&s(&notes), "x").is_err());
+    assert!(kirpitch_review::delete_part(&s(&notes)).is_err());
+    assert!(notes.exists());
+
+    kirpitch_review::delete_part(&again).unwrap();
+    assert!(!std::path::Path::new(&again).exists());
+    assert!(kirpitch_review::delete_part(&again).is_err());
+}

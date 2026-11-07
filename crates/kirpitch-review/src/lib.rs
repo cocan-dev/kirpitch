@@ -34,7 +34,7 @@ pub use steps::{
     preview_footprint_values, read_step, unused_path,
 };
 
-pub use library::{PartSummary, list_parts};
+pub use library::{PartSummary, delete_part, list_parts, rename_part};
 
 pub use guide::{
     GuideInput, Preview, RegionInput, StepSize, Suggested, Suggestions, preview_selection,

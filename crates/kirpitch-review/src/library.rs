@@ -198,3 +198,78 @@ pub fn list_parts(dirs: &[String]) -> Vec<PartSummary> {
     parts.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| a.mpn.cmp(&b.mpn)));
     parts
 }
+
+/// Reads `path` as a part, so that only a PartSpec file is ever renamed or
+/// deleted from the screen that lists them.
+fn check_is_part(path: &Path) -> Result<(), String> {
+    let meta = fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if !meta.is_file() || meta.len() > MAX_FILE {
+        return Err(format!("{} is not a part file", path.display()));
+    }
+    let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    PartSpec::from_json_str(&text)
+        .map(|_| ())
+        .map_err(|_| format!("{} is not a part file", path.display()))
+}
+
+/// Gives a part file another name in the same folder. `new_name` is the name
+/// without the ending (`lm358`); the ending of the file (`.partspec.json`) is
+/// kept. Nothing is replaced.
+///
+/// # Errors
+///
+/// The file is not a part, the name is empty or has characters a file name
+/// cannot have, or a file of that name is already there.
+pub fn rename_part(path: &str, new_name: &str) -> Result<String, String> {
+    let from = Path::new(path.trim());
+    check_is_part(from)?;
+    let name = from
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let ending = if name.to_ascii_lowercase().ends_with(".partspec.json") {
+        ".partspec.json"
+    } else {
+        ".json"
+    };
+    let mut stem = new_name.trim().to_string();
+    if stem.to_ascii_lowercase().ends_with(ending) {
+        stem.truncate(stem.len() - ending.len());
+    }
+    let stem = stem.trim().trim_end_matches('.').to_string();
+    if stem.is_empty() {
+        return Err("the name is empty".into());
+    }
+    if stem.starts_with('.') {
+        return Err("the name cannot start with a dot".into());
+    }
+    if let Some(bad) = stem
+        .chars()
+        .find(|c| c.is_control() || r#"<>:"/\|?*"#.contains(*c))
+    {
+        return Err(format!("the name cannot have the character {bad:?} in it"));
+    }
+    let to = from.with_file_name(format!("{stem}{ending}"));
+    if to == from {
+        return Ok(to.display().to_string());
+    }
+    if to.exists() {
+        return Err(format!(
+            "a file named {stem}{ending} is already in that folder"
+        ));
+    }
+    fs::rename(from, &to).map_err(|e| format!("could not rename: {e}"))?;
+    Ok(to.display().to_string())
+}
+
+/// Deletes a part file. Only the PartSpec file goes: KiCad files that were made
+/// from it are not touched.
+///
+/// # Errors
+///
+/// The file is not a part, or it could not be deleted.
+pub fn delete_part(path: &str) -> Result<(), String> {
+    let p = Path::new(path.trim());
+    check_is_part(p)?;
+    fs::remove_file(p).map_err(|e| format!("could not delete: {e}"))
+}
