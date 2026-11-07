@@ -400,6 +400,19 @@ async fn build_confirmed(
         .map_err(|e| e.to_string())?
 }
 
+/// The parts found in some folders, for the "My parts" screen.
+#[tauri::command]
+async fn list_parts(dirs: Vec<String>) -> Vec<kirpitch_review::PartSummary> {
+    let mut dirs = dirs;
+    // The default folder for parts from Settings is always looked in.
+    if let Some(parts) = kirpitch_review::user_folders().parts {
+        dirs.push(parts);
+    }
+    tauri::async_runtime::spawn_blocking(move || kirpitch_review::list_parts(&dirs))
+        .await
+        .unwrap_or_default()
+}
+
 /// The name a part can be saved under: the one given, or the same with -2, -3, ...
 /// when a file is already there.
 #[tauri::command]
@@ -449,6 +462,7 @@ fn main() {
             preview_footprint,
             build_confirmed,
             unused_path,
+            list_parts,
             preview_guide,
             eval_cases,
             eval_add_case,

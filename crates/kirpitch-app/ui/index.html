@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="fun.css">
   <link rel="stylesheet" href="shell.css">
   <link rel="stylesheet" href="settings.css">
+  <link rel="stylesheet" href="library.css">
 </head>
 <body>
   <header class="top">
@@ -16,6 +17,7 @@
     <div class="spacer"></div>
     <div class="actions" aria-label="Start">
       <button type="button" id="btn-new" class="primary">New part…</button>
+      <button type="button" id="btn-library">My parts</button>
       <button type="button" id="btn-open-file">Open…</button>
       <button type="button" id="btn-datasheet">From datasheet…</button>
       <button type="button" id="btn-settings" class="icon" aria-label="Settings" title="Settings: models, keys and folders">⚙</button>
@@ -46,6 +48,7 @@
         <p>Turn a datasheet into a KiCad part you can trust: pins, footprint and a 3D model, each one checked, and each one approved by you.</p>
         <div class="start-actions">
           <button type="button" id="start-new" class="primary">New part…</button>
+          <button type="button" id="start-library">My parts</button>
           <button type="button" id="start-open">Open file…</button>
           <button type="button" id="start-datasheet">From datasheet…</button>
         </div>
@@ -197,6 +200,27 @@
     </div>
 
     <footer id="stepbar" class="stepbar"></footer>
+  </main>
+
+  <main id="library" hidden>
+    <header class="lib-head">
+      <h2>My parts</h2>
+      <span id="lib-count" class="muted"></span>
+      <div class="spacer"></div>
+      <button type="button" id="lib-refresh" class="ghost">Refresh</button>
+      <button type="button" id="lib-back" class="ghost">← Back</button>
+    </header>
+    <div class="lib-bar">
+      <input id="lib-search" type="text" spellcheck="false" autocomplete="off" placeholder="Search by part number, maker, package…" aria-label="Search parts">
+      <select id="lib-sort" aria-label="Sort by">
+        <option value="recent">Changed last</option>
+        <option value="name">Part number</option>
+        <option value="package">Package</option>
+        <option value="pins">Most pins</option>
+      </select>
+    </div>
+    <details id="lib-folders" class="lib-folders"></details>
+    <div id="lib-body" aria-live="polite"></div>
   </main>
 
   <main id="settings" class="settings" hidden>
@@ -372,5 +396,6 @@
   <script src="guided.js"></script>
   <script src="settings.js"></script>
   <script src="evaluate.js"></script>
+  <script src="library.js"></script>
 </body>
 </html>

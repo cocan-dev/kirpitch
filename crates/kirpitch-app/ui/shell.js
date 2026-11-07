@@ -279,6 +279,7 @@ function renderCrumbs() {
 
 function goHome() {
   $("settings").hidden = true;
+  $("library").hidden = true;
   if (typeof settingsReturn !== "undefined") settingsReturn = null;
   current = null;
   selected = null;
@@ -293,6 +294,7 @@ function goHome() {
 
 function render(view, keepSheet) {
   $("settings").hidden = true;
+  $("library").hidden = true;
   const newPart = !current || current.path !== view.path;
   current = view;
   $("empty").hidden = true;

@@ -9,6 +9,7 @@
 
 mod eval;
 mod guide;
+mod library;
 mod parts;
 mod settings;
 mod steps;
@@ -32,6 +33,8 @@ pub use steps::{
     ConfirmedInput, ReadStepInput, build_confirmed, check_step_values, preview_footprint_values,
     read_step, unused_path,
 };
+
+pub use library::{PartSummary, list_parts};
 
 pub use guide::{
     GuideInput, Preview, RegionInput, StepSize, Suggested, Suggestions, preview_selection,
