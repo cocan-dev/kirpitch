@@ -633,13 +633,25 @@ pub fn active_config_path() -> std::path::PathBuf {
 
 /// The server address of a model, without a trailing slash.
 pub fn base_url(model: &ModelConfig) -> String {
-    model
+    let url = model
         .base_url
         .clone()
         .or_else(|| model.provider.default_base_url().map(str::to_string))
-        .unwrap_or_default()
-        .trim_end_matches('/')
-        .to_string()
+        .unwrap_or_default();
+    server_root(model.provider, &url)
+}
+
+/// The address of a server without a trailing slash. Ollama's own API lives at
+/// the root (`/api/chat`), so a `/v1` left over from its OpenAI-compatible
+/// address (`https://ollama.com/v1`) is dropped for the Ollama kind: sent to
+/// `.../v1/api/chat`, the server answers 404.
+pub fn server_root(provider: Provider, url: &str) -> String {
+    let url = url.trim().trim_end_matches('/');
+    if provider == Provider::Ollama {
+        let url = url.strip_suffix("/api").unwrap_or(url);
+        return url.strip_suffix("/v1").unwrap_or(url).to_string();
+    }
+    url.to_string()
 }
 
 /// True when the data sent to the model stays on this machine or the local
