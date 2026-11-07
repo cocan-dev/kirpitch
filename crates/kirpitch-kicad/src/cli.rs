@@ -13,6 +13,22 @@ use std::process::{Command, Output};
 
 use thiserror::Error;
 
+/// Starts a program without a console window of its own. A desktop program that
+/// starts a console program (`curl`, `kicad-cli`) on Windows would otherwise show
+/// a black window for as long as it runs. It changes nothing on other systems.
+#[cfg(windows)]
+fn without_window(cmd: &mut Command) -> &mut Command {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    cmd.creation_flags(CREATE_NO_WINDOW)
+}
+
+/// Starts a program without a console window of its own (only Windows has one).
+#[cfg(not(windows))]
+fn without_window(cmd: &mut Command) -> &mut Command {
+    cmd
+}
+
 /// Name of the environment variable that holds the path of `kicad-cli`.
 pub const ENV_KICAD_CLI: &str = "KIRPITCH_KICAD_CLI";
 
@@ -147,6 +163,7 @@ impl KicadCli {
 
     fn run(&self, args: &[&Path], flags: &[&str]) -> Result<Output, CliError> {
         let mut cmd = Command::new(&self.path);
+        without_window(&mut cmd);
         for f in flags {
             cmd.arg(f);
         }
@@ -249,6 +266,7 @@ impl KicadCli {
     /// model file is only a warning for KiCad itself).
     pub fn export_board_step(&self, board: &Path, out_file: &Path) -> Result<String, CliError> {
         let mut cmd = Command::new(&self.path);
+        without_window(&mut cmd);
         cmd.args(["pcb", "export", "step", "--subst-models", "-f", "-o"])
             .arg(out_file)
             .arg(board);
@@ -277,6 +295,7 @@ impl KicadCli {
         input: &Path,
     ) -> Result<Output, CliError> {
         let mut cmd = Command::new(&self.path);
+        without_window(&mut cmd);
         cmd.args(flags).arg(out_dir).arg(input);
         cmd.output().map_err(|source| CliError::Spawn {
             path: self.path.clone(),

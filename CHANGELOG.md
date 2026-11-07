@@ -133,6 +133,7 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- On Windows a black console window (`curl.exe`) flashed up on every request to a model, and the same for every `kicad-cli` call. They are now started without a window.
 - A part opened from My parts (or renamed, or opened in a new window) showed an empty datasheet path. The app only remembered the path by the exact name of the part file, in the web view's storage. The part file keeps the hash of its datasheet, so the app now also keeps its own list of datasheet hashes and paths (`datasheets.json`, next to `kirpitch.toml`), fills it when a part is built or a datasheet is shown, and finds the PDF by hash, also when it was moved or renamed in the same folder or lies next to the part (`kirpitch-review::datasheet_for`). Parts built before this get their datasheet back as soon as it is found next to the part or in a folder that held another datasheet; otherwise type its path once.
 - Fixed the settings file path in ADR 0027 (the backslashes were lost: `%APPDATA%Kirpitchkirpitch.toml`).
 - Fixed: in the step bar of the datasheet dialog the current step looked fainter than the finished ones (it is a disabled button, which the browser dims). The current step is now full strength with a tinted background.
