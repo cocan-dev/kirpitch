@@ -533,3 +533,35 @@ fn a_part_is_made_from_confirmed_values_checked_first_and_never_overwritten() {
     .unwrap_err();
     assert!(e.contains("not one of"), "{e}");
 }
+
+#[test]
+fn a_taken_name_gets_the_next_free_number() {
+    let tmp = TempDir::new("unused-path");
+    let dir = tmp.path();
+    let name = |n: &str| dir.join(n).to_string_lossy().into_owned();
+    // Free: unchanged.
+    assert_eq!(
+        kirpitch_review::unused_path(&name("ds.partspec.json")),
+        name("ds.partspec.json")
+    );
+    std::fs::write(name("ds.partspec.json"), "x").unwrap();
+    assert_eq!(
+        kirpitch_review::unused_path(&name("ds.partspec.json")),
+        name("ds-2.partspec.json")
+    );
+    std::fs::write(name("ds-2.partspec.json"), "x").unwrap();
+    assert_eq!(
+        kirpitch_review::unused_path(&name("ds.partspec.json")),
+        name("ds-3.partspec.json")
+    );
+    // Another extension, and a name that already ends in a number.
+    std::fs::write(name("a.json"), "x").unwrap();
+    assert_eq!(
+        kirpitch_review::unused_path(&name("a.json")),
+        name("a-2.json")
+    );
+    assert_eq!(
+        kirpitch_review::unused_path(&name("ds-2.partspec.json")),
+        name("ds-3.partspec.json")
+    );
+}

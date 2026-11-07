@@ -30,7 +30,7 @@ pub use serde_json::Value as JsonValue;
 
 pub use steps::{
     ConfirmedInput, ReadStepInput, build_confirmed, check_step_values, preview_footprint_values,
-    read_step,
+    read_step, unused_path,
 };
 
 pub use guide::{

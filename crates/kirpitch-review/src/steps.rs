@@ -86,6 +86,35 @@ pub fn read_step(input: &ReadStepInput, on: &dyn Fn(&Progress)) -> Result<StepRu
     )
 }
 
+/// `path` when nothing is there yet, else the same name with `-2`, `-3`, … before
+/// its extension (`part.partspec.json` becomes `part-2.partspec.json`), so a part
+/// never replaces a file.
+#[must_use]
+pub fn unused_path(path: &str) -> String {
+    let path = path.trim();
+    if !Path::new(path).exists() {
+        return path.to_string();
+    }
+    let (stem, ext) = match path.find(".partspec.") {
+        Some(i) => path.split_at(i),
+        None => match path.rfind('.') {
+            Some(i) if !path[i..].contains(['/', '\\']) => path.split_at(i),
+            _ => (path, ""),
+        },
+    };
+    // A name that already ends in -N continues from there.
+    let (base, first) = match stem.rsplit_once('-') {
+        Some((b, n)) if !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()) => {
+            (b, n.parse::<u32>().unwrap_or(1) + 1)
+        }
+        _ => (stem, 2),
+    };
+    (first..)
+        .map(|n| format!("{base}-{n}{ext}"))
+        .find(|p| !Path::new(p).exists())
+        .unwrap_or_else(|| path.to_string())
+}
+
 /// Checks the values of a step that a person typed or changed. \`regions\` is
 /// where the pins are traced back to.
 ///
