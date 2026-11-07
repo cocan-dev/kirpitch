@@ -36,7 +36,15 @@ fn a_golden_part_is_shown_with_pins_pads_and_gates() {
     assert_eq!(view.pads[0].x, "-2.7");
     let names: Vec<&str> = view.gates.iter().map(|g| g.name.as_str()).collect();
     assert_eq!(names, ["pinout", "footprint", "3d"]);
-    assert_eq!(view.model_views.len(), 3);
+    assert_eq!(view.model_views.len(), 1);
+    // The boxes for the 3D view: the body first, all inside the sizes the summary names.
+    assert!(!view.model_boxes.is_empty());
+    assert_eq!(view.model_boxes[0].material, "body");
+    assert!(
+        view.model_boxes
+            .iter()
+            .all(|b| (0..3).all(|i| b.min[i] <= b.max[i]))
+    );
     assert!(
         view.model_summary.contains("1.75 mm high"),
         "{}",

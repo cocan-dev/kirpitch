@@ -360,3 +360,24 @@ tr.sel td { animation: pulse-row 0.7s ease-out 1; }
 .gd-pkg p { margin: 0; }
 .gd-pkg .gd-suggest { margin: 2px 0; }
 .gd-pkg input[type="text"] { max-width: 22rem; }
+
+/* The 3D step: a 3D view that can be turned, and the engineering drawing */
+@container (min-width: 780px) { .two.m3d-two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.m3d { display: grid; gap: 8px; }
+.m3d-bar { display: flex; gap: 6px; flex-wrap: wrap; }
+.m3d-bar button { padding: 2px 12px; font-size: 13px; }
+.m3d-stage { border-radius: 10px; overflow: hidden; background: linear-gradient(#d3dbe8, #8e9fb8); border: 1px solid var(--line); }
+.m3d-canvas { display: block; width: 100%; height: min(52vh, 460px); min-height: 280px; cursor: grab; touch-action: none; outline: none; }
+.m3d-canvas:active { cursor: grabbing; }
+.m3d-canvas:focus-visible { box-shadow: inset 0 0 0 3px var(--brick); }
+.m3d-hint { margin: 0; }
+.m3d-none { padding: 14px; border: 1px dashed var(--line); border-radius: 8px; }
+.model-views.big { grid-template-columns: 1fr; }
+.model-views.big figure { margin: 0; }
+.model-views.big figcaption { display: none; }
+.model-views.big svg { max-height: none; max-height: min(70vh, 640px); background: #fbfbf8; border: 1px solid var(--line); }
+.model-views figure:hover { transform: none; }
+
+.model-views.drawing.zoomable svg { height: min(56vh, 520px); max-height: none; }
+.model-views.drawing { padding: 0; background: #fbfbf8; }
+.model-views.drawing .zoombar button { color: #222; background: #fff; border-color: #ccc; }

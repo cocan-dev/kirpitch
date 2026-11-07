@@ -107,7 +107,7 @@ fn a_new_part_is_made_from_each_package_form() {
             view.package_name
         );
         assert_eq!(view.pins[0].name, "PIN1");
-        assert_eq!(view.model_views.len(), 3);
+        assert_eq!(view.model_views.len(), 1);
     }
     // The exposed pad of the QFN is its own passive pin.
     let qfn = kirpitch_review::open_spec(&tmp.path().join("qfn.json").to_string_lossy()).unwrap();

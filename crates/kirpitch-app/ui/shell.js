@@ -311,6 +311,7 @@ function render(view, keepSheet) {
   zoomable($("svg"));
   zoomable($("symbol"));
   $("model-summary").textContent = view.model_summary;
+  if (typeof model3dShow === "function") model3dShow(view.model_boxes || [], view.path);
   const views = $("model-views");
   views.replaceChildren();
   view.model_views.forEach((v) => {
@@ -320,6 +321,7 @@ function render(view, keepSheet) {
     fig.append(holder);
     views.append(fig);
   });
+  zoomable(views);
   selected = null;
   rememberProgress(view);
   setStep(activeStep);

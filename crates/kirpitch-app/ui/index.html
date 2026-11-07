@@ -125,10 +125,18 @@
             <h3>3 · 3D model</h3>
             <p>The model is built from the package and the pads. Check that the body, the pin 1 mark and the terminals sit where they should. <span id="model-summary" class="muted"></span></p>
           </header>
-          <section class="panel" aria-label="3D views">
-            <div id="model-views" class="model-views big"></div>
-            <p class="muted small">Dark is the body, light grey the pin 1 mark, silver the terminals; the green line is the board.</p>
-          </section>
+          <div class="two m3d-two">
+            <section class="panel" aria-label="3D view">
+              <h4>3D view</h4>
+              <div id="model3d" class="m3d"></div>
+              <p class="muted small">Dark is the body, light grey the pin 1 mark, silver the terminals; the green square is the board. The lines at the corner are the axes: x red, y green, z blue.</p>
+            </section>
+            <section class="panel" aria-label="Engineering views">
+              <h4>Engineering views</h4>
+              <div id="model-views" class="model-views big drawing"></div>
+              <p class="muted small">Third-angle projection: the top view above, the front view below it and the left view beside the front view, lined up by the dashed lines. Sizes in millimetres.</p>
+            </section>
+          </div>
         </div>
 
         <div id="step-export" class="step" hidden>
@@ -390,6 +398,7 @@
   </dialog>
 
   <script src="zoom.js"></script>
+  <script src="model3d.js"></script>
   <script src="app.js"></script>
   <script src="shell.js"></script>
   <script src="start.js"></script>

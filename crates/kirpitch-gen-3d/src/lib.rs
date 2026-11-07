@@ -19,7 +19,7 @@ mod vrml;
 use kirpitch_core::partspec::{PadKind, PartSpec};
 
 pub use step::write_step;
-pub use views::{View, view_svg};
+pub use views::{View, drawing_svg, view_svg};
 pub use vrml::write_vrml;
 
 /// Thickness of a terminal.
