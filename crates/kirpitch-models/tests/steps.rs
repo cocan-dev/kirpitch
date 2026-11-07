@@ -335,3 +335,30 @@ fn a_pin_in_a_cell_that_wraps_is_found_next_to_its_number() {
     assert_eq!(r.notes.len(), 3, "{:?}", r.notes);
     assert!(r.notes.iter().all(|n| n.contains("next to its number")));
 }
+
+#[test]
+fn a_name_with_a_footnote_mark_inside_is_found_and_only_its_row_is_boxed() {
+    // Lines of the STM32F405 table as the PDF gives them (page 49): the footnote
+    // mark `(3)(` sits between `PC15/` and the rest of the name, which is on the
+    // number's line, and the row above is a neighbour.
+    let pages = vec![PageLines {
+        page: 49,
+        lines: vec![
+            row(0.6079, "PC14/OSC32_IN (3)("),
+            row(0.6158, "3 B10 8 8 E1 9 I/O FT - OSC32_IN(5)"),
+            row(0.6237, "(PC14)"),
+            row(0.6458, "PC15/ (3)("),
+            row(0.6578, "4 B9 9 9 F1 10 OSC32_OUT I/O FT - OSC32_OUT(5)"),
+            row(0.6726, "(PC15)"),
+        ],
+    }];
+    let pins = json!({"pins": [pin("9", "PC14/OSC32_IN"), pin("10", "PC15/OSC32_OUT")]});
+    let r = check_step(Step::Pins, &pins, &pages).unwrap();
+    let p = r.value["pins"].as_array().unwrap();
+    assert!(r.notes.is_empty(), "{:?}", r.notes);
+    let b = &p[1]["bbox"];
+    let (top, bottom) = (b[1].as_f64().unwrap(), b[3].as_f64().unwrap());
+    // From `PC15/` to `(PC15)`, and not the row above.
+    assert!(top > 0.63 && top < 0.6458, "{b}");
+    assert!(bottom > 0.6726 && bottom < 0.69, "{b}");
+}

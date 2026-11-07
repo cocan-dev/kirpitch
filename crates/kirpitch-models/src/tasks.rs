@@ -852,6 +852,13 @@ fn ground(pages: &[PageLines], pin: &PinAnswer) -> Option<(u32, [f64; 4])> {
     }
     // The row of a table: the number on one line, the name on a line near it.
     let squashed_name = squash(&name);
+    // The parts of a name such as `PC15/OSC32_OUT`: a table may put other text (a
+    // footnote mark) between them.
+    let segments: Vec<&str> = name
+        .split('/')
+        .map(str::trim)
+        .filter(|s| s.chars().count() >= 2)
+        .collect();
     for page in pages {
         for l in &page.lines {
             if !contains_token(&plain_dashes(&l.text), &pin.number) {
@@ -878,12 +885,27 @@ fn ground(pages: &[PageLines], pin: &PinAnswer) -> Option<(u32, [f64; 4])> {
                 .collect::<Vec<_>>()
                 .join(" ");
             let long_enough = squashed_name.chars().count() >= 5;
+            let in_parts =
+                segments.len() > 1 && segments.iter().all(|s| contains_token(&joined, s));
             if contains_token(&joined, &name)
+                || in_parts
                 || (long_enough
                     && (squash(&joined).contains(&squashed_name)
                         || squash(&others).contains(&squashed_name)))
             {
-                return Some((page.page, box_of(&near)));
+                // The row is the number's line and the lines that hold a part of the
+                // name, not every line near it (a short row has its neighbours there).
+                let row: Vec<&TextLine> = near
+                    .iter()
+                    .copied()
+                    .filter(|o| {
+                        std::ptr::eq(*o, l)
+                            || segments
+                                .iter()
+                                .any(|s| contains_token(&plain_dashes(&o.text), s))
+                    })
+                    .collect();
+                return Some((page.page, box_of(if row.len() > 1 { &row } else { &near })));
             }
         }
     }
