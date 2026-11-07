@@ -440,6 +440,21 @@ fn delete_part(path: String) -> Result<(), String> {
     kirpitch_review::delete_part(&path)
 }
 
+/// Remembers where a datasheet PDF is, so the parts made from it show it again.
+#[tauri::command]
+fn remember_datasheet(pdf: String) -> Result<(), String> {
+    kirpitch_review::remember_datasheet(&pdf)
+}
+
+/// The datasheet PDF of a part on this computer, when it is known or found.
+#[tauri::command]
+async fn datasheet_for(path: String) -> Option<String> {
+    tauri::async_runtime::spawn_blocking(move || kirpitch_review::datasheet_for(&path))
+        .await
+        .ok()
+        .flatten()
+}
+
 /// The name a part can be saved under: the one given, or the same with -2, -3, ...
 /// when a file is already there.
 #[tauri::command]
@@ -493,6 +508,8 @@ fn main() {
             list_parts,
             rename_part,
             delete_part,
+            remember_datasheet,
+            datasheet_for,
             preview_guide,
             eval_cases,
             eval_add_case,

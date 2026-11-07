@@ -308,6 +308,8 @@ function render(view, keepSheet) {
   // The drawings are made by our own Rust code from numbers and escaped text.
   $("svg").innerHTML = view.footprint_svg;
   $("symbol").innerHTML = view.symbol_svg || '<p class="empty-note">Fix the errors of the pinout to see the symbol.</p>';
+  zoomable($("svg"));
+  zoomable($("symbol"));
   $("model-summary").textContent = view.model_summary;
   const views = $("model-views");
   views.replaceChildren();
@@ -328,6 +330,17 @@ function render(view, keepSheet) {
     const saved = savedPdf(view.path);
     $("pdf-path").value = saved;
     if (saved) showPage(1).catch((e) => show(String(e), "error"));
+    // The part file keeps the hash of its datasheet: the app finds the PDF by it,
+    // also after the part was renamed or opened from My parts.
+    const at = view.path;
+    invoke("datasheet_for", { path: at })
+      .then((found) => {
+        if (!found || !current || current.path !== at || $("pdf-path").value.trim() === found) return;
+        $("pdf-path").value = found;
+        rememberPdf(at, found);
+        return showPage(1);
+      })
+      .catch(() => {});
   }
 }
 
