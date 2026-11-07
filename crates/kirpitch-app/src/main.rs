@@ -381,6 +381,21 @@ fn check_step_values(
     kirpitch_review::check_step_values(pdf.trim(), &step, &value, &regions)
 }
 
+/// Keeps the pins of one package from the pins of a table for several packages.
+#[tauri::command]
+async fn narrow_pins(
+    pdf: String,
+    regions: Vec<kirpitch_review::RegionInput>,
+    value: kirpitch_review::JsonValue,
+    want: usize,
+) -> Result<kirpitch_models::steps::StepRun, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        kirpitch_review::narrow_pins_values(pdf.trim(), &regions, &value, want)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// The footprint that the values make, to look at.
 #[tauri::command]
 fn preview_footprint(
@@ -459,6 +474,7 @@ fn main() {
             suggest_pages,
             read_step,
             check_step_values,
+            narrow_pins,
             preview_footprint,
             build_confirmed,
             unused_path,

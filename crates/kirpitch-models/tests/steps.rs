@@ -362,3 +362,52 @@ fn a_name_with_a_footnote_mark_inside_is_found_and_only_its_row_is_boxed() {
     assert!(top > 0.63 && top < 0.6458, "{b}");
     assert!(bottom > 0.6726 && bottom < 0.69, "{b}");
 }
+
+#[test]
+fn the_pins_of_one_package_are_cut_out_of_a_table_for_several() {
+    use kirpitch_models::steps::narrow_pins;
+    // Two packages: the first has columns of pin numbers `4-pin` and `6-pin`
+    // (the model read the last one). The 4-pin package also has a supply pin
+    // that the 6-pin one does not, a row of its own.
+    let pages = vec![PageLines {
+        page: 5,
+        lines: vec![
+            row(0.20, "- 1 PA1 I/O FT"),
+            row(0.24, "1 2 PA2 I/O FT"),
+            row(0.28, "2 3 PA3 I/O FT"),
+            row(0.32, "3 4 PA4 I/O FT"),
+            row(0.36, "4 5 PA5 I/O FT"),
+            row(0.40, "- 6 PA6 I/O FT"),
+            row(0.44, "5 - VSS S - -"),
+        ],
+    }];
+    let pins = json!({"pins": [
+        pin("1", "PA1"), pin("2", "PA2"), pin("3", "PA3"),
+        pin("4", "PA4"), pin("5", "PA5"), pin("6", "PA6"),
+    ]});
+    let run = narrow_pins(&pins, &pages, 5).unwrap();
+    let list: Vec<(String, String)> = run.value["pins"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| {
+            (
+                p["number"].as_str().unwrap().to_string(),
+                p["name"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect();
+    let names: Vec<&str> = list.iter().map(|(_, n)| n.as_str()).collect();
+    assert_eq!(names, ["PA2", "PA3", "PA4", "PA5", "VSS"], "{list:?}");
+    assert_eq!(list[0].0, "1");
+    assert_eq!(list[4].0, "5");
+    // The supply pin came from the table, and says so.
+    assert_eq!(run.value["pins"][4]["type"], "power_in");
+    assert!(
+        run.notes.iter().any(|n| n.contains("`VSS`")),
+        "{:?}",
+        run.notes
+    );
+    // No column has so few pins.
+    assert!(narrow_pins(&pins, &pages, 3).is_err());
+}

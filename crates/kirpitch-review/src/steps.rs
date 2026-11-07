@@ -137,6 +137,24 @@ pub fn check_step_values(
     check_step(step, value, &pages)
 }
 
+/// Keeps only the pins of one package from the pins read from a table that
+/// covers several, using the rows of the table (no model). `regions` are the
+/// places the pin table was read from.
+///
+/// # Errors
+///
+/// The table has no column of pin numbers that fits `want` pins.
+pub fn narrow_pins_values(
+    pdf: &str,
+    regions: &[RegionInput],
+    value: &Value,
+    want: usize,
+) -> Result<StepRun, String> {
+    let bytes = fs::read(pdf).map_err(|e| format!("{pdf}: {e}"))?;
+    let (pages, _) = pages_for(&bytes, regions)?;
+    kirpitch_models::steps::narrow_pins(value, &pages, want)
+}
+
 /// The footprint the values make, for looking at.
 ///
 /// # Errors

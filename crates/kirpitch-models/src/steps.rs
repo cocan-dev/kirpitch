@@ -26,7 +26,7 @@ use crate::prompts::TYPE_HELP;
 use crate::tasks::{
     Cache, CallRecord, Ctx, FootprintAnswer, MetadataAnswer, PackageAnswer, PageLines, Pinned,
     PinsResult, Stats, extract_footprint, extract_metadata, extract_package, extract_pins,
-    footprint_from_json, package_from_json, pins_from_json, read_pins,
+    footprint_from_json, narrow_to_package, package_from_json, pins_from_json, read_pins,
 };
 use crate::transport::Transport;
 
@@ -180,6 +180,26 @@ fn text_of(v: &Value, key: &str) -> Option<String> {
         .and_then(Value::as_str)
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
+}
+
+/// Cuts the pins of one package out of the pins of a table that covers several
+/// (see [`narrow_to_package`]), with their number in that package. No model is
+/// asked.
+///
+/// # Errors
+///
+/// The values are not pins, or the table has no column that fits `want` pins.
+pub fn narrow_pins(value: &Value, pages: &[PageLines], want: usize) -> Result<StepRun, String> {
+    let pins = pins_from_json(value)?;
+    let narrowed = narrow_to_package(&pins, pages, want)?;
+    let default_page = pages.first().map_or(1, |p| p.page);
+    let result = read_pins(narrowed.pins, pages, default_page, false);
+    let mut notes = narrowed.notes;
+    notes.extend(result.notes.iter().cloned());
+    Ok(StepRun {
+        value: pins_json(&result),
+        notes,
+    })
 }
 
 /// Reads confirmed metadata.
