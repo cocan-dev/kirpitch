@@ -682,8 +682,70 @@ function gdFormFootprint() {
       wrap.append(gdLabel("Pads that are not rows or a grid (advanced)", area, "Each run: first_number, count, x, y, dx, dy, size_x, size_y, shape. From the centre; x right, y down."));
     }
   }
-  wrap.append(el("div", { id: "gd-fp-preview", class: "gd-fp-preview" }, el("p", { class: "muted small", text: "The footprint that will be made:" }), el("div", { id: "gd-fp-svg" }), el("p", { id: "gd-fp-info", class: "muted small" })));
+  wrap.append(el("div", { id: "gd-fp-preview", class: "gd-fp-preview" }, el("p", { class: "muted small", text: "The footprint that will be made:" }), el("div", { id: "gd-fp-svg" }), el("div", { id: "gd-fp-numbers", class: "gd-fp-numbers" }), el("p", { id: "gd-fp-info", class: "muted small" })));
   return wrap;
+}
+
+// The numbers of the footprint, measured on the pads that will be made, so they can be
+// compared with the datasheet. [label, value, optional warning].
+function gdFootprintNumbers(p, pkg) {
+  const mm = (v) => String(Math.round(v * 1000) / 1000);
+  const rows = [];
+  if (!p.pads.length) return rows;
+  const area = (a) => a.size_x * a.size_y;
+  const sorted = p.pads.map(area).sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  const centre = p.pads.filter((a) => area(a) > median * 6); // an exposed (centre) pad
+  const regular = p.pads.filter((a) => !centre.includes(a));
+  rows.push(["Body", mm(p.body_width) + " × " + mm(p.body_length) + " mm"]);
+  rows.push(["Pads", p.pads.length + (centre.length ? " (" + regular.length + " around the body, " + centre.length + " in the centre)" : "")]);
+
+  // Pad sizes, long side first, so the pads of the four sides count as one kind.
+  const kinds = new Map();
+  for (const a of regular) {
+    const w = Math.max(a.size_x, a.size_y), h = Math.min(a.size_x, a.size_y);
+    const k = mm(w) + " × " + mm(h) + " mm" + (a.shape === "circle" ? " (round)" : "");
+    kinds.set(k, (kinds.get(k) || 0) + 1);
+  }
+  const kindText = [...kinds].map(([k, n]) => (kinds.size > 1 ? k + " ×" + n : k));
+  rows.push([kinds.size > 1 ? "Pad sizes" : "Pad size", kindText.join(" · ")]);
+  for (const a of centre) rows.push(["Centre pad " + a.number, mm(a.size_x) + " × " + mm(a.size_y) + " mm"]);
+
+  // The pitch: the most common distance from a pad to the pad next to it.
+  const near = new Map();
+  for (const a of regular) {
+    let best = Infinity;
+    for (const b of regular) if (a !== b && Math.hypot(a.x - b.x, a.y - b.y) > 1e-6) best = Math.min(best, Math.hypot(a.x - b.x, a.y - b.y));
+    if (best < Infinity) near.set(mm(best), (near.get(mm(best)) || 0) + 1);
+  }
+  let pitch = null, most = 0;
+  for (const [k, n] of near) if (n > most) { pitch = Number(k); most = n; }
+  if (pitch != null) {
+    const wanted = pkg && Number(pkg.pitch) > 0 ? Number(pkg.pitch) : null;
+    rows.push(["Pitch", mm(pitch) + " mm", wanted && Math.abs(wanted - pitch) > 0.005 ? "the package says " + mm(wanted) + " mm" : ""]);
+  }
+
+  // The rows: how far apart the pad centres are, and how far the pads reach.
+  const xs = regular.map((a) => a.x), ys = regular.map((a) => a.y);
+  const cx = Math.max(...xs) - Math.min(...xs), cy = Math.max(...ys) - Math.min(...ys);
+  const distinctX = new Set(xs.map(mm)).size, distinctY = new Set(ys.map(mm)).size;
+  if (distinctX <= 2 && distinctY > 2) rows.push(["Row to row", mm(cx) + " mm", "pad centre to pad centre"]);
+  else if (distinctY <= 2 && distinctX > 2) rows.push(["Row to row", mm(cy) + " mm", "pad centre to pad centre"]);
+  else rows.push(["Pad centres", mm(cx) + " × " + mm(cy) + " mm", "opposite sides, centre to centre"]);
+  const ex = Math.max(...p.pads.map((a) => a.x + a.size_x / 2)) - Math.min(...p.pads.map((a) => a.x - a.size_x / 2));
+  const ey = Math.max(...p.pads.map((a) => a.y + a.size_y / 2)) - Math.min(...p.pads.map((a) => a.y - a.size_y / 2));
+  rows.push(["Land pattern", mm(ex) + " × " + mm(ey) + " mm", "outer edge to outer edge of the pads"]);
+  return rows;
+}
+
+function gdPaintNumbers(p, pkg) {
+  const box = $("gd-fp-numbers");
+  if (!box) return;
+  const list = el("dl", { class: "fp-numbers" });
+  for (const [label, value, note] of gdFootprintNumbers(p, pkg)) {
+    list.append(el("dt", { text: label }), el("dd", {}, el("span", { text: value }), note ? el("span", { class: "muted small", text: " · " + note }) : ""));
+  }
+  box.replaceChildren(list);
 }
 
 // The footprint as it will be made, so a wrong pad is seen before the part exists.
@@ -696,10 +758,12 @@ async function gdPreview() {
   try {
     const p = await invoke("preview_footprint", { package: pkg, footprint: fp && Object.keys(fp).length ? fp : null });
     svgBox.replaceChildren(gdDrawPads(p));
+    gdPaintNumbers(p, pkg);
     info.className = "muted small";
     info.textContent = p.name + " · " + p.pads.length + " pads" + (p.notes.length ? " · " + p.notes.join(" · ") : "");
   } catch (e) {
     svgBox.replaceChildren();
+    if ($("gd-fp-numbers")) $("gd-fp-numbers").replaceChildren();
     info.className = "small err-text";
     info.textContent = String(e);
   }

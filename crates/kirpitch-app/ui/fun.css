@@ -305,3 +305,8 @@ tr.sel td { animation: pulse-row 0.7s ease-out 1; }
 .gd-warn-link { all: unset; cursor: pointer; padding: 3px 6px; border-radius: 6px; color: var(--warn); font-size: 13px; }
 .gd-warn-link:hover, .gd-warn-link:focus-visible { background: color-mix(in srgb, var(--warn) 16%, transparent); outline: none; }
 .gd-warn-link .muted { color: var(--muted); }
+
+.gd-fp-numbers { margin-top: 10px; }
+.fp-numbers { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; font-variant-numeric: tabular-nums; }
+.fp-numbers dt { color: var(--muted, #9a9a9a); }
+.fp-numbers dd { margin: 0; }
