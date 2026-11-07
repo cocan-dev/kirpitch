@@ -239,6 +239,8 @@ async function discoverModels(m, force) {
 
 function applyFound(m, f) {
   m.model = f.id;
+  modelFacts.delete(m);
+  factsAsked.delete(m);
   if (f.price_in != null && f.price_out != null) {
     m.price_in = f.price_in;
     m.price_out = f.price_out;
@@ -602,10 +604,97 @@ function optionalNumber(m, key, placeholder, opts = {}) {
   return input;
 }
 
+// ---- What the server says about the model: its context window and abilities --------------------
+
+const modelFacts = new WeakMap(); // draft model -> { state: "loading" | "done" | "error", d, error }
+const factBoxes = new WeakMap(); // draft model -> the element that shows them
+const factsAsked = new WeakSet();
+
+function ollamaLike(m) {
+  return m.provider === "ollama" || /ollama\.com|:11434/.test(m.base_url || "");
+}
+
+async function fetchFacts(m) {
+  if (!m.model) {
+    modelFacts.set(m, { state: "error", error: "Choose the model first." });
+    return paintFacts(m);
+  }
+  modelFacts.set(m, { state: "loading" });
+  paintFacts(m);
+  try {
+    const d = await invoke("model_details", {
+      input: { name: m.name, old_name: m.old_name, provider: m.provider, base_url: m.base_url, api_key_env: m.api_key_env, api_key_header: m.api_key_header, keychain: m.keychain, new_key: m.newKey || "", model: m.model },
+    });
+    modelFacts.set(m, { state: "done", d });
+  } catch (e) {
+    modelFacts.set(m, { state: "error", error: String(e) });
+  }
+  paintFacts(m);
+}
+
+function paintFacts(m) {
+  const box = factBoxes.get(m);
+  if (!box || !box.isConnected) return;
+  const f = modelFacts.get(m);
+  const kids = [];
+  if (!f || f.state === "loading") {
+    kids.push(el("span", { class: "muted small", text: f ? "Asking the server about this model…" : canAsk(m) ? "" : "Save the key first; then the server can say what this model can do." }));
+  } else if (f.state === "error") {
+    kids.push(el("span", { class: "muted small", text: "The server did not say: " + f.error }));
+  } else {
+    const d = f.d;
+    const bits = [];
+    if (d.context) bits.push("context window up to " + d.context.toLocaleString() + " tokens");
+    if (d.max_output) bits.push("answers up to " + d.max_output.toLocaleString() + " tokens");
+    if (d.thinking != null) bits.push(d.thinking ? "thinks before it answers" : "does not think");
+    if (d.vision != null) bits.push(d.vision ? "reads images" : "text only");
+    kids.push(el("span", { class: bits.length ? "small" : "muted small", text: bits.length ? "This model: " + bits.join(" · ") + (d.source ? " (" + d.source + ")" : "") : "The server does not say anything about this model." }));
+    if (d.context && ollamaLike(m) && m.provider === "ollama" && m.context_length !== d.context) {
+      const use = el("button", { type: "button", class: "ghost small-btn", text: "Use " + d.context.toLocaleString() + " as the context length" });
+      use.addEventListener("click", () => {
+        m.context_length = d.context;
+        renderSettings();
+        updateDirty();
+      });
+      kids.push(use);
+      if (m.local && d.context > 32768) kids.push(el("span", { class: "muted small", text: "A large window needs a lot of memory on your own computer; a smaller one, such as 32,768, is usually enough." }));
+    }
+  }
+  const refresh = el("button", { type: "button", class: "ghost small-btn", text: f && f.state === "loading" ? "Asking…" : "Ask the server" });
+  refresh.disabled = !!(f && f.state === "loading");
+  refresh.addEventListener("click", () => fetchFacts(m));
+  kids.push(refresh);
+  box.replaceChildren(...kids);
+}
+
 function modelRunGroup(m) {
   const set = [m.effort && "effort " + m.effort, m.think != null && "thinking " + (m.think ? "on" : "off"), m.context_length && "context " + m.context_length.toLocaleString(), m.temperature != null && "temperature " + m.temperature, m.extra_body && "extra fields"].filter(Boolean);
   const group = el("details", { class: "advanced run-group" }, el("summary", { text: "Thinking and context" + (set.length ? " · " + set.join(" · ") : "") }));
   group.open = true;
+  const facts = el("div", { class: "model-facts" });
+  factBoxes.set(m, facts);
+  group.append(facts);
+  paintFacts(m);
+  if (!factsAsked.has(m) && m.model && canAsk(m)) {
+    factsAsked.add(m);
+    setTimeout(() => fetchFacts(m), 0);
+  }
+  // An Ollama server used through its OpenAI-compatible address cannot take a
+  // context window or a thinking level in the request.
+  if (m.provider === "openai-compatible" && ollamaLike(m)) {
+    const warn = el("p", { class: "warn-text small kind-warning", text: "This is an Ollama server used through its OpenAI-compatible address. That address cannot take a context length, and takes a thinking effort only partly. " });
+    const sw = el("button", { type: "button", class: "small-btn", text: "Switch to the Ollama kind" });
+    sw.addEventListener("click", () => {
+      m.provider = "ollama";
+      m.base_url = (m.base_url || "").replace(/\/v1\/?$/, "").replace(/\/$/, "");
+      modelFacts.delete(m);
+      factsAsked.delete(m);
+      renderSettings();
+      updateDirty();
+    });
+    warn.append(sw);
+    group.append(warn);
+  }
   const grid = el("div", { class: "grid2" });
   grid.append(field("Thinking effort", selectInput(EFFORT_OPTIONS, m.effort || "", (v) => (m.effort = v)), effortHelp(m)));
   if (m.provider === "ollama") {

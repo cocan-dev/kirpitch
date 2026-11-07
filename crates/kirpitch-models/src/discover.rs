@@ -11,7 +11,7 @@
 //! check it. Nothing here sends any datasheet content: it only asks for lists.
 
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::client::ModelError;
 use crate::config::Provider;
@@ -55,6 +55,176 @@ pub struct ListRequest<'a> {
     pub key: Option<&'a str>,
     /// The header that carries the key when it is not the usual one.
     pub key_header: Option<&'a str>,
+}
+
+/// What a server says about one model: how much it can take, and what it can do.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct ModelDetails {
+    /// The context window, in tokens.
+    pub context: Option<u64>,
+    /// The longest answer, in tokens, when the server says.
+    pub max_output: Option<u64>,
+    /// Whether the model thinks before it answers, when the server says.
+    pub thinking: Option<bool>,
+    /// Whether the model reads images, when the server says.
+    pub vision: Option<bool>,
+    /// Where this came from, for the screen (empty when the server said
+    /// nothing).
+    pub source: String,
+}
+
+fn is_ollama_address(provider: Provider, base: &str) -> bool {
+    provider == Provider::Ollama || base.contains("ollama.com") || base.contains(":11434")
+}
+
+fn post_json(
+    transport: &dyn Transport,
+    url: String,
+    headers: Vec<(String, String)>,
+    body: Value,
+) -> Result<Value, ModelError> {
+    let reply = transport.post(
+        &Request {
+            url,
+            headers,
+            body: body.to_string(),
+        },
+        TIMEOUT_SECS,
+    )?;
+    if !(200..300).contains(&reply.status) {
+        let message = serde_json::from_str::<Value>(&reply.body)
+            .ok()
+            .and_then(|v| {
+                v.pointer("/error/message")
+                    .or_else(|| v.get("error"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| reply.body.chars().take(200).collect());
+        return Err(ModelError::Http {
+            status: reply.status,
+            message,
+        });
+    }
+    serde_json::from_str(&reply.body)
+        .map_err(|e| ModelError::Unexpected(format!("the answer is not JSON: {e}")))
+}
+
+/// Asks the server about one model: its context window and abilities.
+///
+/// Ollama (also behind an OpenAI-compatible address such as
+/// `https://ollama.com/v1`) answers at `/api/show`; LM Studio at
+/// `/api/v0/models`; Anthropic at `/v1/models/<id>`; OpenRouter and Mistral in
+/// their model list. Servers that say nothing give an empty result, not an
+/// error.
+///
+/// # Errors
+///
+/// The server cannot be reached or refuses (a model it does not know, a key).
+pub fn model_details(
+    req: &ListRequest<'_>,
+    model: &str,
+    transport: &dyn Transport,
+) -> Result<ModelDetails, ModelError> {
+    let base = if req.base_url.is_empty() {
+        req.provider.default_base_url().unwrap_or("")
+    } else {
+        req.base_url
+    }
+    .trim_end_matches('/');
+    if base.is_empty() {
+        return Err(ModelError::Unexpected(
+            "this kind of server needs an address first".into(),
+        ));
+    }
+    if model.trim().is_empty() {
+        return Err(ModelError::Unexpected("choose the model first".into()));
+    }
+    let model = model.trim();
+    if is_ollama_address(req.provider, base) {
+        let root = base.strip_suffix("/v1").unwrap_or(base);
+        let v = post_json(
+            transport,
+            format!("{root}/api/show"),
+            headers(req),
+            json!({"model": model}),
+        )?;
+        let context = v
+            .get("model_info")
+            .and_then(Value::as_object)
+            .and_then(|o| {
+                o.iter()
+                    .find(|(k, _)| k.ends_with(".context_length"))
+                    .and_then(|(_, n)| n.as_u64())
+            });
+        let caps: Vec<&str> = v
+            .get("capabilities")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        return Ok(ModelDetails {
+            context,
+            max_output: None,
+            thinking: (!caps.is_empty()).then(|| caps.contains(&"thinking")),
+            vision: (!caps.is_empty()).then(|| caps.contains(&"vision")),
+            source: "Ollama".into(),
+        });
+    }
+    if req.provider == Provider::Anthropic {
+        let id = crate::config::resolve_model_name(model);
+        let v = get(transport, format!("{base}/v1/models/{id}"), headers(req))?;
+        return Ok(ModelDetails {
+            context: v.get("max_input_tokens").and_then(Value::as_u64),
+            max_output: v.get("max_tokens").and_then(Value::as_u64),
+            thinking: None,
+            vision: None,
+            source: "Anthropic".into(),
+        });
+    }
+    // LM Studio tells more than the OpenAI list does.
+    if crate::config::is_local_url(base) {
+        let root = base.strip_suffix("/v1").unwrap_or(base);
+        if let Ok(v) = get(
+            transport,
+            format!("{root}/api/v0/models/{model}"),
+            headers(req),
+        ) && let Some(max) = v.get("max_context_length").and_then(Value::as_u64)
+        {
+            let caps: Vec<&str> = v
+                .get("capabilities")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(Value::as_str).collect())
+                .unwrap_or_default();
+            return Ok(ModelDetails {
+                context: Some(max),
+                max_output: None,
+                thinking: None,
+                vision: v
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .map(|t| t == "vlm")
+                    .or_else(|| (!caps.is_empty()).then(|| caps.contains(&"vision"))),
+                source: "LM Studio".into(),
+            });
+        }
+    }
+    // The list of models of OpenRouter, Mistral and others carries it.
+    let list = list_models(req, transport)?;
+    let found = list.iter().find(|m| m.id == model);
+    Ok(match found {
+        Some(m) => ModelDetails {
+            context: m.context,
+            max_output: None,
+            thinking: None,
+            vision: m.vision,
+            source: if m.context.is_some() || m.vision.is_some() {
+                "the model list of the server".into()
+            } else {
+                String::new()
+            },
+        },
+        None => ModelDetails::default(),
+    })
 }
 
 fn listing_url(provider: Provider, base: &str) -> String {
@@ -324,6 +494,91 @@ fn fill_prices(found: &mut [FoundModel], reference: &[FoundModel]) {
 mod tests {
     use super::*;
     use crate::transport::MockTransport;
+
+    #[test]
+    fn ollama_says_the_context_and_the_abilities_even_behind_an_openai_address() {
+        let m = MockTransport::new();
+        m.push_ok(
+            r#"{"model_info":{"general.architecture":"gptoss","gptoss.context_length":131072},
+                "capabilities":["completion","tools","thinking"]}"#,
+        );
+        let details = model_details(
+            &request(Provider::OpenaiCompatible, "https://ollama.com/v1"),
+            "gpt-oss:120b-cloud",
+            &m,
+        )
+        .unwrap();
+        assert_eq!(details.context, Some(131_072));
+        assert_eq!(details.thinking, Some(true));
+        assert_eq!(details.vision, Some(false));
+        assert_eq!(details.source, "Ollama");
+        let sent = &m.requests()[0];
+        assert_eq!(sent.url, "https://ollama.com/api/show");
+        assert!(sent.body.contains("gpt-oss:120b-cloud"));
+        assert_eq!(sent.headers[0].1, "Bearer k");
+    }
+
+    #[test]
+    fn a_model_the_server_does_not_know_is_an_error_with_its_words() {
+        let m = MockTransport::new();
+        m.push(Ok(crate::transport::Reply {
+            status: 404,
+            body: r#"{"error":"model 'nope' not found"}"#.into(),
+        }));
+        let e = model_details(&request(Provider::Ollama, ""), "nope", &m).unwrap_err();
+        assert!(
+            e.to_string().contains("404") && e.to_string().contains("not found"),
+            "{e}"
+        );
+        assert!(model_details(&request(Provider::Ollama, ""), "  ", &m).is_err());
+    }
+
+    #[test]
+    fn lm_studio_openrouter_and_anthropic_say_it_in_their_own_places() {
+        // LM Studio.
+        let m = MockTransport::new();
+        m.push_ok(r#"{"id":"qwen2.5-vl","type":"vlm","max_context_length":32768,"loaded_context_length":4096}"#);
+        let d = model_details(
+            &request(Provider::OpenaiCompatible, "http://localhost:1234/v1"),
+            "qwen2.5-vl",
+            &m,
+        )
+        .unwrap();
+        assert_eq!((d.context, d.vision), (Some(32768), Some(true)));
+        assert_eq!(
+            m.requests()[0].url,
+            "http://localhost:1234/api/v0/models/qwen2.5-vl"
+        );
+        // OpenRouter: in the list.
+        let m = MockTransport::new();
+        m.push_ok(r#"{"data":[{"id":"x/y","context_length":200000,"architecture":{"input_modalities":["text","image"]}}]}"#);
+        let d = model_details(
+            &request(Provider::OpenaiCompatible, "https://openrouter.ai/api/v1"),
+            "x/y",
+            &m,
+        )
+        .unwrap();
+        assert_eq!((d.context, d.vision), (Some(200_000), Some(true)));
+        // Anthropic.
+        let m = MockTransport::new();
+        m.push_ok(r#"{"id":"claude-sonnet-4-5","max_input_tokens":200000,"max_tokens":64000}"#);
+        let d = model_details(&request(Provider::Anthropic, ""), "claude-sonnet-4-5", &m).unwrap();
+        assert_eq!((d.context, d.max_output), (Some(200_000), Some(64_000)));
+        assert_eq!(
+            m.requests()[0].url,
+            "https://api.anthropic.com/v1/models/claude-sonnet-4-5"
+        );
+    }
+
+    #[test]
+    fn a_server_that_says_nothing_gives_an_empty_answer_not_an_error() {
+        let m = MockTransport::new();
+        m.push_ok(r#"{"data":[{"id":"gpt-4o"}]}"#);
+        m.push_ok(r#"{"data":[]}"#);
+        let d = model_details(&request(Provider::Openai, ""), "gpt-4o", &m).unwrap();
+        assert_eq!(d.context, None);
+        assert!(d.source.is_empty());
+    }
 
     fn request(provider: Provider, base: &str) -> ListRequest<'_> {
         ListRequest {

@@ -30,7 +30,7 @@ pub use config::{
     CONFIG_FILE, Config, ConfigError, Extraction, Folders, ModelConfig, Provider, Task,
     active_config_path, is_local_url, user_config_dir,
 };
-pub use discover::{FoundModel, ListRequest, list_models};
+pub use discover::{FoundModel, ListRequest, ModelDetails, list_models, model_details};
 pub use keys::{KeyError, KeyStore, MemoryKeyStore, OsKeyStore};
 pub use probe::{ProbeResult, probe};
 pub use prompts::{PROMPT_LIST, PromptInfo, Prompts};

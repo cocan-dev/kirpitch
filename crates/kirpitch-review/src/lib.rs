@@ -15,8 +15,9 @@ mod steps;
 
 pub use settings::{
     ExtractionValues, FindInput, ModelInput, ModelTest, ModelView, PromptView, ProviderInfo,
-    SettingsInput, SettingsView, config_from_input, current_settings, delete_api_key, find_models,
-    save_settings, set_api_key, settings_view, test_model, user_folders,
+    SettingsInput, SettingsView, config_from_input, current_settings, delete_api_key,
+    find_model_details, find_models, save_settings, set_api_key, settings_view, test_model,
+    user_folders,
 };
 
 pub use eval::{

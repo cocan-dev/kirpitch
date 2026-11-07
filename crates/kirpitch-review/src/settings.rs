@@ -660,6 +660,64 @@ pub struct FindInput {
     /// A key typed on the screen and not saved yet.
     #[serde(default)]
     pub new_key: String,
+    /// The model, when its details are asked for.
+    #[serde(default)]
+    pub model: String,
+}
+
+/// The key of a model: the one typed on the screen, else the environment
+/// variable, else the keychain.
+fn resolve_key(input: &FindInput, keys: &dyn KeyStore) -> Result<Option<String>, String> {
+    let typed = input.new_key.trim();
+    let from_env = (!input.api_key_env.is_empty())
+        .then(|| std::env::var(&input.api_key_env).ok())
+        .flatten()
+        .filter(|v| !v.is_empty());
+    let from_keychain = if input.keychain && typed.is_empty() && from_env.is_none() {
+        let account = input.old_name.as_deref().unwrap_or(&input.name);
+        keys.get(account)
+            .map_err(|e| e.to_string())?
+            .filter(|k| !k.is_empty())
+    } else {
+        None
+    };
+    Ok((!typed.is_empty())
+        .then(|| typed.to_string())
+        .or(from_env)
+        .or(from_keychain))
+}
+
+fn provider_of(input: &FindInput) -> Result<Provider, String> {
+    serde_json::from_value(serde_json::Value::String(input.provider.clone()))
+        .map_err(|_| format!("unknown kind of server `{}`", input.provider))
+}
+
+/// Asks the server of a model what it says about the model: the context
+/// window and what it can do.
+///
+/// # Errors
+///
+/// The kind of server is unknown, or the server cannot be reached or refuses.
+pub fn find_model_details(
+    input: &FindInput,
+    transport: &dyn Transport,
+    keys: &dyn KeyStore,
+) -> Result<kirpitch_models::ModelDetails, String> {
+    let provider = provider_of(input)?;
+    let key = resolve_key(input, keys)?;
+    let base = input.base_url.trim().to_string();
+    let header = input.api_key_header.trim();
+    kirpitch_models::model_details(
+        &kirpitch_models::ListRequest {
+            provider,
+            base_url: &base,
+            key: key.as_deref(),
+            key_header: (!header.is_empty()).then_some(header),
+        },
+        &input.model,
+        transport,
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// Asks the server of a model which models it offers, with what is known about
