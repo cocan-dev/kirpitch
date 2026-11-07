@@ -310,3 +310,6 @@ tr.sel td { animation: pulse-row 0.7s ease-out 1; }
 .fp-numbers { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; font-variant-numeric: tabular-nums; }
 .fp-numbers dt { color: var(--muted, #9a9a9a); }
 .fp-numbers dd { margin: 0; }
+
+.gd-narrow { margin: 12px 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 8px; justify-items: start; }
+.gd-narrow p { margin: 0; }

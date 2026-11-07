@@ -8,6 +8,7 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- A datasheet for several packages (one pin table with a column of pin numbers per package) no longer ends in "the pin table has 176 pins but the package has 64": the build screen offers to read the table again keeping only the pins of the chosen package (e.g. LQFP64), shows them for checking and returns to the build screen.
 - The footprint step lists the numbers of the footprint that will be made, measured on its pads: body size, number of pads, pad size, pitch, distance between the rows (or the pad centres), size of the land pattern and any centre pad, with a warning when the pitch differs from the package's. They update when you switch between the recommended and the calculated footprint.
 - Pins in a table whose cells wrap over several lines are no longer reported as "not found" (the number and the name were required on one text line; now the name may be on the lines next to the number, or cut in two). Pins that are still not found are links above the pin table: clicking one scrolls to the pin and shows the datasheet at the place where its name is written (or its page).
 - Fixed: an Ollama model whose address still ended in /v1 (left over from its OpenAI-compatible address) sent requests to ./v1/api/chat and got 404. The Ollama kind now ignores a stray /v1 or /api in the address, in requests, the model list and the details, and changing the kind to Ollama in Settings cleans the address.

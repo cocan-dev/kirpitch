@@ -97,6 +97,7 @@ function gdError(text) {
 
 async function gdGo(step) {
   gdError("");
+  gd.returnToFinal = false;
   if (step > 1 && gd.step === 1) {
     const pdf = $("ds-pdf").value.trim();
     if (!pdf) return gdError("Choose the datasheet PDF first.");
@@ -234,7 +235,7 @@ const GD_MANUAL = {
   footprint: () => ({}),
 };
 
-async function gdRead(key, withPlaces) {
+async function gdRead(key, withPlaces, extra) {
   gdError("");
   gd.phase[key] = "reading";
   gd.ack[key] = false;
@@ -244,14 +245,17 @@ async function gdRead(key, withPlaces) {
   gdShow(gd.step);
   gdPollStart();
   try {
-    const run = await invoke("read_step", { input: { pdf: gd.pdf, step: key, regions: withPlaces ? gd.regions[key] : [], hint: $("ds-hint").value, second_read: $("ds-second").checked } });
+    const run = await invoke("read_step", { input: { pdf: gd.pdf, step: key, regions: withPlaces ? gd.regions[key] : [], hint: [$("ds-hint").value.trim(), extra && extra.hint].filter(Boolean).join(". "), second_read: $("ds-second").checked } });
     gd.draft[key] = run.value;
     gd.notes[key] = run.notes || [];
     gd.readError[key] = "";
   } catch (e) {
-    // Nothing usable came back: the values are typed in.
-    gd.draft[key] = GD_MANUAL[key]();
-    gd.notes[key] = [];
+    // Nothing usable came back: the values are typed in (or, when a read was only
+    // meant to narrow down what is there, what was there stays).
+    if (!(extra && extra.keep)) {
+      gd.draft[key] = GD_MANUAL[key]();
+      gd.notes[key] = [];
+    }
     gd.readError[key] = String(e);
   }
   // The last calls of the step.
@@ -269,6 +273,7 @@ async function gdRead(key, withPlaces) {
 // What is on the screen is checked by the same rules a model's answer goes through.
 async function gdConfirm(key) {
   gdError("");
+  const backToFinal = key === "pins" && gd.returnToFinal;
   let value = gd.draft[key];
   if (key === "footprint" && !gd.useFootprint) value = null;
   if (value === null) {
@@ -289,7 +294,7 @@ async function gdConfirm(key) {
     gd.values[key] = run.value;
     gd.confirmed[key] = true;
     gd.ack[key] = false;
-    return gdGo(gd.step + 1);
+    return gdGo(backToFinal ? GD_LAST : gd.step + 1);
   } catch (e) {
     gd.ack[key] = false;
     gdShow(gd.step);
@@ -392,7 +397,8 @@ function gdPaintReview(key) {
   $("gd-review-help").textContent = err ? "" : "This is what the model read. Correct anything that is wrong; it is checked when you confirm.";
   const banner = $("gd-review-banner");
   banner.hidden = !err;
-  banner.textContent = err ? "Nothing could be read here (" + err + "). Type the values in by hand from the datasheet." : "";
+  const kept = key === "pins" && ((gd.draft.pins || {}).pins || []).length > 0;
+  banner.textContent = !err ? "" : kept ? "The model could not read the table again (" + err + "). The pins read before are still here: delete the ones of other packages by hand, or press Read again." : "Nothing could be read here (" + err + "). Type the values in by hand from the datasheet.";
   gdShowCheckError("");
   const body = $("gd-review-body");
   // For pins the warnings are the links above the table.
@@ -878,7 +884,10 @@ function gdPaintFinal() {
   if (!r) {
     parts.push(el("p", { class: "err-text", text: "Confirm the part number, the pins and the package first." }));
   } else if (r.error) {
-    parts.push(el("p", { class: "err-text", text: "These values do not fit together: " + r.error }), el("p", { class: "muted small", text: "Go back to the step that is wrong (click it above) and correct it." }));
+    parts.push(el("p", { class: "err-text", text: "These values do not fit together: " + r.error }));
+    const mismatch = /pin table has (\d+) pins but the package has (\d+)/.exec(r.error);
+    if (mismatch && Number(mismatch[1]) > Number(mismatch[2])) parts.push(gdNarrowBox(Number(mismatch[1]), Number(mismatch[2])));
+    else parts.push(el("p", { class: "muted small", text: "Go back to the step that is wrong (click it above) and correct it." }));
   } else {
     if (r.failures.length) {
       parts.push(el("p", { class: "err-text", text: "Problems found before building:" }), el("ul", { class: "err-list" }, ...r.failures.map((f) => el("li", { text: f }))), el("p", { class: "muted small", text: "Go back to the step that is wrong and correct it." }));
@@ -891,6 +900,45 @@ function gdPaintFinal() {
   ready.replaceChildren(...parts);
   $("gd-total").textContent = "";
   $("ds-run").disabled = !canBuild;
+}
+
+// A datasheet for several packages has one table with a column of pin numbers for each of
+// them. The table was read for all of them; the package says which one is wanted.
+function gdPackageLabel(want) {
+  const family = String((gd.values.package || {}).family || "").toUpperCase();
+  return family && family !== "CUSTOM" ? family + want : want + "-pin package";
+}
+
+function gdNarrowBox(have, want) {
+  const label = gdPackageLabel(want);
+  const box = el("div", { class: "gd-narrow" });
+  box.append(
+    el("p", { text: "The pin table has " + have + " pins, but this package (" + label + ") has " + want + ". Datasheets for several packages list them in one table, with a column of pin numbers for each package." }),
+    el("p", { class: "muted small", text: "The model can read the table again and keep only the pins that have a number in the " + label + " column. You check the result before it is used." })
+  );
+  const go = el("button", { type: "button", class: "primary", text: "Keep only the " + want + " pins of " + label });
+  go.addEventListener("click", () => gdNarrowPins(want));
+  box.append(go);
+  return box;
+}
+
+async function gdNarrowPins(want) {
+  const label = gdPackageLabel(want);
+  const name = (gd.values.package || {}).package_name;
+  const hint =
+    "This datasheet lists several packages in one pin table, with a column of pin numbers for each package (the header names the columns, in order). Read only the " +
+    label + " package" + (name ? " (the drawing calls it " + name + ")" : "") + ", which has " + want +
+    " pins: use the pin numbers of its column, leave out the rows where that column is empty or a dash, and give every pin once. The answer must have exactly " + want + " pins";
+  gd.confirmed.pins = false;
+  gd.ack.pins = false;
+  gd.step = GD_STEPS.findIndex((s) => s.key === "pins") + 1;
+  await gdRead("pins", gd.regions.pins.length > 0, { hint, keep: true });
+  gd.returnToFinal = true;
+  const have = ((gd.draft.pins || {}).pins || []).length;
+  if (have !== want && !gd.readError.pins) {
+    gd.notes.pins = ["The model gave " + have + " pins, but the package has " + want + ". Check the list, or draw a box around the pin table again."].concat(gd.notes.pins || []);
+  }
+  if (gdKey() === "pins") gdShow(gd.step);
 }
 
 // The part, from the confirmed values. Called by the dialog's Build button.
