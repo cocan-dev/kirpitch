@@ -354,3 +354,9 @@ tr.sel td { animation: pulse-row 0.7s ease-out 1; }
 
 .gd-step.current.done .gd-step-btn { border-bottom-color: var(--ok); }
 .gd-step.current.done .gd-dot { background: var(--ok); border-color: var(--ok); }
+
+/* The package chosen with the part number */
+.gd-pkg { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; display: grid; gap: 6px; }
+.gd-pkg p { margin: 0; }
+.gd-pkg .gd-suggest { margin: 2px 0; }
+.gd-pkg input[type="text"] { max-width: 22rem; }

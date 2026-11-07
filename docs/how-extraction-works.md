@@ -116,6 +116,14 @@ the same values.
 
 ## One pin table for several packages
 
+The easiest way is to say the package first. With the part number, the guided
+steps ask "Which package is this part for?" and offer the packages the datasheet
+names (found in its text by a plain scan, no model: `LQFP64`, `UFBGA169`,
+`SOIC-8` ...; the ones named most often first), or you type it. The pins, package
+and footprint steps are then told which package they are about, and the pin table
+is cut to its pins right after it is read. The rest of this section is what
+happens when that was not said.
+
 Many datasheets (a microcontroller family, for example) list the pins of
 several packages in one table, with a column of pin numbers for each package
 (`- - 1 1 A2 1 PE2 I/O` is the row of pin PE2 in six packages; a dash means

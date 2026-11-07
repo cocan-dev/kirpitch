@@ -11,6 +11,7 @@ mod datasheets;
 mod eval;
 mod guide;
 mod library;
+mod packages;
 mod parts;
 mod settings;
 mod steps;
@@ -40,9 +41,11 @@ pub use datasheets::{datasheet_for, remember_datasheet};
 pub use library::{PartSummary, delete_part, list_parts, rename_part, summarize_parts};
 
 pub use guide::{
-    GuideInput, Preview, RegionInput, StepSize, Suggested, Suggestions, preview_selection,
-    suggest_pages_for, text_of_regions,
+    GuideInput, Preview, RegionInput, StepSize, Suggested, Suggestions, package_candidates,
+    preview_selection, suggest_pages_for, text_of_regions,
 };
+
+pub use packages::{PackageChoice, scan_packages};
 
 pub use parts::{
     DatasheetInput, DatasheetOutcome, Example, NewPartInput, build_from_datasheet,

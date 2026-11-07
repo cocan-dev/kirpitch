@@ -334,6 +334,14 @@ async fn suggest_pages(pdf: String, hint: String) -> Result<kirpitch_review::Sug
     .map_err(|e| e.to_string())?
 }
 
+/// The packages the datasheet names, so the person can say which one the part is for.
+#[tauri::command]
+async fn package_candidates(pdf: String) -> Result<Vec<kirpitch_review::PackageChoice>, String> {
+    tauri::async_runtime::spawn_blocking(move || kirpitch_review::package_candidates(pdf.trim()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// How much text the chosen places hold, against what the search would send.
 #[tauri::command]
 async fn preview_guide(
@@ -507,6 +515,7 @@ fn main() {
             find_models,
             model_details,
             suggest_pages,
+            package_candidates,
             read_step,
             check_step_values,
             narrow_pins,
