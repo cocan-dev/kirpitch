@@ -300,3 +300,8 @@ tr.sel td { animation: pulse-row 0.7s ease-out 1; }
 .gd-pins tr.on td { background: color-mix(in srgb, var(--ok) 14%, transparent); }
 @media (max-width: 1000px) { .gd-split.review { grid-template-columns: 1fr; } }
 .gd-box.src.whole { background: transparent; border-width: 3px; box-shadow: inset 0 0 0 2px rgba(46, 160, 67, 0.35); }
+
+.gd-pin-warnings { display: flex; flex-direction: column; gap: 2px; max-height: 18vh; overflow: auto; }
+.gd-warn-link { all: unset; cursor: pointer; padding: 3px 6px; border-radius: 6px; color: var(--warn); font-size: 13px; }
+.gd-warn-link:hover, .gd-warn-link:focus-visible { background: color-mix(in srgb, var(--warn) 16%, transparent); outline: none; }
+.gd-warn-link .muted { color: var(--muted); }
