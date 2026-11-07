@@ -28,10 +28,35 @@ const COURTYARD_GRID: f64 = 0.01;
 const COURTYARD_WIDTH: f64 = 0.05;
 /// Line width of the fab outline.
 const FAB_WIDTH: f64 = 0.1;
-/// Line width of the silkscreen.
+/// Line width of the silkscreen, at least.
 const SILK_WIDTH: f64 = 0.12;
-/// Smallest distance between silkscreen and copper.
+/// Smallest distance between silkscreen and copper, at least.
 const SILK_CLEARANCE: f64 = 0.2;
+/// Height of the text, at least.
+const TEXT_SIZE: f64 = 1.0;
+/// Stroke of the text, at least.
+const TEXT_THICKNESS: f64 = 0.15;
+
+/// The silkscreen sizes: the generator's own, or the fab profile's when it
+/// asks for more.
+#[derive(Debug, Clone, Copy)]
+struct Silk {
+    width: f64,
+    clearance: f64,
+    text_size: f64,
+    text_thickness: f64,
+}
+
+impl Silk {
+    fn of(fab: &FabProfile) -> Silk {
+        Silk {
+            width: SILK_WIDTH.max(fab.min_silk_width.get()),
+            clearance: SILK_CLEARANCE.max(fab.min_silk_pad_gap.get()),
+            text_size: TEXT_SIZE.max(fab.min_silk_text_height.get()),
+            text_thickness: TEXT_THICKNESS.max(fab.min_silk_width.get()),
+        }
+    }
+}
 /// Distance of the silkscreen centre line from the fab outline.
 const SILK_OFFSET: f64 = 0.11;
 /// Height of the pin 1 chamfer on the fab outline, at most.
@@ -109,6 +134,7 @@ pub fn generate(spec: &PartSpec, options: &Options) -> Result<String, GenerateEr
     if has_errors(&findings) {
         return Err(GenerateError::Invalid(findings));
     }
+    let silk = Silk::of(&options.fab);
     let pads = &spec.land_pattern.pads;
     let pin_one = pin_one_pad(spec).ok_or(GenerateError::NoPinOnePad)?;
 
@@ -141,6 +167,7 @@ pub fn generate(spec: &PartSpec, options: &Options) -> Result<String, GenerateEr
             text_x,
             ref_y,
             "F.SilkS",
+            &silk,
         ))
         .child(text_property(
             "Value",
@@ -148,6 +175,7 @@ pub fn generate(spec: &PartSpec, options: &Options) -> Result<String, GenerateEr
             text_x,
             value_y,
             "F.Fab",
+            &silk,
         ))
         .child_opt(all_smd.then(|| list("attr").atom("smd")))
         .child_opt(all_through_hole.then(|| list("attr").atom("through_hole")))
@@ -159,18 +187,19 @@ pub fn generate(spec: &PartSpec, options: &Options) -> Result<String, GenerateEr
         );
 
     if all_through_hole {
-        fp = tht_silk(fp, pads, (cx, cy), body_half_x, body_half_y);
+        fp = tht_silk(fp, pads, (cx, cy), body_half_x, body_half_y, &silk);
     } else {
         for (a, b) in silk_segments(
             pads,
             (cx, cy),
             body_half_x + SILK_OFFSET,
             body_half_y + SILK_OFFSET,
+            &silk,
         ) {
-            fp = fp.child(line(a, b, SILK_WIDTH, "F.SilkS"));
+            fp = fp.child(line(a, b, silk.width, "F.SilkS"));
         }
         if pin_one.kind == PadKind::Smd {
-            fp = fp.child(pin_one_marker(pin_one, options.target));
+            fp = fp.child(pin_one_marker(pin_one, options.target, &silk));
         }
     }
     fp = fp.child(courtyard_rect(&courtyard));
@@ -192,7 +221,7 @@ pub fn generate(spec: &PartSpec, options: &Options) -> Result<String, GenerateEr
                     .num(if body_half_y > body_half_x { 90.0 } else { 0.0 }),
             )
             .child(list("layer").string("F.Fab"))
-            .child(effects()),
+            .child(effects(&silk)),
     );
     for pad in pads {
         fp = fp.child(pad_node(pad, options.target));
@@ -275,21 +304,21 @@ fn courtyard(spec: &PartSpec, center: (f64, f64), body_half_x: f64, body_half_y:
     }
 }
 
-fn effects() -> List {
+fn effects(silk: &Silk) -> List {
     list("effects").child(
         list("font")
-            .child(list("size").num(1.0).num(1.0))
-            .child(list("thickness").num(0.15)),
+            .child(list("size").num(silk.text_size).num(silk.text_size))
+            .child(list("thickness").num(silk.text_thickness)),
     )
 }
 
-fn text_property(name: &str, value: &str, x: f64, y: f64, layer: &str) -> List {
+fn text_property(name: &str, value: &str, x: f64, y: f64, layer: &str, silk: &Silk) -> List {
     list("property")
         .string(name)
         .string(value)
         .child(list("at").num(x).num(y).num(0.0))
         .child(list("layer").string(layer))
-        .child(effects())
+        .child(effects(silk))
 }
 
 fn stroke(width: f64) -> List {
@@ -354,11 +383,11 @@ fn fab_outline(
 }
 
 /// A filled triangle just outside pin 1, pointing at the pad.
-fn pin_one_marker(pad: &Pad, target: KicadTarget) -> List {
+fn pin_one_marker(pad: &Pad, target: KicadTarget, silk: &Silk) -> List {
     let outward = if pad.y.get() > 0.0 { 1.0 } else { -1.0 };
     let (_, y0, _, y1) = pad.bounds();
     let edge = if outward > 0.0 { y1 } else { y0 };
-    let apex_y = edge + outward * (SILK_CLEARANCE + SILK_WIDTH / 2.0);
+    let apex_y = edge + outward * (silk.clearance + silk.width / 2.0);
     let base_y = apex_y + outward * 0.33;
     let x = pad.x.get();
     list("fp_poly")
@@ -368,7 +397,7 @@ fn pin_one_marker(pad: &Pad, target: KicadTarget) -> List {
                 .child(list("xy").num(x - 0.24).num(base_y))
                 .child(list("xy").num(x + 0.24).num(base_y)),
         )
-        .child(stroke(SILK_WIDTH))
+        .child(stroke(silk.width))
         .child(list("fill").atom(target.footprint_fill_keyword()))
         .child(list("layer").string("F.SilkS"))
 }
@@ -379,8 +408,9 @@ fn silk_segments(
     center: (f64, f64),
     half_x: f64,
     half_y: f64,
+    silk: &Silk,
 ) -> Vec<((f64, f64), (f64, f64))> {
-    let grow = SILK_CLEARANCE + SILK_WIDTH / 2.0;
+    let grow = silk.clearance + silk.width / 2.0;
     let blocks: Vec<Box2> = pads
         .iter()
         .map(|p| {
@@ -424,8 +454,15 @@ fn silk_segments(
 /// Silkscreen of a through-hole package: the pads sit outside the body, so a
 /// rectangle between the two rows is drawn, with a half circle at the end of
 /// pin 1 as the pin 1 mark. The lines keep their distance from the pads.
-fn tht_silk(mut fp: List, pads: &[Pad], center: (f64, f64), half_x: f64, half_y: f64) -> List {
-    let grow = SILK_CLEARANCE + SILK_WIDTH / 2.0;
+fn tht_silk(
+    mut fp: List,
+    pads: &[Pad],
+    center: (f64, f64),
+    half_x: f64,
+    half_y: f64,
+    silk: &Silk,
+) -> List {
+    let grow = silk.clearance + silk.width / 2.0;
     let (cx, cy) = center;
     let left: Vec<&Pad> = pads.iter().filter(|p| p.x.get() < cx).collect();
     let right: Vec<&Pad> = pads.iter().filter(|p| p.x.get() > cx).collect();
@@ -440,37 +477,37 @@ fn tht_silk(mut fp: List, pads: &[Pad], center: (f64, f64), half_x: f64, half_y:
     let y_top = pads
         .iter()
         .map(|p| p.bounds().1 - grow)
-        .fold(cy - half_y - SILK_WIDTH / 2.0, f64::min);
+        .fold(cy - half_y - silk.width / 2.0, f64::min);
     let y_bottom = pads
         .iter()
         .map(|p| p.bounds().3 + grow)
-        .fold(cy + half_y + SILK_WIDTH / 2.0, f64::max);
+        .fold(cy + half_y + silk.width / 2.0, f64::max);
     let notch = 1.0f64.min((x_right - x_left) / 4.0);
     let layer = "F.SilkS";
     fp = fp
-        .child(line((x_left, y_top), (x_left, y_bottom), SILK_WIDTH, layer))
+        .child(line((x_left, y_top), (x_left, y_bottom), silk.width, layer))
         .child(line(
             (x_left, y_bottom),
             (x_right, y_bottom),
-            SILK_WIDTH,
+            silk.width,
             layer,
         ))
         .child(line(
             (cx - notch, y_top),
             (x_left, y_top),
-            SILK_WIDTH,
+            silk.width,
             layer,
         ))
         .child(line(
             (x_right, y_top),
             (cx + notch, y_top),
-            SILK_WIDTH,
+            silk.width,
             layer,
         ))
         .child(line(
             (x_right, y_bottom),
             (x_right, y_top),
-            SILK_WIDTH,
+            silk.width,
             layer,
         ))
         .child(
@@ -478,7 +515,7 @@ fn tht_silk(mut fp: List, pads: &[Pad], center: (f64, f64), half_x: f64, half_y:
                 .child(list("start").num(cx + notch).num(y_top))
                 .child(list("mid").num(cx).num(y_top + notch))
                 .child(list("end").num(cx - notch).num(y_top))
-                .child(stroke(SILK_WIDTH))
+                .child(stroke(silk.width))
                 .child(list("layer").string(layer)),
         );
     fp

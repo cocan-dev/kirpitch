@@ -9,6 +9,7 @@
 
 mod datasheets;
 mod eval;
+mod fab_rules;
 mod guide;
 mod library;
 mod packages;
@@ -37,6 +38,11 @@ pub use steps::{
 };
 
 pub use datasheets::{datasheet_for, remember_datasheet};
+
+pub use fab_rules::{
+    FabEntry, FabImportView, FabLimitView, FabRulesView, FabSaveInput, delete_fab_profile,
+    fab_folder, fab_rules, import_file as import_fab_rules, save_fab_profile,
+};
 
 pub use library::{PartSummary, delete_part, list_parts, rename_part, summarize_parts};
 
@@ -203,16 +209,19 @@ pub struct ModelViewSvg {
     pub svg: String,
 }
 
-/// The fab profile of this run: the file named in `KIRPITCH_FAB_PROFILE`, or
-/// the generic profile (also when the file cannot be read).
+/// The fab profile of this run: the one named in `KIRPITCH_FAB_PROFILE`, else
+/// the one chosen in the settings (a built-in profile or a file), else the
+/// generic profile (also when the file cannot be read).
 fn fab() -> FabProfile {
-    // The file named in the environment, else the one in the settings.
-    if std::env::var_os(kirpitch_core::fab::ENV_FAB_PROFILE).is_some() {
-        return FabProfile::from_env().unwrap_or_default();
+    if let Some(setting) = std::env::var_os(kirpitch_core::fab::ENV_FAB_PROFILE)
+        .map(|v| v.to_string_lossy().into_owned())
+        .filter(|v| !v.is_empty())
+    {
+        return FabProfile::resolve(&setting).unwrap_or_default();
     }
     user_folders()
         .fab_profile
-        .and_then(|p| FabProfile::from_file(Path::new(&p)).ok())
+        .and_then(|p| FabProfile::resolve(&p).ok())
         .unwrap_or_default()
 }
 

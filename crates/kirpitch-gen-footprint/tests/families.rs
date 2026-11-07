@@ -234,6 +234,7 @@ fn fine_options(target: KicadTarget) -> Options {
         target,
         fab: kirpitch_core::FabProfile {
             min_copper_gap: kirpitch_core::Mm::new(0.05).unwrap(),
+            min_mask_web: kirpitch_core::Mm::new(0.05).unwrap(),
             ..kirpitch_core::FabProfile::generic()
         },
         model: None,

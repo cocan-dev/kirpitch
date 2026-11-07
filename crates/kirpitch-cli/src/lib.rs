@@ -178,7 +178,7 @@ where
         .clone()
         .or_else(|| std::env::var_os(kirpitch_core::fab::ENV_FAB_PROFILE).map(PathBuf::from));
     let profile = match &fab_path {
-        Some(path) => match FabProfile::from_file(path) {
+        Some(path) => match FabProfile::resolve(&path.to_string_lossy()) {
             Ok(p) => p,
             Err(e) => {
                 let _ = writeln!(err, "error: fab profile: {e}");

@@ -258,6 +258,7 @@ fn kicad_loads_the_models() {
     };
     let fine = kirpitch_core::FabProfile {
         min_copper_gap: kirpitch_core::Mm::new(0.05).unwrap(),
+        min_mask_web: kirpitch_core::Mm::new(0.05).unwrap(),
         ..kirpitch_core::FabProfile::generic()
     };
     for (label, spec) in [("soic", soic8()), ("qfn", qfn32()), ("dip", dip8())] {

@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="fun.css">
   <link rel="stylesheet" href="shell.css">
   <link rel="stylesheet" href="settings.css">
+  <link rel="stylesheet" href="fabrules.css">
   <link rel="stylesheet" href="library.css">
 </head>
 <body>
@@ -247,6 +248,7 @@
         <button type="button" data-pane="tasks" role="tab">Tasks and privacy</button>
         <button type="button" data-pane="prompts" role="tab">Extraction</button>
         <button type="button" data-pane="evaluate" role="tab">Evaluate</button>
+        <button type="button" data-pane="fab" role="tab">Fab rules</button>
         <button type="button" data-pane="folders" role="tab">Folders and defaults</button>
       </nav>
       <div class="settings-panes">
@@ -254,6 +256,7 @@
         <section id="pane-tasks" class="pane" role="tabpanel" hidden></section>
         <section id="pane-prompts" class="pane" role="tabpanel" hidden></section>
         <section id="pane-evaluate" class="pane" role="tabpanel" hidden></section>
+        <section id="pane-fab" class="pane" role="tabpanel" hidden></section>
         <section id="pane-folders" class="pane" role="tabpanel" hidden></section>
       </div>
     </div>
@@ -406,6 +409,7 @@
   <script src="progress.js"></script>
   <script src="guided.js"></script>
   <script src="settings.js"></script>
+  <script src="fabrules.js"></script>
   <script src="evaluate.js"></script>
   <script src="library.js"></script>
 </body>
