@@ -167,3 +167,62 @@ fn the_options_are_saved_in_the_file_only_when_set() {
     let back = Config::from_toml_str(&set.to_toml_string().unwrap()).unwrap();
     assert_eq!(back, set);
 }
+
+#[test]
+fn an_ollama_address_left_with_v1_still_reaches_the_ollama_api() {
+    // The address of the OpenAI-compatible interface was kept when the kind was
+    // changed to Ollama: the request must not go to .../v1/api/chat.
+    let m = model(
+        "provider = \"ollama\"
+base_url = \"https://ollama.com/v1\"
+model = \"t\"",
+    );
+    let r = build_request(&m, Some("k"), &chat("q", 100));
+    assert_eq!(r.url, "https://ollama.com/api/chat");
+    for url in [
+        "https://ollama.com/v1/",
+        "https://ollama.com/api",
+        "https://ollama.com/",
+    ] {
+        let m = model(&format!(
+            "provider = \"ollama\"
+base_url = \"{url}\"
+model = \"t\""
+        ));
+        assert_eq!(
+            build_request(&m, None, &chat("q", 100)).url,
+            "https://ollama.com/api/chat",
+            "{url}"
+        );
+    }
+    // Other kinds keep their address as it is.
+    let o = model(
+        "provider = \"openai-compatible\"
+base_url = \"https://ollama.com/v1\"
+model = \"t\"",
+    );
+    assert_eq!(
+        build_request(&o, None, &chat("q", 100)).url,
+        "https://ollama.com/v1/chat/completions"
+    );
+}
+
+#[test]
+fn the_model_list_and_details_of_an_ollama_kind_also_ignore_a_stray_v1() {
+    use kirpitch_models::config::Provider;
+    use kirpitch_models::{ListRequest, MockTransport, list_models, model_details};
+    let req = ListRequest {
+        provider: Provider::Ollama,
+        base_url: "https://ollama.com/v1",
+        key: Some("k"),
+        key_header: None,
+    };
+    let t = MockTransport::new();
+    t.push_ok(r#"{"models":[{"name":"m"}]}"#);
+    list_models(&req, &t).unwrap();
+    assert_eq!(t.requests()[0].url, "https://ollama.com/api/tags");
+    let t = MockTransport::new();
+    t.push_ok(r#"{"model_info":{"x.context_length":4096}}"#);
+    model_details(&req, "m", &t).unwrap();
+    assert_eq!(t.requests()[0].url, "https://ollama.com/api/show");
+}

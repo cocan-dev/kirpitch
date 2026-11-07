@@ -501,6 +501,8 @@ function modelCard(m, index) {
       "Kind of server",
       selectInput(appSettings.providers.map((p) => [p.id, p.label]), m.provider, (v) => {
         m.provider = v;
+        // Ollama's own API is at the root of the server, not at /v1.
+        if (v === "ollama") m.base_url = (m.base_url || "").replace(/\/v1\/?$/, "").replace(/\/api\/?$/, "");
         discovered.delete(m);
         triedAuto.delete(m);
         renderSettings();

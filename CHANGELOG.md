@@ -8,6 +8,7 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Fixed: an Ollama model whose address still ended in /v1 (left over from its OpenAI-compatible address) sent requests to ./v1/api/chat and got 404. The Ollama kind now ignores a stray /v1 or /api in the address, in requests, the model list and the details, and changing the kind to Ollama in Settings cleans the address.
 - A model card asks the server about the model and shows its context window, answer limit, whether it thinks and whether it reads images (Ollama `/api/show`, also behind an OpenAI-compatible Ollama address; LM Studio; Anthropic; OpenRouter and Mistral lists), with "Use N as the context length" for Ollama. An Ollama server set up as OpenAI-compatible is explained and can be switched to the Ollama kind in one click.
 - Models have Thinking and context settings: thinking effort (sent as reasoning_effort, Ollama think, or an Anthropic thinking budget), context length (Ollama num_ctx; automatic when empty, so Ollama no longer cuts page text off at its small default), temperature and extra request fields as JSON (`effort`, `context_length`, `temperature`, `extra_body` in `kirpitch.toml`).
 - In the review of a step the datasheet is shown next to the values, scrolled to the place you pointed at with the boxes outlined; clicking (or tabbing to) a pin row jumps to the line where that pin was read, and a pin that was not found only outlines its page. The dialog widens for it.

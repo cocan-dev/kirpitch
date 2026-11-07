@@ -14,7 +14,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::client::ModelError;
-use crate::config::Provider;
+use crate::config::{Provider, server_root};
 use crate::transport::{Request, Transport};
 
 /// Seconds to wait for a list.
@@ -126,12 +126,15 @@ pub fn model_details(
     model: &str,
     transport: &dyn Transport,
 ) -> Result<ModelDetails, ModelError> {
-    let base = if req.base_url.is_empty() {
-        req.provider.default_base_url().unwrap_or("")
-    } else {
-        req.base_url
-    }
-    .trim_end_matches('/');
+    let base_text = server_root(
+        req.provider,
+        if req.base_url.is_empty() {
+            req.provider.default_base_url().unwrap_or("")
+        } else {
+            req.base_url
+        },
+    );
+    let base = base_text.as_str();
     if base.is_empty() {
         return Err(ModelError::Unexpected(
             "this kind of server needs an address first".into(),
@@ -307,12 +310,15 @@ pub fn list_models(
     req: &ListRequest<'_>,
     transport: &dyn Transport,
 ) -> Result<Vec<FoundModel>, ModelError> {
-    let base = if req.base_url.is_empty() {
-        req.provider.default_base_url().unwrap_or("")
-    } else {
-        req.base_url
-    }
-    .trim_end_matches('/');
+    let base_text = server_root(
+        req.provider,
+        if req.base_url.is_empty() {
+            req.provider.default_base_url().unwrap_or("")
+        } else {
+            req.base_url
+        },
+    );
+    let base = base_text.as_str();
     if base.is_empty() {
         return Err(ModelError::Unexpected(
             "this kind of server needs an address first".into(),
