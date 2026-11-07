@@ -191,9 +191,10 @@ tr.sel td { animation: pulse-row 0.7s ease-out 1; }
 .gd-stepper { list-style: none; margin: 4px 0 12px; padding: 0; display: flex; gap: 4px; flex-wrap: wrap; }
 .gd-step { flex: 1; min-width: 110px; }
 .gd-step-btn { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; cursor: pointer; color: var(--muted); border-bottom: 3px solid var(--line); }
-.gd-step-btn:disabled { cursor: default; }
+.gd-step-btn:disabled { cursor: default; opacity: 1; }
+.gd-step:not(.current):not(.done) .gd-step-btn:disabled { opacity: .55; }
 .gd-step-btn:focus-visible { outline: 2px solid var(--brick); }
-.gd-step.current .gd-step-btn { color: var(--text); border-bottom-color: var(--brick); font-weight: 600; }
+.gd-step.current .gd-step-btn { color: var(--text); border-bottom-color: var(--brick); font-weight: 600; background: color-mix(in srgb, var(--brick) 14%, transparent); }
 .gd-step.done .gd-step-btn { border-bottom-color: var(--ok); }
 .gd-dot { width: 22px; height: 22px; border-radius: 50%; border: 2px solid currentColor; display: grid; place-items: center; font-size: 12px; box-sizing: border-box; flex: none; }
 .gd-step.done .gd-dot { background: var(--ok); border-color: var(--ok); color: #fff; }
