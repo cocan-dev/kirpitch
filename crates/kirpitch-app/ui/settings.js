@@ -88,6 +88,7 @@ async function showSettings() {
   current = null;
   $("empty").hidden = true;
   $("work").hidden = true;
+  $("library").hidden = true;
   $("settings").hidden = false;
   await loadSettingsIfClean();
   renderSettings();

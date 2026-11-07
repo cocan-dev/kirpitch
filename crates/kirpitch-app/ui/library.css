@@ -1,0 +1,31 @@
+/* My parts: the parts that were made. */
+#library { max-width: 1180px; margin: 0 auto; padding: 18px 20px 40px; }
+.lib-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.lib-head h2 { margin: 0; }
+.lib-head .spacer { flex: 1; }
+.lib-bar { display: flex; gap: 10px; align-items: center; margin: 14px 0 8px; flex-wrap: wrap; }
+.lib-bar input[type="text"] { flex: 1; min-width: 220px; }
+.lib-bar select { min-width: 150px; }
+.lib-folders { margin: 4px 0 14px; }
+.lib-folders summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.lib-dirs { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 2px; }
+.lib-dirs li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.lib-dir { overflow-wrap: anywhere; color: var(--muted); }
+.lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 14px; }
+.lib-card { all: unset; box-sizing: border-box; display: flex; gap: 14px; padding: 12px; cursor: pointer; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; min-width: 0; }
+.lib-card:hover { border-color: var(--brick); transform: translateY(-2px); transition: transform 120ms; }
+.lib-card:focus-visible { outline: 2px solid var(--brick); outline-offset: 2px; }
+.lib-fp { flex: none; width: 104px; height: 104px; display: flex; align-items: center; justify-content: center; background: var(--bg); border-radius: 8px; padding: 6px; }
+.lib-fp svg { max-width: 100%; max-height: 100%; }
+.lib-fp svg .label { display: none; }
+.lib-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.lib-mpn { font-size: 16px; overflow-wrap: anywhere; }
+.lib-sub { color: var(--muted); font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.lib-pkg { font-size: 13px; font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
+.lib-facts { font-size: 12.5px; color: var(--text); }
+.lib-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 2px; }
+.lib-line .meta { color: var(--muted); font-size: 12px; }
+.lib-line .badge.stale { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
+.lib-path { color: var(--muted); font-size: 11.5px; overflow-wrap: anywhere; margin-top: 2px; }
+.lib-empty { text-align: center; padding: 40px 10px; }
+.lib-empty .start-actions { justify-content: center; }

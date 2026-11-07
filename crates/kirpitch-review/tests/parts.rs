@@ -565,3 +565,44 @@ fn a_taken_name_gets_the_next_free_number() {
         name("ds-3.partspec.json")
     );
 }
+
+#[test]
+fn the_parts_in_a_folder_are_listed_with_what_a_person_looks_for() {
+    let tmp = TempDir::new("library");
+    let dir = tmp.path();
+    // A part, in a folder below, and files that are not parts.
+    let sub = dir.join("my parts");
+    std::fs::create_dir_all(&sub).unwrap();
+    let data = kirpitch_review::find_testdata().expect("testdata");
+    std::fs::copy(
+        data.join("golden")
+            .join("lm358-soic8")
+            .join("partspec.json"),
+        sub.join("lm358.partspec.json"),
+    )
+    .unwrap();
+    std::fs::write(dir.join("other.json"), r#"{"hello": 1}"#).unwrap();
+    std::fs::write(
+        dir.join("broken.json"),
+        r#"{"schema_version": 1, "land_pattern": 3"#,
+    )
+    .unwrap();
+    std::fs::write(dir.join("notes.txt"), "text").unwrap();
+
+    let list = kirpitch_review::list_parts(&[
+        dir.to_string_lossy().into_owned(),
+        // The same folder twice, and one that is not there.
+        dir.to_string_lossy().into_owned(),
+        dir.join("nothing").to_string_lossy().into_owned(),
+    ]);
+    assert_eq!(list.len(), 1, "{list:?}");
+    let p = &list[0];
+    assert_eq!(p.mpn, "LM358DR");
+    assert_eq!(p.file, "lm358.partspec.json");
+    assert!(p.package.starts_with("SOIC-8"), "{}", p.package);
+    assert_eq!((p.pin_count, p.pad_count), (8, 8));
+    assert!((p.pitch - 1.27).abs() < 1e-9);
+    assert!(p.gates == 3 && p.approved <= 3);
+    assert!(p.footprint_svg.contains("<svg"));
+    assert!(p.modified.is_some());
+}
