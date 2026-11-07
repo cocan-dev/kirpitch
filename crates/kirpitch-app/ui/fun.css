@@ -65,8 +65,45 @@ input[type=text]:focus, select:focus { border-color: var(--brick); box-shadow: 0
 .card .tag { align-self: flex-start; font-size: 11px; padding: 0 8px; border-radius: 999px; background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
 .card .fresh { position: absolute; top: 8px; right: 8px; padding: 0 8px; font-size: 11px; background: none; box-shadow: none; }
 .cards-empty { color: var(--muted); font-style: italic; }
-.recent-list { margin: 6px 0 0; padding: 0; list-style: none; }
-.recent-list li { padding: 6px 0; border-bottom: 1px dashed var(--line); display: flex; gap: 8px; align-items: baseline; }
+.card .glyph { height: 76px; }
+.part-glyph { height: 100%; width: auto; display: block; }
+.recent-list { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.recent-list .rc { position: relative; display: flex; align-items: stretch; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s; }
+.recent-list .rc:hover, .recent-list .rc:focus-within { border-color: var(--brick); box-shadow: var(--shadow); }
+.recent-list .rc.missing { border-style: dashed; opacity: 0.85; }
+.rc-main { all: unset; box-sizing: border-box; flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; padding: 10px 44px 10px 12px; cursor: pointer; border-radius: var(--radius); }
+.rc.missing .rc-main { cursor: default; }
+.rc-main:focus-visible { outline: 2px solid var(--brick); outline-offset: -2px; }
+.rc-glyph { flex: none; width: 56px; height: 56px; display: grid; place-items: center; background: var(--bg); border-radius: 10px; padding: 4px; box-sizing: border-box; }
+.rc-glyph .part-glyph { width: 100%; height: 100%; }
+.rc-glyph.dim { color: var(--muted); font-size: 22px; }
+.rc-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.rc-text strong { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-text .tag { align-self: flex-start; font-size: 11px; padding: 0 8px; border-radius: 999px; background: color-mix(in srgb, var(--copper) 22%, transparent); color: var(--copper); }
+.rc-sub { color: var(--text); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-sub.warn { color: var(--warn); }
+.rc-path { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-status { flex: none; display: grid; justify-items: end; gap: 3px; text-align: right; min-width: 11rem; }
+.rc-segs { display: flex; gap: 4px; }
+.rc-segs i { width: 26px; height: 6px; border-radius: 3px; background: var(--line); }
+.rc-segs i.on { background: var(--ok); }
+.rc-segs i.stale { background: var(--warn); }
+.rc-words { font-size: 12.5px; color: var(--muted); }
+.rc-words.ok { color: var(--ok); }
+.rc-words.warn { color: var(--warn); }
+.rc-go { font-size: 13px; font-weight: 600; color: var(--brick); }
+.rc:hover .rc-go { text-decoration: underline; }
+.rc-x { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; padding: 0; line-height: 1; font-size: 18px; border-radius: 8px; background: transparent; border: 1px solid transparent; color: var(--muted); box-shadow: none; opacity: 0; }
+.rc:hover .rc-x, .rc:focus-within .rc-x, .rc-x:focus-visible { opacity: 1; }
+.rc.missing .rc-x { opacity: 1; }
+.rc-x:hover { background: var(--bg); border-color: var(--line); color: var(--text); }
+@media (hover: none) { .rc-x { opacity: 1; } }
+.recent-list .rc-foot { display: block; text-align: center; }
+.rc-more { font-size: 13px; }
+@media (max-width: 720px) {
+  .rc-main { flex-wrap: wrap; }
+  .rc-status { width: 100%; justify-items: start; text-align: left; min-width: 0; }
+}
 .start-lists { display: block; margin-top: 18px; }
 .start-lists h3 { margin: 18px 0 2px; }
 

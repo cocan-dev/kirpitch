@@ -24,6 +24,17 @@ const el = (tag, props = {}, ...children) => {
   return node;
 };
 
+// How long ago a time was (seconds since 1970), in words; used by the start screen and My parts.
+function libAgo(secs) {
+  if (!secs) return "";
+  const s = Math.max(0, Date.now() / 1000 - secs);
+  if (s < 90) return "just now";
+  if (s < 3600) return Math.round(s / 60) + " minutes ago";
+  if (s < 86400) return Math.round(s / 3600) + " hours ago";
+  if (s < 86400 * 45) return Math.round(s / 86400) + " days ago";
+  return new Date(secs * 1000).toLocaleDateString();
+}
+
 let current = null; // the SpecView that is shown
 
 function show(message, kind) {

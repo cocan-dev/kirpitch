@@ -650,3 +650,28 @@ fn a_part_can_be_renamed_and_deleted_but_nothing_else() {
     assert!(!std::path::Path::new(&again).exists());
     assert!(kirpitch_review::delete_part(&again).is_err());
 }
+
+#[test]
+fn the_parts_opened_last_are_summarized_in_order() {
+    let tmp = TempDir::new("summaries");
+    let dir = tmp.path();
+    let data = kirpitch_review::find_testdata().expect("testdata");
+    let golden = data
+        .join("golden")
+        .join("lm358-soic8")
+        .join("partspec.json");
+    let part = dir.join("part.partspec.json");
+    std::fs::copy(&golden, &part).unwrap();
+    let notes = dir.join("notes.json");
+    std::fs::write(&notes, r#"{"hello": 1}"#).unwrap();
+    let s = |p: &std::path::Path| p.to_string_lossy().into_owned();
+    let list = kirpitch_review::summarize_parts(&[s(&part), s(&dir.join("gone.json")), s(&notes)]);
+    assert_eq!(list.len(), 3);
+    let first = list[0].as_ref().expect("the part");
+    assert_eq!(first.mpn, "LM358DR");
+    assert!(first.family.to_ascii_lowercase().contains("soic"));
+    // The gate that is next is the first one that is not approved.
+    assert_eq!(first.next_gate.is_empty(), first.approved == first.gates);
+    // A missing file and a file that is not a part have no summary.
+    assert!(list[1].is_none() && list[2].is_none());
+}

@@ -440,6 +440,14 @@ fn delete_part(path: String) -> Result<(), String> {
     kirpitch_review::delete_part(&path)
 }
 
+/// What is known about the parts that were opened last (for the start screen).
+#[tauri::command]
+async fn part_summaries(paths: Vec<String>) -> Vec<Option<kirpitch_review::PartSummary>> {
+    tauri::async_runtime::spawn_blocking(move || kirpitch_review::summarize_parts(&paths))
+        .await
+        .unwrap_or_default()
+}
+
 /// Remembers where a datasheet PDF is, so the parts made from it show it again.
 #[tauri::command]
 fn remember_datasheet(pdf: String) -> Result<(), String> {
@@ -509,6 +517,7 @@ fn main() {
             rename_part,
             delete_part,
             remember_datasheet,
+            part_summaries,
             datasheet_for,
             preview_guide,
             eval_cases,
