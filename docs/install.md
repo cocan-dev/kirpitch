@@ -122,6 +122,11 @@ Settings.
 - **Settings** (`kirpitch.toml`): `%APPDATA%\Kirpitch` on Windows,
   `~/Library/Application Support/Kirpitch` on macOS, `~/.config/kirpitch` on
   Linux. Settings shows the exact file.
+- **Where your datasheets are** (`datasheets.json`, in the same folder): a part
+  file keeps the hash of its datasheet, not its path, so that the file can be
+  shared. This list is how a part finds its PDF again on your computer, also
+  after it is renamed. If a datasheet was moved to another folder, type its path
+  once.
 - **API keys:** the system keychain (Windows Credential Manager, macOS
   Keychain, Linux keyring).
 - **Your parts:** where you save them; **My parts** looks in the folders you

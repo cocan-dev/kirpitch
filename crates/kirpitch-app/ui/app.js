@@ -283,6 +283,7 @@ async function showPage(page, region) {
     box.hidden = true;
   }
   if (current) rememberPdf(current.path, pdf);
+  invoke("remember_datasheet", { pdf }).catch(() => {});
   show("", "");
 }
 

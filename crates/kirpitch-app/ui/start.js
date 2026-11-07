@@ -390,6 +390,7 @@ function listOf(items, cls) {
 // What a build gave: what it is, what failed, what to look at, and a way to open the part.
 function showBuildResult(outcome, pdf) {
   const box = $("ds-result");
+  if (outcome.view && pdf) invoke("remember_datasheet", { pdf }).catch(() => {});
   box.replaceChildren(el("h3", { text: outcome.view ? "Done" : "Not finished" }));
   if (outcome.models.length) box.append(el("p", { class: "muted small", text: "Models" }), listOf(outcome.models));
   box.append(el("p", { class: "muted small", text: outcome.usage }));

@@ -102,6 +102,12 @@ tr.clickable:hover td { background: var(--bg); }
 tr.selected td { background: var(--bg); box-shadow: inset 2px 0 0 var(--brick); }
 .drawing { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin-bottom: 8px; }
 .drawing svg { width: 100%; height: auto; max-height: 360px; display: block; }
+.drawing.zoomable { position: relative; touch-action: none; }
+.drawing.zoomable svg { height: min(62vh, 560px); max-height: none; cursor: grab; user-select: none; }
+.drawing.zoomable.panning svg { cursor: grabbing; }
+.drawing.zoomable:focus-visible { outline: 2px solid var(--brick); outline-offset: 2px; }
+.zoombar { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; z-index: 1; }
+.zoombar button { min-width: 32px; padding: 2px 8px; background: var(--panel); }
 .drawing .empty-note { color: var(--muted); font-size: 12px; margin: 0; }
 details.more { margin-top: 10px; }
 details.more summary { cursor: pointer; font-weight: 600; padding: 4px 0; }

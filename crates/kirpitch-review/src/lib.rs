@@ -7,6 +7,7 @@
 //! computed here as plain data ([`SpecView`]) so that it can be tested without
 //! a window; `main.rs` only connects these functions to the web view.
 
+mod datasheets;
 mod eval;
 mod guide;
 mod library;
@@ -33,6 +34,8 @@ pub use steps::{
     ConfirmedInput, ReadStepInput, build_confirmed, check_step_values, narrow_pins_values,
     preview_footprint_values, read_step, unused_path,
 };
+
+pub use datasheets::{datasheet_for, remember_datasheet};
 
 pub use library::{PartSummary, delete_part, list_parts, rename_part};
 
