@@ -47,6 +47,8 @@ const gd = {
   built: false, // the part was made
   nameTaken: null, // { was, free }: the file name is in use
   useFootprint: true,
+  pkg: null, // { label, pins }: the package the part is for, chosen with the part number
+  pkgList: null, // the packages the datasheet names
   loading: false,
   drag: null,
   extending: false,
@@ -81,6 +83,8 @@ function gdForget() {
   gd.ready = null;
   gd.built = false;
   gd.nameTaken = null;
+  gd.pkg = null;
+  gd.pkgList = null;
 }
 
 function gdReset() {
@@ -114,6 +118,8 @@ async function gdGo(step) {
       try {
         gd.suggestions = await invoke("suggest_pages", { pdf, hint: $("ds-hint").value });
         gd.count = gd.suggestions.page_count;
+        // The packages the datasheet names (from its text, no model): the person picks one with the part number.
+        gd.pkgList = await invoke("package_candidates", { pdf }).catch(() => []);
       } catch (e) {
         gd.loading = false;
         gdShow(1);
@@ -249,10 +255,11 @@ async function gdRead(key, withPlaces, extra) {
   gdShow(gd.step);
   gdPollStart();
   try {
-    const run = await invoke("read_step", { input: { pdf: gd.pdf, step: key, regions: withPlaces ? gd.regions[key] : [], hint: [$("ds-hint").value.trim(), extra && extra.hint].filter(Boolean).join(". "), second_read: $("ds-second").checked } });
+    const run = await invoke("read_step", { input: { pdf: gd.pdf, step: key, regions: withPlaces ? gd.regions[key] : [], hint: [$("ds-hint").value.trim(), extra && extra.hint ? extra.hint : gdPackageHint(key)].filter(Boolean).join(". "), second_read: $("ds-second").checked } });
     gd.draft[key] = run.value;
     gd.notes[key] = run.notes || [];
     gd.readError[key] = "";
+    if (key === "pins" && !(extra && extra.keep)) await gdCutToChosenPackage();
   } catch (e) {
     // Nothing usable came back: the values are typed in (or, when a read was only
     // meant to narrow down what is there, what was there stays).
@@ -462,7 +469,73 @@ function gdFormMetadata() {
   const d = gd.draft.metadata;
   const grid = el("div", { class: "gd-grid" });
   grid.append(gdLabel("Part number", gdText(d, "mpn", "LM358DR"), "The orderable part number of this device."), gdLabel("Manufacturer", gdText(d, "manufacturer", "Texas Instruments")), gdLabel("Description", gdText(d, "description", "Dual operational amplifier"), "One line."));
-  return grid;
+  return el("div", {}, grid, gdPackagePicker());
+}
+
+// ---- The package, chosen with the part number ---------------------------------------------------
+
+// "LQFP64" -> { label: "LQFP64", pins: 64 }; "SOT-23-5" -> 5 pins; no number: no pin count.
+function gdPackageFrom(text) {
+  const label = String(text || "").trim();
+  if (!label) return null;
+  const m = /^[A-Za-z]+[\s-]*(?:\d+-)*(\d{1,4})\b/.exec(label);
+  const known = (gd.pkgList || []).find((c) => c.label.toLowerCase() === label.toLowerCase());
+  return { label, pins: known ? known.pins : m ? Number(m[1]) : null };
+}
+
+function gdPackagePicker() {
+  const box = el("div", { class: "gd-pkg" });
+  box.append(el("strong", { text: "Which package is this part for?" }), el("p", { class: "muted small", text: "Optional. A datasheet for a family covers several packages. Say which one and the next steps read only that one: the pin table is cut to its pins at once, which saves time and tokens." }));
+  const chips = el("div", { class: "gd-suggest" });
+  const input = el("input", { type: "text", spellcheck: "false", placeholder: "or type it, for example LQFP64", "aria-label": "Package" });
+  input.value = gd.pkg ? gd.pkg.label : "";
+  const paint = () => {
+    chips.replaceChildren(
+      ...(gd.pkgList || []).slice(0, 6).map((c) => {
+        const on = !!gd.pkg && gd.pkg.label.toLowerCase() === c.label.toLowerCase();
+        const b = el("button", { type: "button", class: "chip" + (on ? " on" : ""), text: c.label, title: "named " + c.mentions + " time" + (c.mentions === 1 ? "" : "s") + ", first on page " + c.page, "aria-pressed": String(on) });
+        b.addEventListener("click", () => {
+          gd.pkg = on ? null : gdPackageFrom(c.label);
+          input.value = gd.pkg ? gd.pkg.label : "";
+          paint();
+        });
+        return b;
+      })
+    );
+  };
+  input.addEventListener("input", () => {
+    gd.pkg = gdPackageFrom(input.value);
+    paint();
+  });
+  paint();
+  box.append(chips, input);
+  return box;
+}
+
+// What the steps that follow are told about the package.
+function gdPackageHint(key) {
+  if (!gd.pkg) return "";
+  const { label, pins } = gd.pkg;
+  const n = pins ? " (" + pins + " pins)" : "";
+  if (key === "pins") {
+    return "This part is the " + label + " package" + n + ". The pin table may cover several packages, with a column of pin numbers for each: read only the pins of the " + label + " package" + (pins ? ", exactly " + pins + " pins, each once" : "");
+  }
+  if (key === "package" || key === "footprint") return "This part is the " + label + " package" + n + ": describe that package only";
+  return "";
+}
+
+// The pin table of a family lists every package: with the package known it is cut at once.
+async function gdCutToChosenPackage() {
+  const want = gd.pkg && gd.pkg.pins;
+  const pins = (gd.draft.pins || {}).pins || [];
+  if (!want || pins.length <= want) return;
+  try {
+    const run = await invoke("narrow_pins", { pdf: gd.pdf, regions: gd.regions.pins, value: gd.draft.pins, want });
+    gd.draft.pins = run.value;
+    gd.notes.pins = ["The table was read for several packages (" + pins.length + " pins). Kept the " + (run.value.pins || []).length + " pins of the " + gd.pkg.label + " package you chose. Check them."].concat(run.notes || []);
+  } catch (e) {
+    gd.notes.pins = (gd.notes.pins || []).concat(["The pin table has " + pins.length + " pins, but the " + gd.pkg.label + " package has " + want + ". They could not be cut out by Kirpitch (" + e + "); you can try again from the build screen."]);
+  }
 }
 
 // ---- Pins --------------------------------------------------------------------------------------
@@ -950,6 +1023,7 @@ function gdPaintFinal() {
 // A datasheet for several packages has one table with a column of pin numbers for each of
 // them. The table was read for all of them; the package says which one is wanted.
 function gdPackageLabel(want) {
+  if (gd.pkg && gd.pkg.pins === want) return gd.pkg.label;
   const family = String((gd.values.package || {}).family || "").toUpperCase();
   return family && family !== "CUSTOM" ? family + want : want + "-pin package";
 }

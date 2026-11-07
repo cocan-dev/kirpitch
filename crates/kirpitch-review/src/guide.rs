@@ -193,6 +193,19 @@ pub fn suggest_pages_for(pdf: &str, hint: &str) -> Result<Suggestions, String> {
     })
 }
 
+/// The packages the datasheet names (from its text, no model asked), the one
+/// named most often first. A datasheet for one part has one or two; one for a
+/// family has many.
+///
+/// # Errors
+///
+/// The PDF cannot be read.
+pub fn package_candidates(pdf: &str) -> Result<Vec<crate::PackageChoice>, String> {
+    let pages = all_pages(pdf)?;
+    let texts: Vec<String> = pages.iter().map(PageLines::as_text).collect();
+    Ok(crate::scan_packages(&texts))
+}
+
 /// How much text a step would send.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct StepSize {
