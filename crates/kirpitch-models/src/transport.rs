@@ -115,6 +115,18 @@ impl Transport for CurlTransport {
     }
 }
 
+/// Starts a program without a console window of its own: on Windows a desktop
+/// program that starts `curl` would otherwise show a black window for each request.
+#[cfg(windows)]
+fn without_window(cmd: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn without_window(_cmd: &mut Command) {}
+
 fn run_curl(
     request: &Request,
     body_file: Option<&std::path::Path>,
@@ -135,7 +147,10 @@ fn run_curl(
             quote(&format!("@{}", body_file.display()))
         ));
     }
-    let mut child = Command::new("curl")
+    let mut command = Command::new("curl");
+    // No black console window on Windows for every request.
+    without_window(&mut command);
+    let mut child = command
         .args(["--silent", "--show-error", "--max-time"])
         .arg(timeout_secs.to_string())
         .args(["--write-out", "\n%{http_code}", "--config", "-"])
