@@ -809,6 +809,36 @@ fn contains_token(line: &str, token: &str) -> bool {
 }
 
 /// Finds the line that holds both the number and the name of a pin.
+/// How far, as a fraction of the page, a name may be from its number and still
+/// belong to the same row of a table. A cell that wraps over three lines (a long
+/// name, a note) puts the number on the middle one.
+const ROW_WINDOW: f64 = 0.03;
+
+fn squash(text: &str) -> String {
+    text.chars()
+        .filter(|c| !c.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase()
+}
+
+/// The box around some lines.
+fn box_of(lines: &[&TextLine]) -> [f64; 4] {
+    let left = lines.iter().map(|l| l.left).fold(f64::INFINITY, f64::min);
+    let right = lines.iter().map(|l| l.right).fold(0.0, f64::max);
+    let top = lines.iter().map(|l| l.y).fold(f64::INFINITY, f64::min);
+    let bottom = lines.iter().map(|l| l.y).fold(0.0, f64::max);
+    [
+        left,
+        (top - HALF_LINE).max(0.0),
+        right,
+        (bottom + HALF_LINE).min(1.0),
+    ]
+}
+
+/// Finds a pin in the text: its number and its name on one line, or, when a cell
+/// wraps, its number on one line and its name on the lines next to it (also
+/// when the name is cut in two or its letters are spaced out, as in a
+/// subscript). Returns the page and the box of the place.
 fn ground(pages: &[PageLines], pin: &PinAnswer) -> Option<(u32, [f64; 4])> {
     // The name is compared without the KiCad overbar notation `~{...}`.
     let name = pin.name.replace("~{", "").replace('}', "");
@@ -816,19 +846,67 @@ fn ground(pages: &[PageLines], pin: &PinAnswer) -> Option<(u32, [f64; 4])> {
         for l in &page.lines {
             let text = plain_dashes(&l.text);
             if contains_token(&text, &pin.number) && contains_token(&text, &name) {
-                return Some((
-                    page.page,
-                    [
-                        l.left,
-                        (l.y - HALF_LINE).max(0.0),
-                        l.right,
-                        (l.y + HALF_LINE).min(1.0),
-                    ],
-                ));
+                return Some((page.page, box_of(&[l])));
+            }
+        }
+    }
+    // The row of a table: the number on one line, the name on a line near it.
+    let squashed_name = squash(&name);
+    for page in pages {
+        for l in &page.lines {
+            if !contains_token(&plain_dashes(&l.text), &pin.number) {
+                continue;
+            }
+            let near: Vec<&TextLine> = page
+                .lines
+                .iter()
+                .filter(|o| (o.y - l.y).abs() <= ROW_WINDOW)
+                .collect();
+            let joined = near
+                .iter()
+                .map(|o| plain_dashes(&o.text))
+                .collect::<Vec<_>>()
+                .join(" ");
+            // The name as a word of the nearby text; for names long enough not to
+            // be part of another name, also with the spaces and breaks taken out.
+            // The number's own line sits between the halves of a name that wraps,
+            // so the neighbours are also read without it.
+            let others = near
+                .iter()
+                .filter(|o| !std::ptr::eq(**o, l))
+                .map(|o| plain_dashes(&o.text))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let long_enough = squashed_name.chars().count() >= 5;
+            if contains_token(&joined, &name)
+                || (long_enough
+                    && (squash(&joined).contains(&squashed_name)
+                        || squash(&others).contains(&squashed_name)))
+            {
+                return Some((page.page, box_of(&near)));
             }
         }
     }
     None
+}
+
+/// Where a pin is probably written when its number and name could not be tied
+/// together: the one line of the text that holds its name, if there is exactly
+/// one. Only a place to look at, not a confirmation.
+fn locate(pages: &[PageLines], pin: &PinAnswer) -> Option<(u32, [f64; 4])> {
+    let name = pin.name.replace("~{", "").replace('}', "");
+    let mut found: Vec<(u32, &TextLine)> = Vec::new();
+    for page in pages {
+        for l in &page.lines {
+            if contains_token(&plain_dashes(&l.text), &name) {
+                found.push((page.page, l));
+            }
+        }
+    }
+    match found.as_slice() {
+        [(page, l)] => Some((*page, box_of(&[*l]))),
+        _ => None,
+    }
 }
 
 /// Confidence of a reading the text does not back up.
@@ -852,11 +930,13 @@ pub fn read_pins(
         .map(|pin| {
             let found = ground(pages, &pin);
             let grounded = found.is_some();
-            let (page, bbox) =
-                found.unwrap_or((pin.page.unwrap_or(default_page), [0.0, 0.0, 1.0, 1.0]));
+            // Not tied to a line: at least where the name is written, if once.
+            let (page, bbox) = found
+                .or_else(|| locate(pages, &pin))
+                .unwrap_or((pin.page.unwrap_or(default_page), [0.0, 0.0, 1.0, 1.0]));
             if !grounded && !pages.is_empty() {
                 notes.push(format!(
-                    "pin {} `{}` is not on one line of the text you chose (check it)",
+                    "pin {} `{}` is not on a line next to its number in the text you chose (check it)",
                     pin.number, pin.name
                 ));
             }
@@ -973,12 +1053,13 @@ pub fn extract_pins(
         let mut confidence = pin.confidence;
         let found = ground(&owned, &pin);
         let grounded = found.is_some();
-        let (page, bbox) =
-            found.unwrap_or((pin.page.unwrap_or(default_page), [0.0, 0.0, 1.0, 1.0]));
+        let (page, bbox) = found
+            .or_else(|| locate(&owned, &pin))
+            .unwrap_or((pin.page.unwrap_or(default_page), [0.0, 0.0, 1.0, 1.0]));
         if !grounded {
             confidence = confidence.min(UNGROUNDED_CONFIDENCE);
             notes.push(format!(
-                "pin {} `{}` is not on one line of the text (check it on page {page})",
+                "pin {} `{}` is not on a line next to its number in the text (check it on page {page})",
                 pin.number, pin.name
             ));
         }

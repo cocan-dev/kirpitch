@@ -395,7 +395,9 @@ function gdPaintReview(key) {
   banner.textContent = err ? "Nothing could be read here (" + err + "). Type the values in by hand from the datasheet." : "";
   gdShowCheckError("");
   const body = $("gd-review-body");
-  $("gd-review-notes").replaceChildren(...(gd.notes[key] || []).map((n) => el("p", { class: "warn-text small", text: "⚠ " + n })));
+  // For pins the warnings are the links above the table.
+  const shown = (gd.notes[key] || []).filter((n) => !(key === "pins" && /next to its number/.test(n)));
+  $("gd-review-notes").replaceChildren(...shown.map((n) => el("p", { class: "warn-text small", text: "⚠ " + n })));
   if (key === "metadata") body.replaceChildren(gdFormMetadata());
   else if (key === "pins") body.replaceChildren(gdFormPins());
   else if (key === "package") body.replaceChildren(gdFormPackage());
@@ -441,6 +443,11 @@ function gdHighlight(page, bbox) {
   gdShowPage();
 }
 
+// A box that is the whole page means the place was not found.
+function gdIsWhole(b) {
+  return !b || (b[0] <= 0.001 && b[1] <= 0.001 && b[2] >= 0.999 && b[3] >= 0.999);
+}
+
 function gdFormMetadata() {
   const d = gd.draft.metadata;
   const grid = el("div", { class: "gd-grid" });
@@ -459,10 +466,31 @@ function gdFormPins() {
   table.append(el("thead", {}, el("tr", {}, ...["Pin", "Name", "Type", "", ""].map((h) => el("th", { text: h })))));
   const body = el("tbody");
   table.append(body);
+  const warnings = el("div", { class: "gd-pin-warnings" });
+  const rows = new Map(); // pin -> its row
+  const focusPin = (p) => {
+    const tr = rows.get(p);
+    if (tr) {
+      tr.scrollIntoView({ block: "center" });
+      body.querySelectorAll("tr.on").forEach((r) => r.classList.remove("on"));
+      tr.classList.add("on");
+    }
+    if (p.page) gdHighlight(p.page, gdIsWhole(p.bbox) ? null : p.bbox);
+  };
   const paintCount = () => {
     const n = d.pins.length;
-    const odd = d.pins.filter((p) => p.grounded === false).length;
-    count.textContent = n + " pin" + (n === 1 ? "" : "s") + (odd ? ", " + odd + " not found in the text you chose (marked ⚠)" : "");
+    const odd = d.pins.filter((p) => p.grounded === false);
+    count.textContent = n + " pin" + (n === 1 ? "" : "s") + (odd.length ? ", " + odd.length + " not found next to their number (marked ⚠)" : "");
+    // Each warning is a link: it opens the datasheet at the place to look.
+    warnings.replaceChildren(
+      ...odd.map((p) => {
+        const b = el("button", { type: "button", class: "gd-warn-link" });
+        const where = p.page ? (gdIsWhole(p.bbox) ? "page " + p.page : "where its name is written, page " + p.page) : "";
+        b.append(el("span", { text: "⚠ pin " + p.number + " " + p.name + ": not found next to its number" }), el("span", { class: "muted small", text: where ? " · show me " + where : "" }));
+        b.addEventListener("click", () => focusPin(p));
+        return b;
+      })
+    );
   };
   const row = (p) => {
     const tr = el("tr");
@@ -488,7 +516,7 @@ function gdFormPins() {
       p.type = type.value;
       gdTouched();
     });
-    const flag = el("span", { class: p.grounded === false ? "gd-flag bad" : "gd-flag", title: p.grounded === false ? "This pin is not on one line of the text you chose" : "", text: p.grounded === false ? "⚠" : "" });
+    const flag = el("span", { class: p.grounded === false ? "gd-flag bad" : "gd-flag", title: p.grounded === false ? "Not found next to its number: click to see where to look" : "", text: p.grounded === false ? "⚠" : "" });
     const del = el("button", { type: "button", class: "ghost small-btn", "aria-label": "Remove this pin", text: "✕" });
     del.addEventListener("click", () => {
       d.pins.splice(d.pins.indexOf(p), 1);
@@ -497,8 +525,9 @@ function gdFormPins() {
     });
     tr.append(el("td", {}, num), el("td", {}, name), el("td", {}, type), el("td", {}, flag), el("td", {}, del));
     // Clicking a row shows the place in the datasheet where the pin was read.
+    rows.set(p, tr);
     const show = () => {
-      if (p.page) gdHighlight(p.page, p.grounded === false ? null : p.bbox);
+      if (p.page) gdHighlight(p.page, gdIsWhole(p.bbox) ? null : p.bbox);
       body.querySelectorAll("tr.on").forEach((r) => r.classList.remove("on"));
       tr.classList.add("on");
     };
@@ -541,7 +570,7 @@ function gdFormPins() {
   box.append(area, use);
   paste.addEventListener("click", () => (box.hidden = !box.hidden));
   bar.append(add, paste, count);
-  wrap.append(table, bar, box);
+  wrap.append(warnings, table, bar, box);
   return wrap;
 }
 

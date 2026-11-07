@@ -261,3 +261,77 @@ fn names_head(n: u32) -> Vec<Value> {
         .map(|i| json!({"number": i.to_string(), "name": format!("P{i}"), "type": "passive"}))
         .collect()
 }
+
+fn row(y: f64, text: &str) -> TextLine {
+    TextLine {
+        text: text.to_string(),
+        y,
+        left: 0.1,
+        right: 0.9,
+    }
+}
+
+fn pin(number: &str, name: &str) -> Value {
+    json!({"number": number, "name": name, "type": "bidirectional"})
+}
+
+#[test]
+fn a_pin_in_a_cell_that_wraps_is_found_next_to_its_number() {
+    // How a datasheet table comes out of a PDF: the number on the middle line of
+    // a cell that wraps, the name above and the note below it.
+    let pages = vec![PageLines {
+        page: 49,
+        lines: vec![
+            row(0.200, "PC14/OSC32_IN"),
+            row(0.215, "3 B10 8 8 E1 9 I/O FT"),
+            row(0.230, "(PC14)"),
+            // A name cut in two by the line break.
+            row(0.300, "PH0/"),
+            row(0.315, "4 B9 9 9 F1 10 I/O FT"),
+            row(0.330, "OSC_IN"),
+            // A row that is on one line, as before.
+            row(0.400, "2 A9 7 7 D1 8 PC13 I/O FT"),
+            // The name of pin 20 is written far from its number.
+            row(0.500, "20 A1 B2 C3"),
+            row(0.800, "PD20"),
+            // The only line with this name; its number is nowhere.
+            row(0.900, "PB3 JTDO"),
+        ],
+    }];
+    let pins = json!({"pins": [
+        pin("9", "PC14/OSC32_IN"), pin("10", "PH0/OSC_IN"), pin("8", "PC13"),
+        pin("20", "PD20"), pin("77", "PB3"), pin("99", "NOWHERE"),
+    ]});
+    let r = check_step(Step::Pins, &pins, &pages).unwrap();
+    let p = r.value["pins"].as_array().unwrap();
+    let get = |i: usize| (p[i]["grounded"].as_bool().unwrap(), p[i]["bbox"].clone());
+    // Wrapped cell: found, and the box takes in the lines of the cell.
+    let (g, b) = get(0);
+    assert!(g, "pin 9");
+    assert!(
+        b[1].as_f64().unwrap() < 0.2 && b[3].as_f64().unwrap() > 0.23,
+        "{b}"
+    );
+    // A name cut in two by a break.
+    assert!(get(1).0, "pin 10");
+    // One line, as before.
+    assert!(get(2).0, "pin 8");
+    // Far from its number: not accepted, and no line is claimed for it.
+    let (g, _) = get(3);
+    assert!(!g, "a name far from its number must not count");
+    // Not tied, but its name is on exactly one line: the place is shown.
+    let (g, b) = get(4);
+    assert!(!g);
+    assert_eq!(b[0].as_f64(), Some(0.1));
+    assert!(
+        b[3].as_f64().unwrap() - b[1].as_f64().unwrap() < 0.05,
+        "a line, not the page: {b}"
+    );
+    // Not in the text at all: the whole page, as before.
+    let (g, b) = get(5);
+    assert!(!g);
+    assert_eq!(b, json!([0.0, 0.0, 1.0, 1.0]));
+    // The warnings name only the pins that are really not found.
+    assert_eq!(r.notes.len(), 3, "{:?}", r.notes);
+    assert!(r.notes.iter().all(|n| n.contains("next to its number")));
+}
