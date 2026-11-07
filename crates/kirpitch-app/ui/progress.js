@@ -269,7 +269,12 @@ function logCall(c) {
     parts.push(pre(c.text));
   } else {
     const why = c.thinking
-      ? "The answer is empty. The model wrote " + nice(c.thinking.length) + " characters of thinking and no answer" + (c.finish === "length" ? ", then ran out of room. In Settings, under the model, lower the thinking effort or turn thinking off; or raise the answer limit under Extraction." : ".")
+      ? "The answer is empty. The model wrote " + nice(c.thinking.length) + " characters of thinking and no answer" +
+        (c.finish === "length"
+          ? c.thinking_off
+            ? ", then ran out of room. Thinking was asked to be off, but this model or server thinks anyway and does not obey. Use another model, or raise the answer limit and the timeout under Settings → Extraction."
+            : ", then ran out of room. In Settings, under the model, lower the thinking effort or turn thinking off; or raise the answer limit under Extraction."
+          : ".")
       : "The answer is empty." + (c.finish === "length" ? " The model ran out of room (the server does not show its thinking)." : "");
     parts.push(el("p", { class: "call-empty", text: why }));
   }

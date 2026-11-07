@@ -30,8 +30,8 @@ pub use eval::{
 pub use serde_json::Value as JsonValue;
 
 pub use steps::{
-    ConfirmedInput, ReadStepInput, build_confirmed, check_step_values, preview_footprint_values,
-    read_step, unused_path,
+    ConfirmedInput, ReadStepInput, build_confirmed, check_step_values, narrow_pins_values,
+    preview_footprint_values, read_step, unused_path,
 };
 
 pub use library::{PartSummary, list_parts};

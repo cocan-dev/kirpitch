@@ -959,9 +959,9 @@ function gdNarrowBox(have, want) {
   const box = el("div", { class: "gd-narrow" });
   box.append(
     el("p", { text: "The pin table has " + have + " pins, but this package (" + label + ") has " + want + ". Datasheets for several packages list them in one table, with a column of pin numbers for each package." }),
-    el("p", { class: "muted small", text: "The model can read the table again and keep only the pins that have a number in the " + label + " column. You check the result before it is used." })
+    el("p", { class: "muted small", text: "Kirpitch can pick the pins out of the table by itself, from the column of pin numbers of the " + label + ". This takes you back to the Pins step to check the result; then you come straight back here." })
   );
-  const go = el("button", { type: "button", class: "primary", text: "Keep only the " + want + " pins of " + label });
+  const go = el("button", { type: "button", class: "primary", text: "Keep only the " + want + " pins of " + label + " (goes to Pins)" });
   go.addEventListener("click", () => gdNarrowPins(want));
   box.append(go);
   return box;
@@ -970,18 +970,34 @@ function gdNarrowBox(have, want) {
 async function gdNarrowPins(want) {
   const label = gdPackageLabel(want);
   const name = (gd.values.package || {}).package_name;
+  const pins = gd.values.pins || gd.draft.pins;
+  gd.confirmed.pins = false;
+  gd.ack.pins = false;
+  gd.step = GD_STEPS.findIndex((s) => s.key === "pins") + 1;
+  gd.returnToFinal = true;
+  gdError("");
+  // First by the rows of the table: instant, and no model is asked.
+  try {
+    const run = await invoke("narrow_pins", { pdf: gd.pdf, regions: gd.regions.pins, value: pins, want });
+    gd.draft.pins = run.value;
+    gd.notes.pins = ["Kept the pins that have a number in the column of " + label + ": " + ((run.value.pins || []).length) + " pins. Check them."].concat(run.notes || []);
+    gd.readError.pins = "";
+    gd.phase.pins = "review";
+    gdShow(gd.step);
+    return;
+  } catch (e) {
+    gd.notes.pins = ["The pins could not be cut out of the table by Kirpitch (" + e + "); the model reads the table again instead."];
+  }
   const hint =
     "This datasheet lists several packages in one pin table, with a column of pin numbers for each package (the header names the columns, in order). Read only the " +
     label + " package" + (name ? " (the drawing calls it " + name + ")" : "") + ", which has " + want +
     " pins: use the pin numbers of its column, leave out the rows where that column is empty or a dash, and give every pin once. The answer must have exactly " + want + " pins";
-  gd.confirmed.pins = false;
-  gd.ack.pins = false;
-  gd.step = GD_STEPS.findIndex((s) => s.key === "pins") + 1;
+  const before = gd.notes.pins;
   await gdRead("pins", gd.regions.pins.length > 0, { hint, keep: true });
-  gd.returnToFinal = true;
   const have = ((gd.draft.pins || {}).pins || []).length;
+  gd.notes.pins = before.concat(gd.notes.pins || []);
   if (have !== want && !gd.readError.pins) {
-    gd.notes.pins = ["The model gave " + have + " pins, but the package has " + want + ". Check the list, or draw a box around the pin table again."].concat(gd.notes.pins || []);
+    gd.notes.pins.unshift("The model gave " + have + " pins, but the package has " + want + ". Check the list, or draw a box around the pin table again.");
   }
   if (gdKey() === "pins") gdShow(gd.step);
 }

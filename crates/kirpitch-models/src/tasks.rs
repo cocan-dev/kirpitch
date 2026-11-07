@@ -262,6 +262,9 @@ pub struct CallRecord {
     pub prompt_chars: usize,
     /// The limit on the answer, in tokens.
     pub max_tokens: u32,
+    /// Thinking was asked to be off for this call (so thinking in the answer
+    /// means the server or the model did not obey).
+    pub thinking_off: bool,
     /// What the model answered (cut to a reasonable length).
     pub text: String,
     /// What it wrote while thinking, if the server returns that.
@@ -467,6 +470,15 @@ fn check_wrapped<T>(
 
 /// Asks, checks the answer with `check`, and asks again (up to twice) with the
 /// problem named when the check fails.
+/// The time to wait for an answer that may be longer: in proportion to the
+/// room it is given, at most an hour.
+fn scaled_timeout(secs: u64, before: u32, after: u32) -> u64 {
+    if before == 0 || after <= before {
+        return secs;
+    }
+    (secs.saturating_mul(u64::from(after)) / u64::from(before)).min(3600)
+}
+
 fn ask_json<T>(
     client: &Client,
     cache: &Cache,
@@ -479,6 +491,8 @@ fn ask_json<T>(
     request.timeout_secs = ctx.options.timeout_secs();
     let attempts = ctx.options.attempts();
     let model = client.model().model.clone();
+    let thinking_off =
+        client.model().effort.as_deref() == Some("none") || client.model().think == Some(false);
     // Not every server enforces the schema (Ollama models that run in the
     // cloud do not), so the prompt always carries it as well.
     if let Some(example) = &request.example {
@@ -508,6 +522,7 @@ Answer with only a JSON object that follows this JSON schema, with these exact f
             model: model.clone(),
             prompt_chars: request.user.chars().count() + request.system.chars().count(),
             max_tokens: request.max_tokens,
+            thinking_off: thinking_off || request.no_think,
             ..CallRecord::default()
         };
         let (text, from_cache) = match cache.get(&key) {
@@ -589,15 +604,23 @@ Answer with only a JSON object that follows this JSON schema, with these exact f
                     .collect();
                 if attempt + 1 < attempts {
                     if truncated {
-                        // The answer was cut off at the limit: allow much more.
-                        request.max_tokens = (request.max_tokens * 4).min(32_000);
+                        // The answer was cut off at the limit: allow much more,
+                        // and the time that takes (a slow server writes about
+                        // 30 tokens a second).
+                        let before = request.max_tokens;
+                        request.max_tokens = (before * 4).min(32_000);
+                        request.timeout_secs =
+                            scaled_timeout(request.timeout_secs, before, request.max_tokens);
                     }
                     if text.trim().is_empty() {
                         // Nothing came back: a model that thinks used its whole
                         // budget on it. Turn thinking off where that can be
                         // done, and allow more room.
                         request.no_think = true;
-                        request.max_tokens = (request.max_tokens * 2).min(32_000);
+                        let before = request.max_tokens;
+                        request.max_tokens = (before * 2).min(32_000);
+                        request.timeout_secs =
+                            scaled_timeout(request.timeout_secs, before, request.max_tokens);
                     }
                     request.user.push_str(&format!(
                         "\n\nYour previous answer was not usable: {problem}. Answer again with only the JSON object, shaped like the example, and do not write your reasoning."
@@ -839,14 +862,19 @@ fn box_of(lines: &[&TextLine]) -> [f64; 4] {
 /// wraps, its number on one line and its name on the lines next to it (also
 /// when the name is cut in two or its letters are spaced out, as in a
 /// subscript). Returns the page and the box of the place.
-fn ground(pages: &[PageLines], pin: &PinAnswer) -> Option<(u32, [f64; 4])> {
+type RowHit<'a> = (u32, &'a TextLine, Vec<&'a TextLine>);
+
+/// Every place that can be the row of a pin, the best first (the number and the
+/// name on one line, then the number on one line and the name next to it).
+fn find_rows<'a>(pages: &'a [PageLines], pin: &PinAnswer) -> Vec<RowHit<'a>> {
+    let mut hits: Vec<RowHit<'a>> = Vec::new();
     // The name is compared without the KiCad overbar notation `~{...}`.
     let name = pin.name.replace("~{", "").replace('}', "");
     for page in pages {
         for l in &page.lines {
             let text = plain_dashes(&l.text);
             if contains_token(&text, &pin.number) && contains_token(&text, &name) {
-                return Some((page.page, box_of(&[l])));
+                hits.push((page.page, l, vec![l]));
             }
         }
     }
@@ -905,11 +933,234 @@ fn ground(pages: &[PageLines], pin: &PinAnswer) -> Option<(u32, [f64; 4])> {
                                 .any(|s| contains_token(&plain_dashes(&o.text), s))
                     })
                     .collect();
-                return Some((page.page, box_of(if row.len() > 1 { &row } else { &near })));
+                hits.push((page.page, l, if row.len() > 1 { row } else { near }));
             }
         }
     }
-    None
+    hits
+}
+
+fn find_row<'a>(pages: &'a [PageLines], pin: &PinAnswer) -> Option<RowHit<'a>> {
+    find_rows(pages, pin).into_iter().next()
+}
+
+fn ground(pages: &[PageLines], pin: &PinAnswer) -> Option<(u32, [f64; 4])> {
+    find_row(pages, pin).map(|(page, _, lines)| (page, box_of(&lines)))
+}
+
+/// The cells at the start of a table row: the pin numbers of each package, `-`
+/// where the package has no such pin. They end at the name of the pin, at the
+/// pin type (`I/O`) or at anything that does not look like a pin number.
+fn leading_cells(text: &str, pin: &PinAnswer) -> Vec<String> {
+    let name = pin.name.replace("~{", "").replace('}', "");
+    let parts: Vec<&str> = name.split('/').map(str::trim).collect();
+    let is_cell = |t: &str| {
+        t == "-"
+            || (t.chars().count() <= 4
+                && t.chars().any(|c| c.is_ascii_digit())
+                && t.chars().all(|c| c.is_ascii_alphanumeric())
+                && t.chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_uppercase() || c.is_ascii_digit()))
+    };
+    plain_dashes(text)
+        .split_whitespace()
+        .take_while(|t| is_cell(t) && !parts.iter().any(|p| p.eq_ignore_ascii_case(t)))
+        .map(str::to_string)
+        .collect()
+}
+
+/// The pins of one package, cut out of a table that covers several.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Narrowed {
+    /// The pins, with their number in the package, in order.
+    pub pins: Vec<PinAnswer>,
+    /// What to look at: pins that were added from the text of the table, and
+    /// pin numbers of the package that were not found.
+    pub notes: Vec<String>,
+}
+
+/// The type of a pin from the cell after its name (`S`, `I/O`, `I`, `O`).
+fn type_from_cell(cell: &str, name: &str) -> ElectricalType {
+    match cell {
+        "S" => ElectricalType::PowerIn,
+        "I/O" => ElectricalType::Bidirectional,
+        "I" => ElectricalType::Input,
+        "O" => ElectricalType::Output,
+        _ if name.to_ascii_uppercase().starts_with("V") => ElectricalType::PowerIn,
+        _ => ElectricalType::Unspecified,
+    }
+}
+
+/// A table for several packages has a column of pin numbers for each of them
+/// (`- - 1 1 A2 1 PE2`: LQFP64, WLCSP90, LQFP100, LQFP144, UFBGA176, LQFP176).
+/// The headers are written sideways and come out of the PDF as scrambled
+/// letters, so the column is found by what it holds: pin numbers from 1 to
+/// `want`, each once, and nearly all of them (the pins that only the smaller
+/// packages have, such as extra supply pins, are not in the list the model read
+/// from the largest package, so they are looked up in the rows of the table).
+///
+/// # Errors
+///
+/// The rows have no such columns, or no column (or more than one) fits `want`;
+/// the message says which.
+pub fn narrow_to_package(
+    pins: &[PinAnswer],
+    pages: &[PageLines],
+    want: usize,
+) -> Result<Narrowed, String> {
+    let rows: Vec<(usize, Vec<String>)> = pins
+        .iter()
+        .enumerate()
+        .filter_map(|(i, p)| {
+            // The number the model read is the one next to the name (the last
+            // cell); another line that has the number elsewhere is not the row.
+            let cells: Vec<Vec<String>> = find_rows(pages, p)
+                .iter()
+                .map(|(_, l, _)| leading_cells(&l.text, p))
+                .collect();
+            cells
+                .iter()
+                .find(|c| c.last() == Some(&p.number))
+                .or_else(|| cells.first())
+                .map(|c| (i, c.clone()))
+        })
+        .collect();
+    let mut sizes: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    for (_, cells) in &rows {
+        *sizes.entry(cells.len()).or_default() += 1;
+    }
+    let Some((&k, &n)) = sizes.iter().max_by_key(|(len, n)| (**n, **len)) else {
+        return Err("the pins were not found in the text of the table".into());
+    };
+    if k < 2 {
+        return Err(
+            "the rows of the table have no columns of pin numbers for several packages".into(),
+        );
+    }
+    if n * 10 < pins.len() * 7 {
+        return Err("the rows of the table do not have the same columns".into());
+    }
+    let rows: Vec<&(usize, Vec<String>)> = rows.iter().filter(|(_, c)| c.len() == k).collect();
+    // The column: pin numbers 1..=want, each once, nearly all of them present.
+    let mut best: Vec<(usize, usize, bool)> = Vec::new(); // column, count, all numeric
+    for j in 0..k {
+        let cells: Vec<&str> = rows
+            .iter()
+            .map(|(_, c)| c[j].as_str())
+            .filter(|v| *v != "-")
+            .collect();
+        let distinct: std::collections::BTreeSet<&str> = cells.iter().copied().collect();
+        if cells.is_empty() || distinct.len() != cells.len() || cells.len() > want {
+            continue;
+        }
+        let numeric = cells
+            .iter()
+            .all(|v| v.parse::<usize>().is_ok_and(|n| (1..=want).contains(&n)));
+        if numeric && cells.len() + (want * 15 / 100).max(3) >= want {
+            best.push((j, cells.len(), true));
+        } else if cells.len() == want {
+            // Lettered balls (`A1`): all of them or nothing.
+            best.push((j, cells.len(), false));
+        }
+    }
+    best.sort_by_key(|(_, n, numeric)| std::cmp::Reverse((*numeric, *n)));
+    let j = match best.as_slice() {
+        [] => {
+            return Err(format!(
+                "none of the {k} columns of pin numbers fits a package of {want} pins"
+            ));
+        }
+        [(j, ..)] => *j,
+        [(j, n, num), (_, n2, num2), ..] if (n, num) != (n2, num2) => *j,
+        _ => {
+            return Err(format!(
+                "more than one column of pin numbers fits a package of {want} pins"
+            ));
+        }
+    };
+    let mut kept: Vec<PinAnswer> = rows
+        .iter()
+        .filter(|(_, c)| c[j] != "-")
+        .map(|(i, c)| PinAnswer {
+            number: c[j].clone(),
+            ..pins[*i].clone()
+        })
+        .collect();
+    let mut notes = Vec::new();
+    // Numbers the package has that no pin of the list has: rows of the table
+    // that start with it (`18 E5 27 38 - - VSS S`).
+    let have: std::collections::HashSet<String> = kept.iter().map(|p| p.number.clone()).collect();
+    let mut still_missing = Vec::new();
+    for number in (1..=want)
+        .map(|n| n.to_string())
+        .filter(|n| !have.contains(n))
+    {
+        let found = pages.iter().find_map(|page| {
+            page.lines.iter().find_map(|l| {
+                let text = plain_dashes(&l.text);
+                let tokens: Vec<&str> = text.split_whitespace().collect();
+                // The column is the first one, or the row has all its cells.
+                let cell_count = tokens
+                    .iter()
+                    .take_while(|t| {
+                        **t == "-"
+                            || (t.chars().count() <= 4
+                                && t.chars().any(|c| c.is_ascii_digit())
+                                && t.chars().all(|c| c.is_ascii_alphanumeric()))
+                    })
+                    .count();
+                let fits = if j == 0 {
+                    cell_count >= 2 && tokens.first() == Some(&number.as_str())
+                } else {
+                    cell_count == k && tokens.get(j) == Some(&number.as_str())
+                };
+                if !fits {
+                    return None;
+                }
+                let name = tokens.get(cell_count).copied()?;
+                let is_name = name
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "_+-~/".contains(c))
+                    && name.chars().next().is_some_and(|c| c.is_ascii_alphabetic());
+                // A pin row names its type right after the name.
+                let typed = matches!(tokens.get(cell_count + 1), Some(&("S" | "I/O" | "I" | "O")));
+                (is_name && typed).then(|| PinAnswer {
+                    number: number.clone(),
+                    name: name.to_string(),
+                    electrical_type: type_from_cell(
+                        tokens.get(cell_count + 1).copied().unwrap_or(""),
+                        name,
+                    ),
+                    page: Some(page.page),
+                    confidence: 0.6,
+                })
+            })
+        });
+        match found {
+            Some(pin) => {
+                notes.push(format!(
+                    "pin {} `{}` is not in the list that was read; it was added from the rows of the table (check it)",
+                    pin.number, pin.name
+                ));
+                kept.push(pin);
+            }
+            None => still_missing.push(number),
+        }
+    }
+    if !still_missing.is_empty() {
+        notes.push(format!(
+            "pin numbers {} of the package were not found in the table: add them by hand",
+            still_missing.join(", ")
+        ));
+    }
+    kept.sort_by(
+        |a, b| match (a.number.parse::<u32>(), b.number.parse::<u32>()) {
+            (Ok(x), Ok(y)) => x.cmp(&y),
+            _ => a.number.cmp(&b.number),
+        },
+    );
+    Ok(Narrowed { pins: kept, notes })
 }
 
 /// Where a pin is probably written when its number and name could not be tied
@@ -1710,4 +1961,17 @@ pub fn extract_package(
         ctx,
         package_from_json,
     )
+}
+
+#[cfg(test)]
+mod timeout_tests {
+    use super::scaled_timeout;
+
+    #[test]
+    fn a_longer_answer_gets_a_longer_wait_but_never_more_than_an_hour() {
+        assert_eq!(scaled_timeout(300, 8000, 32_000), 1200);
+        assert_eq!(scaled_timeout(1200, 8000, 32_000), 3600);
+        assert_eq!(scaled_timeout(300, 32_000, 32_000), 300);
+        assert_eq!(scaled_timeout(300, 0, 100), 300);
+    }
 }
