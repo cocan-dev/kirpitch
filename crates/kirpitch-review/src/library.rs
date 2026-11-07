@@ -62,6 +62,9 @@ pub struct PartSummary {
     pub gates: usize,
     /// Gates that were approved and then changed.
     pub stale: usize,
+    /// The first gate that is not approved (`pinout`, `footprint` or `3d`);
+    /// empty when all are.
+    pub next_gate: String,
     /// When the file was last changed, seconds since 1970.
     pub modified: Option<u64>,
     /// The datasheet address, if the file has one.
@@ -105,6 +108,12 @@ fn summary(path: &Path, spec: &PartSpec) -> PartSummary {
             .iter()
             .filter(|s| **s == GateStatus::Stale)
             .count(),
+        next_gate: Gate::ALL
+            .iter()
+            .zip(&gate_status)
+            .find(|(_, s)| **s != GateStatus::Approved)
+            .map(|(g, _)| g.name().to_string())
+            .unwrap_or_default(),
         modified: fs::metadata(path)
             .and_then(|m| m.modified())
             .ok()
@@ -197,6 +206,22 @@ pub fn list_parts(dirs: &[String]) -> Vec<PartSummary> {
     let mut parts = w.parts;
     parts.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| a.mpn.cmp(&b.mpn)));
     parts
+}
+
+/// What is known about each of `paths` (the files that were opened last), in
+/// the same order: `None` for a file that is gone or is not a part.
+#[must_use]
+pub fn summarize_parts(paths: &[String]) -> Vec<Option<PartSummary>> {
+    paths
+        .iter()
+        .map(|p| {
+            let path = Path::new(p.trim());
+            check_is_part(path).ok()?;
+            let text = fs::read_to_string(path).ok()?;
+            let spec = PartSpec::from_json_str(&text).ok()?;
+            Some(summary(path, &spec))
+        })
+        .collect()
 }
 
 /// Reads `path` as a part, so that only a PartSpec file is ever renamed or

@@ -99,16 +99,6 @@ function leaveLibrary() {
 
 // ---- Drawing the screen ------------------------------------------------------------------------
 
-function libAgo(secs) {
-  if (!secs) return "";
-  const s = Math.max(0, Date.now() / 1000 - secs);
-  if (s < 90) return "just now";
-  if (s < 3600) return Math.round(s / 60) + " minutes ago";
-  if (s < 86400) return Math.round(s / 3600) + " hours ago";
-  if (s < 86400 * 45) return Math.round(s / 86400) + " days ago";
-  return new Date(secs * 1000).toLocaleDateString();
-}
-
 function libMm(v) {
   return String(Math.round(v * 100) / 100);
 }

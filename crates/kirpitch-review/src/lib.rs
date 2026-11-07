@@ -37,7 +37,7 @@ pub use steps::{
 
 pub use datasheets::{datasheet_for, remember_datasheet};
 
-pub use library::{PartSummary, delete_part, list_parts, rename_part};
+pub use library::{PartSummary, delete_part, list_parts, rename_part, summarize_parts};
 
 pub use guide::{
     GuideInput, Preview, RegionInput, StepSize, Suggested, Suggestions, preview_selection,
