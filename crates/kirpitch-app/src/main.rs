@@ -114,6 +114,7 @@ fn filter(kind: &str) -> (&'static str, &'static [&'static str]) {
     match kind {
         "pdf" => ("Datasheet PDF", &["pdf"]),
         "toml" => ("Model settings", &["toml"]),
+        "rules" => ("Design rules", &["kicad_dru", "dru", "json"]),
         _ => ("PartSpec", &["json"]),
     }
 }
@@ -449,6 +450,30 @@ fn delete_part(path: String) -> Result<(), String> {
 }
 
 /// What is known about the parts that were opened last (for the start screen).
+/// The built-in and saved fab profiles, for the settings; `current` is the
+/// setting in use.
+#[tauri::command]
+fn fab_rules(current: String) -> kirpitch_review::FabRulesView {
+    kirpitch_review::fab_rules(&current)
+}
+
+/// Reads a rules file (KiCad, Eagle or JSON) without saving it.
+#[tauri::command]
+fn fab_import(path: String) -> Result<kirpitch_review::FabImportView, String> {
+    kirpitch_review::import_fab_rules(std::path::Path::new(path.trim()))
+}
+
+/// Saves a profile; returns the path, which is what the setting stores.
+#[tauri::command]
+fn fab_save(input: kirpitch_review::FabSaveInput) -> Result<String, String> {
+    kirpitch_review::save_fab_profile(&input)
+}
+
+#[tauri::command]
+fn fab_delete(path: String) -> Result<(), String> {
+    kirpitch_review::delete_fab_profile(&path)
+}
+
 #[tauri::command]
 async fn part_summaries(paths: Vec<String>) -> Vec<Option<kirpitch_review::PartSummary>> {
     tauri::async_runtime::spawn_blocking(move || kirpitch_review::summarize_parts(&paths))
@@ -527,6 +552,10 @@ fn main() {
             delete_part,
             remember_datasheet,
             part_summaries,
+            fab_rules,
+            fab_import,
+            fab_save,
+            fab_delete,
             datasheet_for,
             preview_guide,
             eval_cases,

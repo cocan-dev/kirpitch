@@ -115,7 +115,7 @@ Kirpitch runs automatic checks at every gate, whether values came from an LLM or
 
 ### Fab profile
 
-A fab profile holds the limits of a PCB maker. Kirpitch ships one built-in **generic** profile with conservative values, safe for typical low-cost services ([ADR 0003](decisions/0003-default-fab-profile.md)). Presets for specific makers are in the Backlog.
+A fab profile holds the limits of a PCB maker. Kirpitch ships a built-in **generic** profile with conservative values, safe for typical low-cost services ([ADR 0003](decisions/0003-default-fab-profile.md)), and a **JLCPCB** preset. In the desktop app, Settings has a Fab rules tab to choose one, import a maker's rules from a KiCad `.kicad_dru` or Eagle `.dru` file, or set the numbers by hand ([ADR 0032](decisions/0032-fab-rules-from-the-makers-files.md)). The pad checks and the footprint generator use the chosen profile.
 
 | Limit | Generic default |
 | --- | --- |
@@ -123,6 +123,11 @@ A fab profile holds the limits of a PCB maker. Kirpitch ships one built-in **gen
 | Minimum solder mask web (mask between two openings) | 0.10 mm |
 | Minimum silkscreen line width | 0.12 mm |
 | Minimum silkscreen text height | 0.80 mm |
+| Smallest SMD pad (shorter side) | 0.20 mm |
+| Smallest drill | 0.30 mm |
+| Minimum annular ring | 0.15 mm |
+| Minimum hole-to-hole distance (edge to edge) | 0.25 mm |
+| Minimum silkscreen-to-copper distance | 0.20 mm |
 
 ## Tech stack
 
@@ -305,7 +310,7 @@ The MVP (minimum viable product) covers text-based PDFs and standard IC packages
 
 **Backlog**
 
-- **Fab profiles:** presets for JLCPCB, PCBWay and Aisler (minimum clearances, paste settings), used by the cross-checks. A generic default profile is built in from milestone 1 (see Fab profile).
+- **Fab profiles:** presets for PCBWay and Aisler (JLCPCB is built in; others can be imported from their rules files), and paste settings. A generic default profile is built in from milestone 1 (see Fab profile).
 - **Exposed-pad helpers:** paste split into smaller windows and thermal vias under exposed pads.
 - **IPC-7351 density levels:** most, nominal and least land patterns, plus hand-solder variants.
 - **Assembly fields:** LCSC/JLC part numbers and pick-and-place rotation offsets.

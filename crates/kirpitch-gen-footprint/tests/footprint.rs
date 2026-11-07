@@ -220,3 +220,50 @@ fn kicad_loads_the_footprint() {
         assert_footprint_loads(&cli, target, "gen-fp", &text, &file_name(&spec()));
     }
 }
+
+#[test]
+fn the_fab_profile_sets_the_silkscreen_sizes() {
+    use kirpitch_core::{FabProfile, Mm};
+    let m = |v: f64| Mm::new(v).unwrap();
+    // JLCPCB asks for a 0.15 mm line and 1 mm text: the usual output already
+    // has text of 1 mm, but the line is thicker.
+    let jlc = Options {
+        fab: FabProfile::jlcpcb(),
+        ..Default::default()
+    };
+    let text = generate(&spec(), &jlc).expect("generates");
+    assert!(text.contains("(width 0.15)"), "{text}");
+    assert!(!text.contains("(width 0.12)"));
+    // A maker that needs 1.5 mm text and 0.3 mm from copper to silkscreen.
+    let big = Options {
+        fab: FabProfile {
+            min_silk_text_height: m(1.5),
+            min_silk_pad_gap: m(0.3),
+            ..FabProfile::generic()
+        },
+        ..Default::default()
+    };
+    let text = generate(&spec(), &big).expect("generates");
+    assert!(text.contains("(size 1.5 1.5)"));
+    let tree = parse(&text).unwrap();
+    let pads: Vec<(f64, f64, f64, f64)> = spec()
+        .land_pattern
+        .pads
+        .iter()
+        .map(|p| p.bounds())
+        .collect();
+    for node in &tree.items {
+        let Node::List(l) = node else { continue };
+        if l.name() != Some("fp_line") || !text_of(l).contains("F.SilkS") {
+            continue;
+        }
+        let (a, b) = endpoints(l);
+        for (x0, y0, x1, y1) in &pads {
+            let dx = (a.0.min(b.0) - x1).max(x0 - a.0.max(b.0)).max(0.0);
+            let dy = (a.1.min(b.1) - y1).max(y0 - a.1.max(b.1)).max(0.0);
+            assert!(dx.hypot(dy) - 0.06 >= 0.3 - 1e-6, "{a:?}-{b:?}");
+        }
+    }
+    // Without a profile the output is the one in the snapshot.
+    assert_eq!(generate(&spec(), &Options::default()).unwrap(), output());
+}

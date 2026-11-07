@@ -117,6 +117,15 @@ If Settings says **pdfium not found**, run `cargo xtask fetch-pdfium` again in
 the Kirpitch folder, or choose the folder it printed under **Folders** in
 Settings.
 
+## Your PCB maker's limits
+
+Settings, **Fab rules**: choose the limits of the maker you will order from, so
+that footprints are checked and drawn to what it can build. The generic limits
+are cautious; **JLCPCB** is built in. For another maker press **Import a rules
+file** and pick a KiCad `.kicad_dru` or an Eagle `.dru` file, check the
+numbers it shows (they are filled in from the file where it has them), and save.
+Compare the numbers with your maker's own page before you order.
+
 ## Where things are kept
 
 - **Settings** (`kirpitch.toml`): `%APPDATA%\Kirpitch` on Windows,

@@ -8,6 +8,7 @@
 pub mod electrical;
 pub mod error;
 pub mod fab;
+pub mod fab_import;
 pub mod gates;
 pub mod ipc;
 pub mod names;

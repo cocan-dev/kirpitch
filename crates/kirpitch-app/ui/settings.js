@@ -1019,7 +1019,6 @@ function renderFolders() {
     folderRow("output", "KiCad output folder", "Where the Export step writes. Each part gets its own subfolder.", "folder"),
     folderRow("datasheets", "Datasheets folder", "Where the datasheet dialog starts.", "folder"),
     field("KiCad version to write for", target, "The Export step uses this unless you pick another."),
-    folderRow("fab_profile", "Fab profile (limits of your PCB maker)", "A JSON file, see the documentation. Empty: the generic limits.", "spec"),
     folderRow("pdfium_dir", "pdfium folder", "The library that reads datasheet PDFs. Empty: find it automatically.", "folder"),
     pdf
   );
@@ -1044,11 +1043,12 @@ function renderSettingsNow() {
     b.classList.toggle("current", b.dataset.pane === activePane);
     b.setAttribute("aria-selected", String(b.dataset.pane === activePane));
   });
-  for (const p of ["models", "tasks", "prompts", "evaluate", "folders"]) $("pane-" + p).hidden = p !== activePane;
+  for (const p of ["models", "tasks", "prompts", "evaluate", "fab", "folders"]) $("pane-" + p).hidden = p !== activePane;
   renderModels();
   renderTasks();
   renderPrompts();
   if (typeof renderEvaluate === "function") renderEvaluate();
+  if (typeof renderFabRules === "function") renderFabRules();
   renderFolders();
   updateDirty();
 }
@@ -1149,6 +1149,7 @@ document.querySelectorAll("#settings-tabs button").forEach((b) =>
   b.addEventListener("click", () => {
     activePane = b.dataset.pane;
     if (activePane === "evaluate" && typeof ev !== "undefined" && !ev.running) ev.cases = null;
+    if (activePane === "fab" && typeof fab !== "undefined") fab.view = null;
     renderSettings();
     window.scrollTo({ top: 0, behavior: "auto" });
   })

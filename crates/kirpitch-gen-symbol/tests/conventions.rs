@@ -122,6 +122,7 @@ fn generated_symbols_follow_the_conventions_in_every_kicad_version() {
         target,
         fab: FabProfile {
             min_copper_gap: Mm::new(0.05).unwrap(),
+            min_mask_web: Mm::new(0.05).unwrap(),
             ..FabProfile::generic()
         },
     };

@@ -1,0 +1,22 @@
+/* Fab rules in the settings. */
+.fab-list { display: flex; flex-direction: column; gap: 8px; }
+.fab-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); transition: border-color 0.15s, box-shadow 0.15s; }
+.fab-card.chosen { border-color: var(--brick); box-shadow: 0 0 0 3px var(--glow); }
+.fab-pick { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; cursor: pointer; }
+.fab-pick input { flex: none; accent-color: var(--brick); width: 18px; height: 18px; }
+.fab-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; }
+.fab-text .muted { flex-basis: 100%; }
+.fab-text .tag { font-size: 11px; padding: 0 8px; border-radius: 999px; background: color-mix(in srgb, var(--copper) 22%, transparent); color: var(--copper); }
+.fab-actions { display: flex; gap: 6px; flex: none; }
+.fab-edit { display: flex; flex-direction: column; gap: 12px; }
+.fab-edit h4 { margin: 0; }
+.fab-limits { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px 16px; }
+.fab-limit { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; }
+.fab-unit { display: flex; align-items: center; gap: 6px; font-weight: 400; color: var(--muted); }
+.fab-unit input { width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
+.fab-unit input:focus { border-color: var(--brick); box-shadow: 0 0 0 3px var(--glow); outline: none; }
+.fab-report summary, .fab-help summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.fab-report ul { margin: 6px 0 0; padding-left: 20px; font-size: 13px; }
+.fab-help p { font-size: 13px; color: var(--muted); margin: 8px 0 0; max-width: 70ch; }
+.row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 560px) { .fab-card { flex-direction: column; align-items: stretch; } }

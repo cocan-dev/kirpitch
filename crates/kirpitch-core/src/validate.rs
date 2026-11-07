@@ -66,6 +66,9 @@ pub enum Check {
     /// courtyard, height within the maximum, pin 1 in the same corner. The
     /// check runs in the 3D generator, which reports it.
     ModelFit,
+    /// Pads, drills, holes and the solder mask web meet the other limits of
+    /// the fab profile (the copper gap is `pad_clearance`).
+    FabLimits,
 }
 
 impl Check {
@@ -90,6 +93,7 @@ impl Check {
             Check::TwoSources => "two_sources",
             Check::Drill => "drill",
             Check::ModelFit => "model_fit",
+            Check::FabLimits => "fab_limits",
         }
     }
 }
@@ -135,6 +139,7 @@ pub fn validate(spec: &PartSpec, fab: &FabProfile) -> Vec<Finding> {
     v.overrides(spec);
     v.two_sources(spec);
     v.drills(spec);
+    v.fab_limits(spec, fab);
     let mut findings = v.out;
     for f in &mut findings {
         if f.level == Level::Warning {
@@ -434,7 +439,7 @@ fn pad_gap(a: &Pad, b: &Pad) -> f64 {
 }
 
 /// Every check id that can appear in an override.
-const ALL_CHECKS: [Check; 18] = [
+const ALL_CHECKS: [Check; 19] = [
     Check::SchemaVersion,
     Check::PinCount,
     Check::PinNumber,
@@ -453,6 +458,7 @@ const ALL_CHECKS: [Check; 18] = [
     Check::TwoSources,
     Check::Drill,
     Check::ModelFit,
+    Check::FabLimits,
 ];
 
 /// Pads with a paste area above this size count as large exposed pads.
@@ -712,6 +718,123 @@ impl Validator {
                     "a surface-mount pad cannot have a drill; set kind to thru_hole",
                 ),
                 (PadKind::Smd, None) => {}
+            }
+        }
+    }
+}
+
+impl Validator {
+    /// Pads and holes against the other limits of the fab profile: the size of
+    /// a surface-mount pad, the drill, the annular ring, the distance between
+    /// holes and the solder mask web. The gap between copper features is the
+    /// `pad_clearance` check.
+    fn fab_limits(&mut self, spec: &PartSpec, fab: &FabProfile) {
+        let pads = &spec.land_pattern.pads;
+        for (i, pad) in pads.iter().enumerate() {
+            let smallest = pad.size_x.get().min(pad.size_y.get());
+            match (pad.kind, pad.drill) {
+                (PadKind::Smd, _) => {
+                    if smallest > 0.0 && smallest < fab.min_pad_size.get() - 1e-9 {
+                        self.add(
+                            Check::FabLimits,
+                            Level::Error,
+                            format!("land_pattern.pads[{i}]"),
+                            format!(
+                                "pad `{}` is {:.3} mm across at its narrowest, below the {:.3} mm smallest pad of fab profile `{}`",
+                                pad.number,
+                                smallest,
+                                fab.min_pad_size.get(),
+                                fab.name
+                            ),
+                        );
+                    }
+                }
+                (PadKind::ThruHole, Some(d)) if d.get() > 0.0 && d.get() < smallest => {
+                    let path = format!("land_pattern.pads[{i}].drill");
+                    if d.get() < fab.min_drill.get() - 1e-9 {
+                        self.add(
+                            Check::FabLimits,
+                            Level::Error,
+                            path.clone(),
+                            format!(
+                                "the drill of pad `{}` is {:.3} mm, below the {:.3} mm smallest drill of fab profile `{}`",
+                                pad.number,
+                                d.get(),
+                                fab.min_drill.get(),
+                                fab.name
+                            ),
+                        );
+                    }
+                    let ring = (smallest - d.get()) / 2.0;
+                    if ring < fab.min_annular_ring.get() - 1e-9 {
+                        self.add(
+                            Check::FabLimits,
+                            Level::Error,
+                            path,
+                            format!(
+                                "pad `{}` leaves an annular ring of {:.3} mm around its drill, below the {:.3} mm minimum of fab profile `{}`",
+                                pad.number,
+                                ring,
+                                fab.min_annular_ring.get(),
+                                fab.name
+                            ),
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+        // Holes: edge to edge.
+        for i in 0..pads.len() {
+            for j in (i + 1)..pads.len() {
+                let (Some(di), Some(dj)) = (pads[i].drill, pads[j].drill) else {
+                    continue;
+                };
+                if pads[i].kind != PadKind::ThruHole || pads[j].kind != PadKind::ThruHole {
+                    continue;
+                }
+                let centres =
+                    (pads[i].x.get() - pads[j].x.get()).hypot(pads[i].y.get() - pads[j].y.get());
+                let gap = centres - (di.get() + dj.get()) / 2.0;
+                if gap < fab.min_hole_to_hole.get() - 1e-9 {
+                    self.add(
+                        Check::FabLimits,
+                        Level::Error,
+                        format!("land_pattern.pads[{j}].drill"),
+                        format!(
+                            "the hole is {:.3} mm from the hole of pad `{}` (pads[{i}]), below the {:.3} mm minimum of fab profile `{}`",
+                            gap,
+                            pads[i].number,
+                            fab.min_hole_to_hole.get(),
+                            fab.name
+                        ),
+                    );
+                }
+            }
+        }
+        // Solder mask: a web narrower than the maker's smallest may be lost,
+        // which can bridge the pads. Gaps below the copper limit are already
+        // reported by `pad_clearance`.
+        for i in 0..pads.len() {
+            for j in (i + 1)..pads.len() {
+                if pads[i].number == pads[j].number {
+                    continue;
+                }
+                let gap = pad_gap(&pads[i], &pads[j]);
+                if gap >= fab.min_copper_gap.get() - 1e-9 && gap < fab.min_mask_web.get() - 1e-9 {
+                    self.add(
+                        Check::FabLimits,
+                        Level::Warning,
+                        format!("land_pattern.pads[{j}]"),
+                        format!(
+                            "the solder mask web to pad `{}` (pads[{i}]) is {:.3} mm, below the {:.3} mm smallest web of fab profile `{}`; the maker may remove it",
+                            pads[i].number,
+                            gap,
+                            fab.min_mask_web.get(),
+                            fab.name
+                        ),
+                    );
+                }
             }
         }
     }

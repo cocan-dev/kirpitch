@@ -128,6 +128,7 @@ fn a_qfn_template_plus_pins_validates() {
     assert!(!generic.is_empty());
     let fine = FabProfile {
         min_copper_gap: kirpitch_core::Mm::new(0.05).unwrap(),
+        min_mask_web: kirpitch_core::Mm::new(0.05).unwrap(),
         ..FabProfile::generic()
     };
     // What is left is the warning about the paste of the large exposed pad.

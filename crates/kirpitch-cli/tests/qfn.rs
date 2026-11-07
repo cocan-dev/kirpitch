@@ -97,7 +97,7 @@ fn a_fine_pitch_qfn_needs_a_finer_fab_profile_than_the_generic_one() {
     let fab = tmp.path().join("fab.json");
     fs::write(
         &fab,
-        r#"{"name": "fine-pitch maker", "min_copper_gap": 0.05}"#,
+        r#"{"name": "fine-pitch maker", "min_copper_gap": 0.05, "min_mask_web": 0.05}"#,
     )
     .unwrap();
     let out = kirpitch(&["check", &spec, "--fab", &path(&fab)]);

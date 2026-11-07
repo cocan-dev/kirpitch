@@ -458,3 +458,89 @@ fn without_the_dimensions_there_is_nothing_to_compare() {
     }
     assert!(!findings(&spec).iter().any(|f| f.0 == Check::TwoSources));
 }
+
+fn limit_findings(spec: &PartSpec, fab: &FabProfile) -> Vec<(Level, String)> {
+    validate(spec, fab)
+        .into_iter()
+        .filter(|f| f.check == Check::FabLimits)
+        .map(|f| (f.level, f.path))
+        .collect()
+}
+
+#[test]
+fn the_fab_profile_limits_pads_drills_rings_and_holes() {
+    use kirpitch_core::partspec::PadKind;
+    let fab = FabProfile::generic();
+    // Too small an SMD pad.
+    let mut spec = load();
+    spec.land_pattern.pads[0].size_x = mm(0.15);
+    assert_eq!(
+        limit_findings(&spec, &fab),
+        vec![(Level::Error, "land_pattern.pads[0]".into())]
+    );
+    // A maker with finer pads accepts it.
+    let fine = FabProfile {
+        min_pad_size: mm(0.1),
+        ..fab.clone()
+    };
+    assert_eq!(limit_findings(&spec, &fine), vec![]);
+
+    // Through-hole pad 1: pad 1.6, hole 1.0 leaves a ring of 0.3 mm.
+    let mut spec = load();
+    {
+        let p = &mut spec.land_pattern.pads[0];
+        p.kind = PadKind::ThruHole;
+        p.size_x = mm(1.6);
+        p.size_y = mm(1.6);
+        p.drill = Some(mm(1.0));
+        // Move it away from its neighbour so that only the hole is in question.
+        p.x = mm(-5.0);
+    }
+    assert_eq!(limit_findings(&spec, &fab), vec![]);
+    // A larger hole leaves too little copper (0.1 mm ring).
+    spec.land_pattern.pads[0].drill = Some(mm(1.4));
+    assert_eq!(
+        limit_findings(&spec, &fab),
+        vec![(Level::Error, "land_pattern.pads[0].drill".into())]
+    );
+    // A hole below the smallest drill.
+    spec.land_pattern.pads[0].drill = Some(mm(0.25));
+    let found = validate(&spec, &fab);
+    assert!(
+        found
+            .iter()
+            .any(|f| f.check == Check::FabLimits && f.message.contains("smallest drill"))
+    );
+    // Two holes too close to each other: pads 1 and 2 side by side.
+    let mut spec = load();
+    for (i, x) in [(0usize, -0.3), (1, 0.3)] {
+        let p = &mut spec.land_pattern.pads[i];
+        p.kind = PadKind::ThruHole;
+        p.size_x = mm(1.2);
+        p.size_y = mm(1.2);
+        p.drill = Some(mm(0.5));
+        p.x = mm(x);
+        p.y = mm(-9.0);
+    }
+    let found = validate(&spec, &fab);
+    assert!(
+        found.iter().any(|f| f.check == Check::FabLimits
+            && f.path == "land_pattern.pads[1].drill"
+            && f.message.contains("hole of pad")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn a_mask_web_below_the_makers_smallest_is_a_warning() {
+    // Pads 1 and 2 have a gap of 0.67 mm; a maker whose web is wider warns.
+    let spec = load();
+    let wide = FabProfile {
+        min_mask_web: mm(0.8),
+        ..FabProfile::generic()
+    };
+    let found = limit_findings(&spec, &wide);
+    assert!(!found.is_empty());
+    assert!(found.iter().all(|(level, _)| *level == Level::Warning));
+    assert_eq!(limit_findings(&spec, &FabProfile::generic()), vec![]);
+}
