@@ -175,12 +175,16 @@ function pinRow(view, p, i) {
     action("×", "Delete pin " + p.number, (d) => d.splice(i, 1))
   );
   tr.append(field("number", "num-in"), field("name"), el("td", { class: "edit" }, type), field("group"), sourceCell(p.source, p.low_confidence), actions);
-  // Clicking the row (not a control) selects the pin and shows its datasheet page;
-  // focusing a control only selects it.
+  // Clicking the row, or going into one of its cells, selects the pin and shows its
+  // datasheet page. Moving between the cells of the same pin leaves everything as it is
+  // (it must not turn the selection off, nor jump back to the pin's page after the
+  // page was turned by hand).
   tr.addEventListener("click", (ev) => {
     if (!ev.target.closest("input, select, button")) selectPin(p.number, true);
   });
-  tr.addEventListener("focusin", () => selectPin(p.number, false));
+  tr.addEventListener("focusin", () => {
+    if (selected !== p.number) selectPin(p.number, true);
+  });
   return tr;
 }
 
