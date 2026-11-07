@@ -374,3 +374,30 @@ fn how_a_model_runs_is_saved_shown_and_checked() {
             .contains("effort = \"high\"")
     );
 }
+
+#[test]
+fn the_details_of_a_model_use_the_typed_key_and_the_address_of_the_card() {
+    use kirpitch_review::find_model_details;
+    let keys = MemoryKeyStore::default();
+    keys.set("cloud", "saved-key").unwrap();
+    let transport = MockTransport::new();
+    transport
+        .push_ok(r#"{"model_info":{"llama.context_length":8192},"capabilities":["completion"]}"#);
+    let input: FindInput = serde_json::from_value(json!({
+        "name": "cloud", "old_name": "cloud", "provider": "openai-compatible",
+        "base_url": "https://ollama.com/v1", "keychain": true, "model": "llama3"
+    }))
+    .unwrap();
+    let d = find_model_details(&input, &transport, &keys).unwrap();
+    assert_eq!(d.context, Some(8192));
+    let sent = &transport.requests()[0];
+    assert_eq!(sent.url, "https://ollama.com/api/show");
+    assert_eq!(sent.headers[0].1, "Bearer saved-key");
+    let e = find_model_details(
+        &serde_json::from_value::<FindInput>(json!({"provider": "nope", "model": "m"})).unwrap(),
+        &transport,
+        &keys,
+    )
+    .unwrap_err();
+    assert!(e.contains("unknown kind"), "{e}");
+}

@@ -400,6 +400,16 @@ async fn build_confirmed(
         .map_err(|e| e.to_string())?
 }
 
+/// What the server says about one model: its context window and abilities.
+#[tauri::command]
+async fn model_details(input: FindInput) -> Result<kirpitch_models::ModelDetails, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        kirpitch_review::find_model_details(&input, &CurlTransport, &OsKeyStore)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -425,6 +435,7 @@ fn main() {
             remove_api_key,
             check_model,
             find_models,
+            model_details,
             suggest_pages,
             read_step,
             check_step_values,
