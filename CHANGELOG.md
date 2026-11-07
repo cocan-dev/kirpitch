@@ -8,6 +8,7 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Build screen: when the file name for the part is already taken (a part never replaces a file) the screen says so at the top and offers "Save as ...-2.partspec.json" (the next free name), checked when the screen opens and again when you press Build. After a successful build the Build step turns green with a check mark, the Build button gives way to the result and "Open the part", and the heading says "Part built".
 - Fixed: a pin whose name has a footnote mark inside it in the PDF text (`PC15/ (3)( ... OSC32_OUT`) was reported as "not found" and its link only showed the page. Its name is now matched by its parts, and the highlight covers just the pin's row (its number line and the lines of its name), not the lines of the rows around it. Checked on all 176 pins of the STM32F405 table: none is flagged.
 - A datasheet for several packages (one pin table with a column of pin numbers per package) no longer ends in "the pin table has 176 pins but the package has 64": the build screen offers to read the table again keeping only the pins of the chosen package (e.g. LQFP64), shows them for checking and returns to the build screen.
 - The footprint step lists the numbers of the footprint that will be made, measured on its pads: body size, number of pads, pad size, pitch, distance between the rows (or the pad centres), size of the land pattern and any centre pad, with a warning when the pitch differs from the package's. They update when you switch between the recommended and the calculated footprint.

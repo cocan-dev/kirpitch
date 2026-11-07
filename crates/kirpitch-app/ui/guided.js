@@ -44,6 +44,8 @@ const gd = {
   notes: {},
   ack: {},
   ready: null,
+  built: false, // the part was made
+  nameTaken: null, // { was, free }: the file name is in use
   useFootprint: true,
   loading: false,
   drag: null,
@@ -77,6 +79,8 @@ function gdForget() {
   gd.notes = {};
   gd.ack = {};
   gd.ready = null;
+  gd.built = false;
+  gd.nameTaken = null;
 }
 
 function gdReset() {
@@ -162,7 +166,7 @@ function gdShow(step) {
   $("gd-next").hidden = step === GD_LAST;
   $("gd-next").disabled = busy;
   $("gd-next").textContent = gd.loading ? "Reading the datasheet…" : phase === "reading" ? "Reading…" : phase === "review" ? (gd.ack[key] ? "Confirm anyway" : "Confirm and continue") : key ? "Read it" : "Next";
-  $("ds-run").hidden = step !== GD_LAST;
+  $("ds-run").hidden = step !== GD_LAST || gd.built;
   $("gd-skip").textContent = "Let the program search for this";
   if (key && phase === "point") {
     $("gd-pick-title").textContent = s.title;
@@ -185,10 +189,10 @@ function gdPaintStepper() {
   ol.replaceChildren(
     ...GD_STEPS.map((s, i) => {
       const n = i + 1;
-      const done = s.key ? !!gd.confirmed[s.key] : n < gd.step;
+      const done = s.key ? !!gd.confirmed[s.key] : n < gd.step || (n === GD_LAST && gd.built);
       const li = el("li", { class: "gd-step" + (n === gd.step ? " current" : "") + (done ? " done" : "") });
       const b = el("button", { type: "button", class: "gd-step-btn", "aria-current": n === gd.step ? "step" : "false" });
-      b.append(el("span", { class: "gd-dot", text: done && n !== gd.step ? "✓" : String(n) }), el("span", { text: s.label }));
+      b.append(el("span", { class: "gd-dot", text: done && (n !== gd.step || gd.built) ? "✓" : String(n) }), el("span", { text: s.label }));
       b.disabled = gd.loading || reading || (n > 1 && !gd.suggestions) || n === gd.step;
       b.addEventListener("click", () => gdGo(n));
       li.append(b);
@@ -840,11 +844,47 @@ function gdFinalInput(dry) {
   };
 }
 
+// A part never replaces a file: when the name is taken, the next free one is offered.
+async function gdCheckName() {
+  const out = $("ds-out").value.trim();
+  gd.nameTaken = null;
+  if (!out) return;
+  try {
+    const free = await invoke("unused_path", { path: out });
+    if (free !== out) gd.nameTaken = { was: out, free };
+  } catch (e) {
+    // The build says so if the name cannot be used.
+  }
+}
+
+function gdBaseName(path) {
+  return String(path).split(/[\\/]/).pop();
+}
+
+function gdNameTakenBox() {
+  const t = gd.nameTaken;
+  const box = el("div", { class: "gd-narrow" });
+  box.append(
+    el("p", { text: gdBaseName(t.was) + " already exists, and a part never replaces a file." }),
+    el("p", { class: "muted small", text: "Save this one under the next free name instead, or change the name in the first step." })
+  );
+  const go = el("button", { type: "button", class: "primary", text: "Save as " + gdBaseName(t.free) });
+  go.addEventListener("click", () => {
+    $("ds-out").value = t.free;
+    gd.nameTaken = null;
+    gdPaintFinal();
+  });
+  box.append(go);
+  return box;
+}
+
 async function gdEnterFinal() {
   gd.ready = null;
+  gd.built = false;
   if (gd.mode !== "steps") return gdPaintFinal();
   if (["metadata", "pins", "package"].some((k) => !gd.confirmed[k])) return gdPaintFinal();
   $("gd-ready").replaceChildren(el("p", { class: "muted small", text: "Checking everything together…" }));
+  await gdCheckName();
   try {
     gd.ready = await invoke("build_confirmed", { input: gdFinalInput(true) });
   } catch (e) {
@@ -897,6 +937,11 @@ function gdPaintFinal() {
     }
     if (r.notes.length) parts.push(el("details", {}, el("summary", { text: r.notes.length + " thing" + (r.notes.length === 1 ? "" : "s") + " to look at in review" }), el("ul", {}, ...r.notes.map((n) => el("li", { class: "small muted", text: n })))));
   }
+  if (gd.nameTaken) {
+    parts.unshift(gdNameTakenBox());
+    canBuild = false;
+  }
+  $("gd-p5").querySelector("h3").textContent = gd.built ? "Part built" : "Ready to build";
   ready.replaceChildren(...parts);
   $("gd-total").textContent = "";
   $("ds-run").disabled = !canBuild;
@@ -943,6 +988,8 @@ async function gdNarrowPins(want) {
 
 // The part, from the confirmed values. Called by the dialog's Build button.
 async function gdBuildConfirmed() {
+  await gdCheckName();
+  if (gd.nameTaken) return gdPaintFinal();
   $("ds-error").hidden = true;
   $("ds-result").hidden = true;
   $("ds-run").disabled = true;
@@ -951,9 +998,14 @@ async function gdBuildConfirmed() {
   try {
     const outcome = await invoke("build_confirmed", { input: gdFinalInput(false) });
     showBuildResult(outcome, gd.pdf);
+    // The last step turns green and the button gives way to the result.
+    gd.built = !!outcome.view;
+    gdShow(gd.step);
+    $("ds-result").scrollIntoView({ block: "nearest" });
   } catch (e) {
     $("ds-error").textContent = String(e);
     $("ds-error").hidden = false;
+    $("ds-error").scrollIntoView({ block: "nearest" });
   } finally {
     $("ds-run").textContent = "Build part";
     $("ds-run").disabled = false;

@@ -400,6 +400,13 @@ async fn build_confirmed(
         .map_err(|e| e.to_string())?
 }
 
+/// The name a part can be saved under: the one given, or the same with -2, -3, ...
+/// when a file is already there.
+#[tauri::command]
+fn unused_path(path: String) -> String {
+    kirpitch_review::unused_path(&path)
+}
+
 /// What the server says about one model: its context window and abilities.
 #[tauri::command]
 async fn model_details(input: FindInput) -> Result<kirpitch_models::ModelDetails, String> {
@@ -441,6 +448,7 @@ fn main() {
             check_step_values,
             preview_footprint,
             build_confirmed,
+            unused_path,
             preview_guide,
             eval_cases,
             eval_add_case,

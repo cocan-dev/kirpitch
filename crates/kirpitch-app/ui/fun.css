@@ -313,3 +313,6 @@ tr.sel td { animation: pulse-row 0.7s ease-out 1; }
 
 .gd-narrow { margin: 12px 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 8px; justify-items: start; }
 .gd-narrow p { margin: 0; }
+
+.gd-step.current.done .gd-step-btn { border-bottom-color: var(--ok); }
+.gd-step.current.done .gd-dot { background: var(--ok); border-color: var(--ok); }
