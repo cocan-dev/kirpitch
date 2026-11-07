@@ -177,6 +177,21 @@ pub struct SpecView {
     pub model_views: Vec<ModelViewSvg>,
     /// One line about the size of the 3D model.
     pub model_summary: String,
+    /// The boxes of the 3D model; empty when no model can be built.
+    pub model_boxes: Vec<ModelBox>,
+}
+
+/// One box of the 3D model, for the window to draw in 3D.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ModelBox {
+    /// Smallest corner (x, y, z), millimetres; x right, y up the board, z up from it.
+    pub min: [f64; 3],
+    /// Largest corner.
+    pub max: [f64; 3],
+    /// `body`, `marking` or `metal`.
+    pub material: String,
+    /// Colour as red, green, blue between 0 and 1.
+    pub rgb: [f64; 3],
 }
 
 /// One flat view of the 3D model.
@@ -234,7 +249,7 @@ fn status_name(s: GateStatus) -> &'static str {
 pub fn view(path: &str, spec: &PartSpec) -> SpecView {
     let mut findings = validate(spec, &fab());
     findings.extend(kirpitch_gen_3d::fit_findings(spec));
-    let (model_views, model_summary) = model_views(spec);
+    let (model_views, model_summary, model_boxes) = model_views(spec);
     let gates = Gate::ALL
         .iter()
         .map(|&gate| {
@@ -306,22 +321,39 @@ pub fn view(path: &str, spec: &PartSpec) -> SpecView {
         symbol_svg: symbol_svg(spec).unwrap_or_default(),
         model_views,
         model_summary,
+        model_boxes,
     }
 }
 
 /// The flat views and a size line of the 3D model.
-fn model_views(spec: &PartSpec) -> (Vec<ModelViewSvg>, String) {
+fn model_views(spec: &PartSpec) -> (Vec<ModelViewSvg>, String, Vec<ModelBox>) {
     let Ok(model) = kirpitch_gen_3d::build(spec) else {
-        return (Vec::new(), String::new());
+        return (Vec::new(), String::new(), Vec::new());
     };
-    let (lo, hi) = model.bounds();
-    let views = kirpitch_gen_3d::View::ALL
+    let boxes = model
+        .boxes
         .iter()
-        .map(|&v| ModelViewSvg {
-            name: v.name().to_string(),
-            svg: kirpitch_gen_3d::view_svg(&model, v),
+        .map(|b| {
+            let (r, g, bl) = b.material.rgb();
+            ModelBox {
+                min: b.min,
+                max: b.max,
+                material: match b.material {
+                    kirpitch_gen_3d::Material::Body => "body",
+                    kirpitch_gen_3d::Material::Marking => "marking",
+                    kirpitch_gen_3d::Material::Metal => "metal",
+                }
+                .to_string(),
+                rgb: [r, g, bl],
+            }
         })
         .collect();
+    let (lo, hi) = model.bounds();
+    // One sheet, drawn the way engineers draw: top, front below it, left beside the front.
+    let views = vec![ModelViewSvg {
+        name: "Engineering views (third-angle projection)".to_string(),
+        svg: kirpitch_gen_3d::drawing_svg(&model),
+    }];
     let summary = format!(
         "{} parts, {:.2} x {:.2} mm, {:.2} mm high (limit {} mm)",
         model.boxes.len(),
@@ -330,7 +362,7 @@ fn model_views(spec: &PartSpec) -> (Vec<ModelViewSvg>, String) {
         hi[2],
         spec.package.body.height_max.format()
     );
-    (views, summary)
+    (views, summary, boxes)
 }
 
 fn finding_view(f: &Finding) -> FindingView {

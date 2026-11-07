@@ -428,3 +428,30 @@ fn a_ball_grid_has_a_ball_under_every_pad_and_none_sticking_out() {
     );
     assert!(hi[2] <= 1.4 + 1e-9);
 }
+
+#[test]
+fn the_engineering_drawing_has_three_views_and_the_overall_size() {
+    use kirpitch_gen_3d::drawing_svg;
+    let m = build(&qfn32()).unwrap();
+    let svg = drawing_svg(&m);
+    assert!(svg.starts_with("<svg ") && svg.trim_end().ends_with("</svg>"));
+    // The sheet, and every box once in each of the three views.
+    assert_eq!(svg.matches("<rect").count(), 1 + 3 * m.boxes.len());
+    for label in [
+        "TOP",
+        "FRONT",
+        "LEFT",
+        "THIRD-ANGLE PROJECTION",
+        "all sizes in mm",
+    ] {
+        assert!(svg.contains(label), "{label}");
+    }
+    // The overall size is written next to its three dimension lines.
+    let (lo, hi) = m.bounds();
+    for v in [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]] {
+        let text = kirpitch_core::format_number((v * 1000.0).round() / 1000.0);
+        assert!(svg.contains(&format!(">{text}</text>")), "{text}");
+    }
+    // The same model always gives the same drawing.
+    assert_eq!(svg, drawing_svg(&build(&qfn32()).unwrap()));
+}
