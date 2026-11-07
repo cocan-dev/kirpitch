@@ -129,6 +129,206 @@ const LIB_SORTS = {
   pins: (a, b) => b.pin_count - a.pin_count || a.mpn.localeCompare(b.mpn),
 };
 
+function libSay(text, kind) {
+  const m = $("lib-status");
+  m.textContent = text;
+  m.className = "message" + (kind ? " " + kind : "");
+  m.hidden = !text;
+  clearTimeout(libSay.timer);
+  if (text && kind === "ok") libSay.timer = setTimeout(() => (m.hidden = true), 6000);
+}
+
+// The name of the file without its ending, which is what Rename changes.
+function libStem(file) {
+  return file.replace(/\.partspec\.json$/i, "").replace(/\.json$/i, "");
+}
+
+// ---- What can be done with a part: a menu (right click, or the ⋯ button) ---------------------
+
+let libMenuEl = null;
+
+function libMenuClose(focusBack) {
+  if (!libMenuEl) return;
+  const back = libMenuEl.opener;
+  libMenuEl.remove();
+  libMenuEl = null;
+  if (focusBack && back && back.isConnected) back.focus();
+}
+
+function libMenuOpen(p, wrap, x, y, opener) {
+  libMenuClose(false);
+  const menu = el("ul", { class: "lib-menu", role: "menu", "aria-label": "Actions for " + p.mpn });
+  const item = (label, run, danger) => {
+    const b = el("button", { type: "button", role: "menuitem", class: danger ? "danger-item" : "", text: label });
+    b.addEventListener("click", () => {
+      libMenuClose(false);
+      run();
+    });
+    menu.append(el("li", { role: "none" }, b));
+  };
+  item("Open", () => openLibraryPart(p));
+  item("Rename file…", () => libRenamePanel(p, wrap));
+  item("Copy file path", () => libCopyPath(p));
+  item("Delete…", () => libDeletePanel(p, wrap), true);
+  menu.opener = opener || null;
+  document.body.append(menu);
+  libMenuEl = menu;
+  // Inside the window, whatever the place that was clicked.
+  const w = menu.offsetWidth;
+  const h = menu.offsetHeight;
+  menu.style.left = Math.max(4, Math.min(x, window.innerWidth - w - 4)) + "px";
+  menu.style.top = Math.max(4, Math.min(y, window.innerHeight - h - 4)) + "px";
+  menu.querySelector("button").focus();
+}
+
+document.addEventListener("click", (ev) => {
+  if (libMenuEl && !libMenuEl.contains(ev.target)) libMenuClose(false);
+});
+document.addEventListener("scroll", () => libMenuClose(false), true);
+window.addEventListener("blur", () => libMenuClose(false));
+document.addEventListener(
+  "keydown",
+  (ev) => {
+    if (!libMenuEl) return;
+    const buttons = [...libMenuEl.querySelectorAll("button")];
+    const at = buttons.indexOf(document.activeElement);
+    if (ev.key === "Escape") {
+      ev.stopPropagation();
+      libMenuClose(true);
+    } else if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      ev.preventDefault();
+      const next = (at + (ev.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+      buttons[next].focus();
+    } else if (ev.key === "Tab") {
+      libMenuClose(false);
+    }
+  },
+  true
+);
+
+function openLibraryPart(p) {
+  lib.returnTo = null;
+  $("library").hidden = true;
+  openPath(p.path);
+}
+
+async function libCopyPath(p) {
+  try {
+    await navigator.clipboard.writeText(p.path);
+    libSay("Copied the path of " + p.file + ".", "ok");
+  } catch {
+    libSay("Could not copy. The file is " + p.path, "");
+  }
+}
+
+// A card turns into a small form, so nothing is asked in a window that could be hidden.
+function libPanel(p, wrap, title, ...kids) {
+  const panel = el("div", { class: "lib-panel", role: "group", "aria-label": title }, el("strong", { text: title }), ...kids);
+  wrap.classList.add("editing");
+  wrap.replaceChildren(panel);
+  return panel;
+}
+
+function libRenamePanel(p, wrap) {
+  const input = el("input", { type: "text", spellcheck: "false", autocomplete: "off", "aria-label": "New file name" });
+  input.value = libStem(p.file);
+  const err = el("p", { class: "err-text small", hidden: "" });
+  const ending = /\.partspec\.json$/i.test(p.file) ? ".partspec.json" : ".json";
+  const save = el("button", { type: "button", class: "primary", text: "Rename" });
+  const cancel = el("button", { type: "button", class: "ghost", text: "Cancel" });
+  const go = async () => {
+    save.disabled = true;
+    err.hidden = true;
+    try {
+      const to = await invoke("rename_part", { path: p.path, newName: input.value });
+      libSay("Renamed to " + to.split(/[\\/]/).pop() + ".", "ok");
+      await libLoad();
+    } catch (e) {
+      err.textContent = String(e);
+      err.hidden = false;
+      save.disabled = false;
+      input.focus();
+    }
+  };
+  save.addEventListener("click", go);
+  cancel.addEventListener("click", libPaint);
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") go();
+    else if (ev.key === "Escape") {
+      ev.stopPropagation();
+      libPaint();
+    }
+  });
+  libPanel(
+    p,
+    wrap,
+    "Rename the file of " + p.mpn,
+    el("div", { class: "lib-rename" }, input, el("span", { class: "muted", text: ending })),
+    el("p", { class: "muted small", text: "Only the file name changes, in the same folder. The part number inside the part stays " + p.mpn + "." }),
+    err,
+    el("div", { class: "start-actions" }, save, cancel)
+  );
+  input.focus();
+  input.select();
+}
+
+function libDeletePanel(p, wrap) {
+  const err = el("p", { class: "err-text small", hidden: "" });
+  const del = el("button", { type: "button", class: "danger", text: "Delete the file" });
+  const cancel = el("button", { type: "button", text: "Keep it" });
+  del.addEventListener("click", async () => {
+    del.disabled = true;
+    try {
+      await invoke("delete_part", { path: p.path });
+      try {
+        localStorage.setItem("kirpitch.recent", JSON.stringify(recentPaths().filter((x) => x !== p.path)));
+        renderRecent();
+      } catch {
+        // The list of recent files is only a convenience.
+      }
+      libSay("Deleted " + p.file + ".", "ok");
+      await libLoad();
+    } catch (e) {
+      err.textContent = String(e);
+      err.hidden = false;
+      del.disabled = false;
+    }
+  });
+  cancel.addEventListener("click", libPaint);
+  cancel.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") {
+      ev.stopPropagation();
+      libPaint();
+    }
+  });
+  libPanel(
+    p,
+    wrap,
+    "Delete " + p.mpn + "?",
+    el("p", { text: p.file + " in " + p.folder + " is deleted from your computer for good; it does not go to the recycle bin." }),
+    el("p", { class: "muted small", text: "KiCad files that were made from this part, and the datasheet, are not touched." }),
+    err,
+    el("div", { class: "start-actions" }, del, cancel)
+  );
+  cancel.focus();
+}
+
+function libItem(p) {
+  const wrap = el("div", { class: "lib-item" });
+  const more = el("button", { type: "button", class: "lib-more", "aria-label": "Actions for " + p.mpn, "aria-haspopup": "menu", title: "Rename, delete…", text: "⋯" });
+  more.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const r = more.getBoundingClientRect();
+    libMenuOpen(p, wrap, r.right - 170, r.bottom + 4, more);
+  });
+  wrap.addEventListener("contextmenu", (ev) => {
+    ev.preventDefault();
+    libMenuOpen(p, wrap, ev.clientX, ev.clientY, null);
+  });
+  wrap.append(libCard(p), more);
+  return wrap;
+}
+
 function libCard(p) {
   const open = el("button", { type: "button", class: "lib-card", "aria-label": "Open " + p.mpn });
   const art = el("div", { class: "lib-fp", "aria-hidden": "true" });
@@ -154,11 +354,7 @@ function libCard(p) {
       el("span", { class: "lib-path", title: p.path, text: p.file + "  —  " + p.folder })
     )
   );
-  open.addEventListener("click", () => {
-    lib.returnTo = null;
-    $("library").hidden = true;
-    openPath(p.path);
-  });
+  open.addEventListener("click", () => openLibraryPart(p));
   return open;
 }
 
@@ -180,7 +376,7 @@ function libPaint() {
   } else if (!shown.length) {
     kids.push(el("p", { class: "muted", text: "Nothing matches “" + lib.query + "”." }));
   } else {
-    kids.push(el("div", { class: "lib-grid" }, ...shown.map(libCard)));
+    kids.push(el("div", { class: "lib-grid" }, ...shown.map(libItem)));
   }
   box.replaceChildren(...kids);
   libPaintFolders();
@@ -238,5 +434,5 @@ $("lib-sort").addEventListener("change", (ev) => {
   libPaint();
 });
 document.addEventListener("keydown", (ev) => {
-  if (ev.key === "Escape" && !$("library").hidden && document.activeElement !== $("lib-search")) leaveLibrary();
+  if (ev.key === "Escape" && !$("library").hidden && document.activeElement !== $("lib-search") && !libMenuEl && !document.activeElement.closest(".lib-panel")) leaveLibrary();
 });

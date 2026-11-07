@@ -23,7 +23,9 @@ This describes what happens when you press **Build part** (or run
 5. **Assemble and check.** The three answers become a PartSpec. Every pin is
    looked up in the page text (a pin that is on no line gets low confidence and
    a note); the package family picks a template (SOIC, SSOP, TSSOP, MSOP,
-   SOT-23, DIP, QFN) that builds the land pattern by the IPC-7351 formulas.
+   SOT-23, DIP, QFN, and the quad, no-lead and ball-grid shapes) that builds
+   the land pattern by the IPC-7351 formulas, or the recommended footprint of
+   the datasheet is used (see "Any package" below).
 6. **Save**, then you review the pinout, footprint and 3D gates by hand.
 
 ## What is sent to a model
@@ -48,10 +50,15 @@ a constraint; servers that cannot simply rely on the example.
   inside is read.
 - If the check fails, the model is asked again with the problem named, up to
   two more times.
-- If the answer was **cut off** (hit the token limit) the limit is raised.
+- If the answer was **cut off** (hit the token limit) the limit is raised, and
+  the time limit grows with it (up to an hour), so the longer answer is not
+  stopped by the clock.
 - If the answer was **empty**, as happens with models that think and use their
   whole budget on thinking, the next request turns thinking off (Ollama) and
-  allows more tokens.
+  allows more tokens. Some models and servers think anyway, even when asked
+  not to; the Model output panel says so ("thinking was asked to be off, but
+  this model or server thinks anyway"). The cure is another model, or a larger
+  answer limit and time limit under Settings, Extraction.
 - Answers are cached on disk by request, so a repeat build costs nothing.
 
 ## Where it still goes wrong
@@ -107,12 +114,27 @@ pin table twice by default, keeping answers, and all the prompts. They are saved
 in `kirpitch.toml` (`[extraction]` and `[prompts]`), so the command line uses
 the same values.
 
-## Packages this version cannot draw
+## One pin table for several packages
 
-The footprint templates cover SOIC, SSOP, TSSOP, MSOP, SOT-23, DIP and QFN. For
-anything else (LQFP, TQFP, BGA, SOT-223 ...) the package step answers `other`
-with the package name. Kirpitch then stops that step at once instead of asking
-again, says which package it is, and still saves the pins it read as a CSV file.
+Many datasheets (a microcontroller family, for example) list the pins of
+several packages in one table, with a column of pin numbers for each package
+(`- - 1 1 A2 1 PE2 I/O` is the row of pin PE2 in six packages; a dash means
+the package does not have the pin). The pin step reads every row, so a build for
+the 64-pin package can arrive with 176 pins and stops with "the pin table has
+176 pins but the package has 64".
+
+The build screen then offers **Keep only the 64 pins of LQFP64**. No model is
+asked. The program looks up every pin in the text of the table and takes the
+cells before its name: one pin number per package. The headers are printed
+sideways and come out of the PDF as scrambled letters, so the right column is
+found by what it holds: pin numbers from 1 to 64, each once, and nearly all of
+them. If one column fits it is used; if none or more than one fits, the
+message says so and the model reads the table again with the package named.
+Pins that only the smaller packages have (extra supply pins) are not in the
+list that was read from the largest package, so they are looked up in the rows
+of the table, added with low confidence and flagged for you to check; numbers
+that are not found are named. The result opens on the pins step to be checked
+before it is used. See [ADR 0031](decisions/0031-one-package-from-a-table-for-several.md).
 
 ## The guided way (recommended)
 

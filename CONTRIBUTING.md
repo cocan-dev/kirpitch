@@ -25,7 +25,37 @@ scope and design decisions.
   these tests are skipped with a message. On Linux, `scripts/kicad-cli-docker.sh`
   runs `kicad-cli` of any version from the official container image. See
   [testdata/README.md](testdata/README.md).
+- The pdfium library, for the tests that read PDFs and for the app to show
+  datasheet pages: `cargo xtask fetch-pdfium` downloads it into the ignored
+  `testdata/pdfium/`. Set `KIRPITCH_PDFIUM_LIB_DIR` to the folder it prints, or
+  `KIRPITCH_REQUIRE_PDFIUM=1` to make the PDF tests fail instead of skip.
+  `cargo xtask fetch-datasheets` downloads the golden datasheets (never
+  committed) into `testdata/pdfs/`.
 - Git, with your commit name and email configured.
+- To run the desktop app (`cargo run -p kirpitch-app`): on Linux the WebKitGTK
+  development packages, on Windows the WebView2 runtime. Users who only want to
+  run it can follow [docs/install.md](docs/install.md).
+
+## Project layout
+
+| Crate | What it does |
+| --- | --- |
+| `kirpitch-core` | PartSpec schema, units, checks, IPC-7351 calculator, package templates |
+| `kirpitch-gen-symbol`, `-gen-footprint`, `-gen-3d` | The deterministic generators |
+| `kirpitch-kicad` | S-expression writer and parser, KiCad targets, `kicad-cli` wrapper, KLC checks |
+| `kirpitch-extract` | PDF pages, text with positions, regions (pdfium) |
+| `kirpitch-models` | Model providers, the extraction steps and prompts |
+| `kirpitch-review` | The logic behind the app (settings, guided build, library, evaluation); everything testable lives here |
+| `kirpitch-app` | The Tauri window: thin command functions plus the interface in `ui/` |
+| `kirpitch-cli` | The `kirpitch` command-line tool |
+| `kirpitch-golden`, `xtask` | Golden parts for tests, development helpers |
+
+The interface in `crates/kirpitch-app/ui/` is plain HTML, CSS and JavaScript
+(classic scripts sharing one global scope, no build step, no framework).
+Put logic in `kirpitch-review` or below and keep the Tauri commands in
+`kirpitch-app` one-liners, so it can be tested without a window. Change the
+interface against a small mock of the Tauri bridge in a browser when you cannot
+run the whole app, and say in the pull request that this is all you checked.
 
 ## Checks before every commit
 
@@ -33,9 +63,13 @@ Run these and fix everything they report. Code that fails them is not merged.
 
 ```sh
 cargo fmt --all
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace
 ```
+
+CI runs the same on Linux, macOS and Windows. Only a separate `Window` job
+installs the web view libraries and lints and builds `kirpitch-app`; the other
+jobs exclude it.
 
 If a test cannot pass yet (for example, for unfinished work), mark it
 `#[ignore]` with a reason and say so in the commit body.
@@ -117,7 +151,13 @@ to build changelogs.
 - Record significant decisions as short ADRs (architecture decision records) in
   `docs/decisions/NNNN-title.md`, covering context, decision and consequences.
 - Keep `CHANGELOG.md` up to date in the [Keep a Changelog](https://keepachangelog.com)
-  format, with an `Unreleased` section at the top.
+  format, with an `Unreleased` section at the top: new things under
+  `Added`, behaviour changes under `Changed` and bug fixes under `Fixed`.
+  Add the entry in the pull request that makes the change.
+- Keep the user-facing pages true: [README.md](README.md) (what it does, the
+  short way to start) and [docs/install.md](docs/install.md) (setup for people
+  who are not developers) change in the same pull request as a change to how
+  Kirpitch is installed, started or used.
 
 ## AI-assisted contributions
 

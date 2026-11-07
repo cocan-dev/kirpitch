@@ -12,7 +12,7 @@ endpoints, keys and folders in the app.
 
 - The settings screen edits the same `kirpitch.toml` that the command line reads.
   The file in use is `kirpitch.toml` in the current folder when there is one,
-  else `%APPDATA%Kirpitchkirpitch.toml` (Windows),
+  else `%APPDATA%\Kirpitch\kirpitch.toml` (Windows),
   `~/Library/Application Support/Kirpitch` (macOS) or
   `$XDG_CONFIG_HOME/kirpitch` (Linux). `KIRPITCH_CONFIG_DIR` replaces the folder.
   The file is written whole to a side file and renamed, and comments of a

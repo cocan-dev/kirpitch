@@ -428,6 +428,18 @@ async fn list_parts(dirs: Vec<String>) -> Vec<kirpitch_review::PartSummary> {
         .unwrap_or_default()
 }
 
+/// Gives a part file another name (same folder, same ending); returns the new path.
+#[tauri::command]
+fn rename_part(path: String, new_name: String) -> Result<String, String> {
+    kirpitch_review::rename_part(&path, &new_name)
+}
+
+/// Deletes a part file (not the KiCad files made from it).
+#[tauri::command]
+fn delete_part(path: String) -> Result<(), String> {
+    kirpitch_review::delete_part(&path)
+}
+
 /// The name a part can be saved under: the one given, or the same with -2, -3, ...
 /// when a file is already there.
 #[tauri::command]
@@ -479,6 +491,8 @@ fn main() {
             build_confirmed,
             unused_path,
             list_parts,
+            rename_part,
+            delete_part,
             preview_guide,
             eval_cases,
             eval_add_case,
