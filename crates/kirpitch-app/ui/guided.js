@@ -238,10 +238,34 @@ function gdPollStop() {
   gdPoll = null;
 }
 
+// The kind of package a name like "LQFP64" or "UFBGA176" stands for, as the form's menu has it.
+function gdFamilyOf(label) {
+  const name = String(label || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const letters = (/^[A-Z]+/.exec(name) || [""])[0];
+  if (/^SOT23/.test(name)) return "sot23";
+  const by = [
+    [/^(L|HL|HLQ)QFP$/, "lqfp"], [/^TQFP$/, "tqfp"], [/QFP$/, "qfp"], [/QFN$/, "qfn"],
+    [/BGA$/, "bga"], [/^(WL|DS)?CSP$|^DSBGA$/, "csp"], [/LGA$/, "lga"],
+    [/^TSSOP$/, "tssop"], [/^SSOP$/, "ssop"], [/^MSOP$/, "msop"], [/^(SOIC|SOP|SO)$/, "soic"], [/^P?DIP$/, "dip"],
+  ];
+  for (const [re, family] of by) if (re.test(letters)) return family;
+  return "custom";
+}
+
+// What the package form starts from when the model gives nothing: the package that was
+// chosen with the part number (its kind and pin count), else a SOIC to start from.
+function gdPackageDraft() {
+  if (!gd.pkg) return { family: "soic" };
+  const family = gdFamilyOf(gd.pkg.label);
+  const draft = { family };
+  if (gd.pkg.pins && !["bga", "lga", "csp", "custom"].includes(family)) draft.pin_count = gd.pkg.pins;
+  return draft;
+}
+
 const GD_MANUAL = {
   metadata: () => ({ mpn: "", manufacturer: "", description: "" }),
   pins: () => ({ pins: [] }),
-  package: () => ({ family: "soic" }),
+  package: () => gdPackageDraft(),
   footprint: () => ({}),
 };
 
