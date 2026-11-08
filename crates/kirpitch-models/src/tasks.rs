@@ -1666,6 +1666,21 @@ fn number(v: &Value, key: &str) -> Option<f64> {
     v.get(key).and_then(Value::as_f64).filter(|n| n.is_finite())
 }
 
+/// A size that is a number, or, when a model wrote it as a range like the others,
+/// the middle of that range (or its largest value when `largest`).
+fn size(v: &Value, key: &str, largest: bool) -> Option<f64> {
+    let s = v.get(key)?;
+    if let Some(n) = s.as_f64() {
+        return Some(n).filter(|n| n.is_finite());
+    }
+    let (min, max) = (number(s, "min"), number(s, "max"));
+    match (min, max) {
+        (Some(a), Some(b)) => Some(if largest { a.max(b) } else { (a + b) / 2.0 }),
+        (Some(n), None) | (None, Some(n)) => Some(n),
+        _ => None,
+    }
+}
+
 fn span(v: &Value, key: &str) -> Result<Option<Span>, String> {
     match v.get(key) {
         None | Some(Value::Null) => Ok(None),
@@ -1726,13 +1741,13 @@ pub fn package_from_json(v: &Value) -> Result<PackageAnswer, String> {
         ));
     }
     let custom = family == "custom";
-    let pitch = number(v, "e").filter(|p| *p > 0.0);
+    let pitch = size(v, "e", false).filter(|p| *p > 0.0);
     let pitch = if custom {
         pitch.unwrap_or(1.0)
     } else {
         pitch.ok_or("`e` (the pitch in mm) is missing")?
     };
-    let height_max = number(v, "A")
+    let height_max = size(v, "A", true)
         .filter(|p| *p > 0.0)
         .ok_or("`A` (the largest height in mm) is missing")?;
     let (d, e, e1) = (span(v, "D")?, span(v, "E")?, span(v, "E1")?);
@@ -1756,16 +1771,16 @@ pub fn package_from_json(v: &Value) -> Result<PackageAnswer, String> {
         body_x: None,
         body_y: None,
         exposed_pad: None,
-        row_spacing: number(v, "row_spacing").filter(|n| *n > 0.0),
-        drill: number(v, "drill").filter(|n| *n > 0.0),
-        pad_diameter: number(v, "pad_diameter").filter(|n| *n > 0.0),
+        row_spacing: size(v, "row_spacing", false).filter(|n| *n > 0.0),
+        drill: size(v, "drill", false).filter(|n| *n > 0.0),
+        pad_diameter: size(v, "pad_diameter", false).filter(|n| *n > 0.0),
         span_x: None,
         span_y: None,
         rows: count(v, "rows"),
         cols: count(v, "cols"),
-        standoff: number(v, "A1").filter(|n| *n > 0.0),
-        body_thickness: number(v, "A2").filter(|n| *n > 0.0),
-        lead_thickness: number(v, "c").filter(|n| *n > 0.0),
+        standoff: size(v, "A1", false).filter(|n| *n > 0.0),
+        body_thickness: size(v, "A2", false).filter(|n| *n > 0.0),
+        lead_thickness: size(v, "c", false).filter(|n| *n > 0.0),
         package_name: text_field(v, "package_name"),
         page: v
             .get("page")
@@ -1792,7 +1807,7 @@ pub fn package_from_json(v: &Value) -> Result<PackageAnswer, String> {
                     answer.pins_y = Some(n / 4);
                 }
             }
-            if let (Some(w), Some(h)) = (number(v, "D2"), number(v, "E2"))
+            if let (Some(w), Some(h)) = (size(v, "D2", false), size(v, "E2", false))
                 && w > 0.0
                 && h > 0.0
             {
@@ -1818,7 +1833,7 @@ pub fn package_from_json(v: &Value) -> Result<PackageAnswer, String> {
                 answer.pins_x = Some(n / 4);
                 answer.pins_y = Some(n / 4);
             }
-            if let (Some(w), Some(h)) = (number(v, "D2"), number(v, "E2"))
+            if let (Some(w), Some(h)) = (size(v, "D2", false), size(v, "E2", false))
                 && w > 0.0
                 && h > 0.0
             {
@@ -1965,7 +1980,8 @@ pub fn extract_package(
 
 #[cfg(test)]
 mod timeout_tests {
-    use super::scaled_timeout;
+    use super::{package_from_json, scaled_timeout};
+    use serde_json::json;
 
     #[test]
     fn a_longer_answer_gets_a_longer_wait_but_never_more_than_an_hour() {
@@ -1973,5 +1989,31 @@ mod timeout_tests {
         assert_eq!(scaled_timeout(1200, 8000, 32_000), 3600);
         assert_eq!(scaled_timeout(300, 32_000, 32_000), 300);
         assert_eq!(scaled_timeout(300, 0, 100), 300);
+    }
+
+    #[test]
+    fn sizes_written_as_ranges_are_read_like_numbers() {
+        // What a model answered for the LQFP64 of an STM32: every size as a
+        // range, including the height and the pitch.
+        let v = json!({
+            "family": "lqfp", "pin_count": 64,
+            "e": {"min": 0.5, "max": 0.5},
+            "A": {"max": 1.6, "min": 1.6}, "A1": {"max": 0.15, "min": 0.05},
+            "A2": {"max": 1.45, "min": 1.35},
+            "D": {"max": 12.0, "min": 12.0}, "E": {"max": 12.0, "min": 12.0},
+            "D1": {"max": 10.0, "min": 10.0}, "E1": {"max": 10.0, "min": 10.0},
+            "L": {"max": 0.75, "min": 0.45}, "b": {"max": 0.27, "min": 0.17}
+        });
+        let a = package_from_json(&v).unwrap();
+        assert_eq!(a.height_max, 1.6);
+        assert_eq!(a.pitch, 0.5);
+        assert_eq!(a.standoff, Some(0.1));
+        assert_eq!(a.body_thickness, Some(1.4));
+        // Plain numbers still work, and a size that is not there is still missing.
+        let mut plain = v.clone();
+        plain["A"] = json!(1.6);
+        assert_eq!(package_from_json(&plain).unwrap().height_max, 1.6);
+        plain.as_object_mut().unwrap().remove("A");
+        assert!(package_from_json(&plain).unwrap_err().contains("`A`"));
     }
 }
